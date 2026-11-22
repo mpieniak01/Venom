@@ -28,6 +28,7 @@ class CalendarReceipt:
             self.status == "success"
             and bool(self.event_id.strip())
             and self.request == current
+            and (not current.idempotent or self.event_id == current.request_id.hex)
         )
 
 
@@ -76,6 +77,7 @@ def confirm_insertion(
     if not (
         isinstance(event_id, str)
         and event_id.strip()
+        and (not operation.idempotent or event_id == operation.request_id.hex)
         and _matches_event(operation, event)
     ):
         return None

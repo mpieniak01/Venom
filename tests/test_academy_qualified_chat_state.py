@@ -1,14 +1,14 @@
 import pytest
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
-from venom_core.services.academy.qualified_chat_evidence import evidence_reply
-from venom_core.services.academy.qualified_chat_explanations import explanation_hint
-from venom_core.services.academy.qualified_chat_fit import fit_hint
-from venom_core.services.academy.qualified_chat_mechanisms import (
+from venom_core.services.chat_policy.qualified_chat_evidence import evidence_reply
+from venom_core.services.chat_policy.qualified_chat_explanations import explanation_hint
+from venom_core.services.chat_policy.qualified_chat_fit import fit_hint
+from venom_core.services.chat_policy.qualified_chat_mechanisms import (
     ice_melting_reply,
     thermal_followup_reply,
 )
-from venom_core.services.academy.qualified_chat_schedule import (
+from venom_core.services.chat_policy.qualified_chat_schedule import (
     draft_time_revision,
     route_shift,
 )

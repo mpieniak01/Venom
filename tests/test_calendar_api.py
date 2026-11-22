@@ -1,12 +1,16 @@
 """Testy jednostkowe dla Calendar API."""
 
+from dataclasses import replace
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import calendar as calendar_routes
+from venom_core.config import SETTINGS
+from venom_core.services.calendar_execution import CalendarExecution, CalendarReceipt
 
 
 @pytest.fixture
@@ -116,12 +120,13 @@ def test_get_events_with_custom_params(client, mock_calendar_skill):
 
 def test_create_event_success(client, mock_calendar_skill):
     """Test tworzenia wydarzenia - sukces."""
-    mock_calendar_skill.schedule_task.return_value = (
-        "✅ Zaplanowano zadanie w kalendarzu Venoma:\n"
-        "📌 Tytuł: Test Event\n"
-        "🕒 Czas: 2024-01-15 16:00 - 17:00\n"
-        "⏱️  Czas trwania: 60 minut\n"
-        "🔗 Link: https://calendar.google.com/event?eid=test123\n"
+    mock_calendar_skill.schedule_verified_task.side_effect = lambda operation: (
+        CalendarExecution(
+            f"Zaplanowano: {operation.title}",
+            CalendarReceipt(
+                operation, "test123", "https://calendar.google.com/event?eid=test123"
+            ),
+        )
     )
 
     event_data = {
@@ -139,12 +144,21 @@ def test_create_event_success(client, mock_calendar_skill):
     assert "Test Event" in data["message"]
     assert data["event_link"] == "https://calendar.google.com/event?eid=test123"
 
-    mock_calendar_skill.schedule_task.assert_called_once_with(
-        title="Test Event",
-        start_time="2024-01-15T16:00:00",
-        duration_minutes=60,
-        description="Test description",
+    assert data["event_id"] == "test123"
+    mock_calendar_skill.schedule_verified_task.assert_called_once()
+    operation = mock_calendar_skill.schedule_verified_task.call_args.args[0]
+    assert (
+        operation.title,
+        operation.start_time,
+        operation.duration_minutes,
+        operation.description,
+    ) == (
+        event_data["title"],
+        event_data["start_time"],
+        event_data["duration_minutes"],
+        event_data["description"],
     )
+    mock_calendar_skill.schedule_task.assert_not_called()
 
 
 def test_create_event_without_credentials(client_no_credentials):
@@ -191,7 +205,7 @@ def test_create_event_invalid_duration(client):
 
 def test_create_event_skill_error(client, mock_calendar_skill):
     """Test tworzenia wydarzenia - błąd skill."""
-    mock_calendar_skill.schedule_task.return_value = (
+    mock_calendar_skill.schedule_verified_task.return_value = CalendarExecution(
         "❌ Błąd Google Calendar API: 403 Forbidden"
     )
 
@@ -207,12 +221,15 @@ def test_create_event_skill_error(client, mock_calendar_skill):
     assert response.status_code == 201
     data = response.json()
     assert data["status"] == "error"
-    assert "❌" in data["message"]
+    assert "nie został potwierdzony" in data["message"]
+    assert data["event_id"] is None
 
 
 def test_create_event_with_default_duration(client, mock_calendar_skill):
     """Test tworzenia wydarzenia z domyślnym czasem trwania."""
-    mock_calendar_skill.schedule_task.return_value = "✅ Zaplanowano zadanie..."
+    mock_calendar_skill.schedule_verified_task.return_value = CalendarExecution(
+        "Brak potwierdzenia"
+    )
 
     event_data = {
         "title": "Test Event",
@@ -223,14 +240,18 @@ def test_create_event_with_default_duration(client, mock_calendar_skill):
     response = client.post("/api/v1/calendar/event", json=event_data)
 
     assert response.status_code == 201
-    mock_calendar_skill.schedule_task.assert_called_once()
-    call_args = mock_calendar_skill.schedule_task.call_args
-    assert call_args[1]["duration_minutes"] == 60
+    mock_calendar_skill.schedule_verified_task.assert_called_once()
+    assert (
+        mock_calendar_skill.schedule_verified_task.call_args.args[0].duration_minutes
+        == 60
+    )
 
 
 def test_create_event_exception_handling(client, mock_calendar_skill):
     """Test obsługi wyjątków podczas tworzenia wydarzenia."""
-    mock_calendar_skill.schedule_task.side_effect = Exception("Unexpected error")
+    mock_calendar_skill.schedule_verified_task.side_effect = Exception(
+        "Unexpected error"
+    )
 
     event_data = {
         "title": "Test Event",
@@ -260,23 +281,15 @@ def test_get_events_exception_handling(client, mock_calendar_skill):
     )
 
 
+@pytest.mark.parametrize("qualified", [False, True])
 @pytest.mark.parametrize(
     "case", ["success", "stale", "wrong_title", "pending", "empty_id", "failure"]
 )
 def test_calendar_api_requires_a_receipt_bound_to_current_execution(
-    client, mock_calendar_skill, monkeypatch, case
+    client, mock_calendar_skill, monkeypatch, case, qualified
 ):
-    from dataclasses import replace
-    from uuid import uuid4
-
-    from venom_core.services.calendar_execution import (
-        CalendarExecution,
-        CalendarReceipt,
-    )
-
-    monkeypatch.setattr(
-        calendar_routes.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", True
-    )
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", qualified)
     observed = []
 
     def execute(operation):
@@ -320,13 +333,8 @@ def test_calendar_api_requires_a_receipt_bound_to_current_execution(
 def test_calendar_api_reuses_the_submission_key_for_an_unconfirmed_write(
     client, mock_calendar_skill, monkeypatch
 ):
-    from uuid import uuid4
-
-    from venom_core.services.calendar_execution import CalendarExecution
-
-    monkeypatch.setattr(
-        calendar_routes.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", True
-    )
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False)
     mock_calendar_skill.schedule_verified_task.return_value = CalendarExecution(
         "Parametry niepotwierdzone", unconfirmed_event_id="provider-event"
     )

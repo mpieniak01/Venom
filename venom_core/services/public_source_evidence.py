@@ -7,8 +7,10 @@ import re
 from dataclasses import dataclass
 from typing import Literal, Self, cast
 
-from venom_core.services.academy.qualified_chat_quote import without_quotes
-from venom_core.services.academy.qualified_chat_revisions import explicit_lookup_allowed
+from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_revisions import (
+    explicit_lookup_allowed,
+)
 from venom_core.services.verified_web import NewsHeadline
 from venom_core.services.weather_grounding import WeatherEvidence
 from venom_core.services.wiki_unit_facts import WikiUnitEvidence, requested_unit_fact
@@ -61,7 +63,7 @@ class PublicSourceEvidence:
     weather: WeatherEvidence | None = None
 
     def to_record(self) -> dict[str, str]:
-        record = {"scope": self.scope}
+        record: dict[str, str] = {"scope": self.scope}
         if self.scope == "wiki" and self.excerpt:
             record["excerpt"] = self.excerpt[:MAX_PUBLIC_EXCERPT_CHARS]
         if self.wiki_unit is not None:

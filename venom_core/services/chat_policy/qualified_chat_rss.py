@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from venom_core.services.academy.qualified_chat_options import CountRequirement
+from venom_core.services.chat_policy.qualified_chat_options import CountRequirement
 from venom_core.services.verified_web import NewsHeadline
 
 _SCOPE = "Zakres odczytu: tylko nagłówki RSS."
@@ -321,9 +321,11 @@ class RSSSummary:
 
     @staticmethod
     def _item_summary(
-        item: dict[str, Any], headline: NewsHeadline
+        item: object, headline: NewsHeadline
     ) -> tuple[str, str | None] | None:
-        summary = _draft_field(item["summary"], headline.title)
+        if not isinstance(item, dict):
+            return None
+        summary = _draft_field(item.get("summary"), headline.title)
         if summary is None:
             return None
         proposition, speaker = _headline_fields(headline.title)
@@ -359,11 +361,11 @@ class RSSSummary:
         if summary_data is None:
             return None
         summary, speaker = summary_data
-        summary = self._supported_attribution(summary, headline, speaker)
-        if summary is None:
+        supported_summary = self._supported_attribution(summary, headline, speaker)
+        if supported_summary is None:
             return None
         seen.add(index)
-        return _render(headline, summary, speaker)
+        return _render(headline, supported_summary, speaker)
 
     def publish(self, draft: str) -> str:
         items = self._read_items(draft)

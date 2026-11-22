@@ -6,12 +6,12 @@ import re
 from collections.abc import Sequence
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
-from venom_core.services.academy.qualified_chat_irrigation import irrigation_reply
-from venom_core.services.academy.qualified_chat_quote import (
+from venom_core.services.chat_policy.qualified_chat_irrigation import irrigation_reply
+from venom_core.services.chat_policy.qualified_chat_quote import (
     is_text_transformation,
     without_quotes,
 )
-from venom_core.services.academy.qualified_chat_sources import card_link, read_card
+from venom_core.services.chat_policy.qualified_chat_sources import card_link, read_card
 
 NOUNS = {"butelk": "butelki", "słoik": "słoika", "szklan": "szklanki"}
 _SENTENCE = re.compile(r"(?<=[.!?;])\s+")
@@ -173,7 +173,7 @@ def _fan_state(users: Sequence[str]) -> str:
 
 
 def _active_topic(users: Sequence[str]) -> list[str]:
-    recent = []
+    recent: list[str] = []
     for message in users:
         fragments = _TOPIC_CHANGE.split(message)
         if len(fragments) > 1:

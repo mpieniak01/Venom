@@ -148,6 +148,14 @@ def freeze_inputs(root: Path, plan: dict, request: dict) -> dict:
     return {
         "inputs_id": request["inputs_id"],
         "reserve_seconds": request["reserve_seconds"],
+        **(
+            {
+                "conversation_review_required": True,
+                "conversation_review_id": request["conversation_review_id"],
+            }
+            if request.get("conversation_review_required")
+            else {}
+        ),
         "inputs_sha256": checksum,
         **pins,
         "parent_weights_sha256": parent["entry"]["weights_sha256"],
@@ -186,8 +194,12 @@ def incomplete(state: dict, reason: str) -> None:
     finish(state, {"status": "incomplete", "qualified": None, "reason": reason})
 
 
-def transition(state: dict) -> None:
+def transition(state: dict, *, service=None) -> None:
     """Reserve the exact selected finalist after trials become quiescent."""
+    if _review_is_needed(state, service):
+        service._review_selection(state)
+        if state.get("phase") == "complete" or not state.get("selected_run_id"):
+            return
     if not state["plan"].get("final_qualification") or state.get("phase") != "trials":
         return
     if state["status"] not in {"succeeded", "timed_out", "stopped", "blocked"}:
@@ -195,34 +207,67 @@ def transition(state: dict) -> None:
     state["training_status"] = state["status"]
     confirmation = state.get("repeat_confirmation", {})
     if confirmation.get("status") in {"failed_quality", "incomplete"}:
-        finish(
-            state,
-            {
-                "status": confirmation["status"],
-                "qualified": None,
-                "reason": confirmation["reason"],
-            },
-        )
+        _finish_failed_confirmation(state, confirmation)
     elif state["status"] in {"stopped", "blocked"}:
         incomplete(state, state.get("error") or f"campaign_{state['status']}")
     elif state["selected_run_id"] is None:
-        from .campaign import development_complete
-
-        if development_complete(state):
-            finish(
-                state,
-                {
-                    "status": "failed_quality",
-                    "qualified": None,
-                    "reason": "campaign_no_eligible_finalist",
-                },
-            )
-        else:
-            incomplete(state, "campaign_development_incomplete")
+        _finish_without_finalist(state)
     else:
         state.update(
             phase="qualification", status="qualifying", qualification_status="pending"
         )
+
+
+def _review_is_needed(state: dict, service) -> bool:
+    return bool(
+        service is not None
+        and state["plan"].get("conversation_review") is not None
+        and state.get("selected_run_id")
+    )
+
+
+def _finish_failed_confirmation(state: dict, confirmation: dict) -> None:
+    finish(
+        state,
+        {
+            "status": confirmation["status"],
+            "qualified": None,
+            "reason": confirmation["reason"],
+        },
+    )
+
+
+def _finish_without_finalist(state: dict) -> None:
+    from .campaign import development_complete
+
+    if not development_complete(state):
+        incomplete(state, "campaign_development_incomplete")
+    elif _has_pending_conversation_review(state):
+        state.update(
+            phase="trials",
+            status="awaiting_review",
+            training_status=state.get("training_status", state["status"]),
+            qualification_status="pending_conversation_review",
+        )
+    else:
+        finish(
+            state,
+            {
+                "status": "failed_quality",
+                "qualified": None,
+                "reason": "campaign_no_eligible_finalist",
+            },
+        )
+
+
+def _has_pending_conversation_review(state: dict) -> bool:
+    if not state["plan"].get("conversation_review"):
+        return False
+    return any(
+        row.get("conversation_review_status") == "pending"
+        for trial in state["trials"]
+        for row in trial.get("checkpoint_evaluations", ())
+    )
 
 
 def _error_code(exc: Exception) -> str:
@@ -296,6 +341,18 @@ def _execute(service: CampaignService, state: dict) -> dict:
 
     root = service.experiments.root
     campaign_id = state["campaign_id"]
+    if state["plan"].get("conversation_review") is not None:
+        trial = next(
+            (
+                item
+                for item in state["trials"]
+                if item["run_id"] == state.get("selected_run_id")
+            ),
+            None,
+        )
+        if trial is None or state.get("selected_checkpoint_step") is None:
+            raise ValueError("campaign_quality_conversation_review_changed")
+        service._verify_quality_winner(state, trial)
     cached = read_result(root, state)
     if cached is not None and cached["status"] != "catalog_pending":
         return cached
@@ -309,6 +366,13 @@ def _execute(service: CampaignService, state: dict) -> dict:
     spec = QualificationInputs.model_validate(
         read_json(_input_path(root, config["inputs_id"]))
     )
+    if config.get("conversation_review_required"):
+        spec = spec.model_copy(
+            update={
+                "conversation_review_required": True,
+                "conversation_review_id": config["conversation_review_id"],
+            }
+        )
     return qualify(
         evidence,
         completed,

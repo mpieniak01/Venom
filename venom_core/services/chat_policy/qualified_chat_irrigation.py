@@ -6,7 +6,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from venom_core.services.academy.qualified_chat_sources import card_link, read_card
+from venom_core.services.chat_policy.qualified_chat_sources import card_link, read_card
 
 ZONE = re.compile(r"\b(?:lini[iaeęą]|stref[ayęie])\s+([a-d])\b")
 DOMAIN = re.compile(r"\bnawadnian\w*|\bkroplown\w*|\blini\w+\s+kroplując\w*")

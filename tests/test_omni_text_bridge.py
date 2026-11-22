@@ -14,6 +14,7 @@ from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.api.routes import llm_simple
 from venom_core.api.schemas.llm_simple import HistoryMessage, SimpleChatRequest
 from venom_core.services import omni_native_text as bridge
+from venom_core.services.chat_policy.direct_correction import correction_context
 from venom_core.services.training_experiments.profiles import (
     digest,
     read_json,
@@ -319,6 +320,154 @@ async def test_response_identity_is_persisted_with_the_actual_answer(native):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt", "prior", "expected", "forbidden", "scope"),
+    [
+        (
+            "Na kartce jest tylko „Opiekun: Igor”. Odczytaj z kartki opiekuna i numer rezerwacji.",
+            "Na zajęcia mam rezerwację 52. Opiekunem jest Igor.",
+            ("Igor", "brak danych"),
+            "52",
+            "source_only",
+        ),
+        (
+            "Proponuję opłatę 47 zł. To na razie sugestia. Jaką opłatę mam wpisać do aktualnych ustaleń?",
+            "Ustalam, że opłata za materiały wynosi 32 zł.",
+            ("32 zł", "47 zł", "propozycją"),
+            "Obowiązuje 47 zł",
+            "pending_fee",
+        ),
+    ],
+)
+async def test_verified_correction_is_persisted_without_model_generation(
+    native, monkeypatch, prompt, prior, expected, forbidden, scope
+):
+    from venom_core.config import SETTINGS
+    from venom_core.services.chat_history import persist_direct_response
+
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False)
+    _, calls = native
+    selected = await bridge.switch("p13")
+
+    class Store:
+        def append_turn_once(self, *args):
+            self.args = args
+
+    store = Store()
+    request = SimpleChatRequest(
+        content=prompt,
+        history=[
+            HistoryMessage(role="user", content=prior),
+            HistoryMessage(role="assistant", content="Zapisano ustalenia."),
+        ],
+        session_id="session",
+        expected_runtime_id=selected["selection"]["runtime_id"],
+    )
+    wrapped = persist_direct_response(await bridge.response(request), request, store)
+    chunks = [chunk async for chunk in wrapped.body_iterator]
+    assert len(calls) == 1  # The adapter selection probe is the only worker call.
+    meta = json.loads(chunks[-1].split("data: ", 1)[1])["model_identity"]
+    assistant = store.args[2][1]
+    assert all(
+        value.casefold() in assistant["content"].casefold() for value in expected
+    )
+    assert forbidden not in assistant["content"]
+    assert meta["context_policy"] == scope
+    assert (
+        meta["response_source"]
+        == assistant["model_identity"]["response_source"]
+        == "correction_rule"
+    )
+    assert meta["weights_sha256"] == selected["selection"]["weights_sha256"]
+    assert "input_messages_sha256" not in meta
+    assert "tool_result" not in assistant
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt", "guided"),
+    [
+        (
+            "Podaj dwie krótkie polskie nazwy dla sąsiedzkiej wymiany sadzonek ziół. "
+            "Każdą nazwę zapisz w osobnym wierszu, bez wstępu.",
+            True,
+        ),
+        (
+            "Wymyśl dwie naturalne nazwy dla wymiany sadzonek. Zapisz każdą nazwę od nowego wiersza.",
+            True,
+        ),
+        ("Podaj dwie nazwy dla wymiany sadzonek: po angielsku.", False),
+        ("Podaj dwie polskie nazwy dla wystawy fotografii.", False),
+    ],
+)
+async def test_native_exchange_title_guidance_keeps_model_output(
+    native, prompt, guided
+):
+    _, calls = native
+    await bridge.switch("p13")
+    stream = await bridge.response(SimpleChatRequest(content=prompt))
+    events = [packet async for packet in stream.body_iterator]
+    assert len(calls) == 2  # Adapter probe and actual answer.
+    messages = calls[-1]["messages"]
+    assert messages[-1] == {"role": "user", "content": prompt}
+    meta = json.loads(events[-1].split("data: ", 1)[1])["model_identity"]
+    assert meta["input_messages_sha256"] == stable_hash(messages)
+    assert "response_source" not in meta
+    assert "tool_result" not in meta
+    assert json.loads(events[1].split("data: ", 1)[1])["text"] == "Anna, 120 zł"
+    if guided:
+        assert messages[0]["role"] == "system"
+        guidance = messages[0]["content"]
+        assert "dwie różne" in guidance
+        assert ("„Zioła”" if "ziół" in prompt else "„Sadzonki”") in guidance
+        assert meta["context_policy"] == "exchange_title_generation"
+    else:
+        assert len(messages) == 1
+        assert "context_policy" not in meta
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        (
+            "Użyj drugiej nazwy i napisz jedno serdeczne zdanie zapraszające sąsiadów. "
+            "Zachęć do przyniesienia jednej sadzonki, bez podawania daty ani miejsca."
+        ),
+        (
+            "Weź drugą nazwę i ułóż jedno ciepłe zdanie zapraszające sąsiadów "
+            "na wymianę sadzonek. Zachęć do przyniesienia jednej sadzonki, bez daty ani miejsca."
+        ),
+    ],
+)
+async def test_native_invitation_draft_has_no_model_or_tool_receipt(native, prompt):
+    _, calls = native
+    await bridge.switch("p13")
+    request = SimpleChatRequest(
+        content=prompt,
+        history=[
+            HistoryMessage(
+                role="user",
+                content="Wymyśl dwie krótkie polskie nazwy dla sąsiedzkiej wymiany sadzonek.",
+            ),
+            HistoryMessage(role="assistant", content="Zielony Kącik\nWspólny Ogród"),
+        ],
+    )
+    stream = await bridge.response(request)
+    events = [packet async for packet in stream.body_iterator]
+    output = json.loads(events[1].split("data: ", 1)[1])["text"]
+    meta = json.loads(events[-1].split("data: ", 1)[1])["model_identity"]
+    assert "Wspólny Ogród" in output
+    assert "Zielony Kącik" not in output
+    assert meta["context_policy"] == "invitation_draft"
+    assert meta["response_source"] == "correction_rule"
+    assert "input_messages_sha256" not in meta
+    assert "tool_result" not in meta
+    assert len(calls) == 1  # Adapter probe only.
+
+
+@pytest.mark.asyncio
 async def test_offline_transport_mounts_only_requested_adapter(monkeypatch, tmp_path):
     from venom_core.services import omni_native_dialogue as transport
 
@@ -509,3 +658,728 @@ async def test_rollback_rejects_resealed_previous_adapter_before_probe(native):
         await bridge.rollback(expected_runtime_id=current["selection"]["runtime_id"])
     assert len(calls) == 2
     assert bridge.state() == before
+
+
+@pytest.mark.asyncio
+async def test_native_direct_calculator_preserves_unit_and_own_provenance(
+    native, monkeypatch
+):
+    from venom_core.config import SETTINGS
+    from venom_core.services.chat_history import persist_direct_response
+
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    _, calls = native
+    selected = await bridge.switch("p13")
+
+    class Store:
+        def append_turn_once(self, *args):
+            self.args = args
+
+    store = Store()
+    request = SimpleChatRequest(
+        content="Oblicz: 2 × 1,25. Jednostka: l.",
+        session_id="paint",
+        expected_runtime_id=selected["selection"]["runtime_id"],
+    )
+    wrapped = persist_direct_response(await bridge.response(request), request, store)
+    content = "".join([part async for part in wrapped.body_iterator])
+    assert len(calls) == 1  # Only the selection probe called the model.
+    assert "2,5 l" in content
+    assert "input_messages_sha256" not in content
+    assistant = store.args[2][1]
+    assert assistant["model_identity"]["response_source"] == "calculator"
+    assert (
+        assistant["model_identity"]["weights_sha256"]
+        == selected["selection"]["weights_sha256"]
+    )
+    assert assistant["tool_result"] == {
+        "tool": "calculator",
+        "status": "succeeded",
+        "value": "2.5",
+        "unit": "l",
+        "recomputed": False,
+    }
+    repeated = await bridge.response(
+        SimpleChatRequest(
+            content="Powtórz tylko wynik.",
+            history=[
+                HistoryMessage(role="user", content=request.content),
+                HistoryMessage(role="assistant", content=assistant["content"]),
+            ],
+        )
+    )
+    repeated_text = "".join([part async for part in repeated.body_iterator])
+    assert '"recomputed": true' in repeated_text
+    assert "2,5 l" in repeated_text
+    quoted = await bridge.response(
+        SimpleChatRequest(content="Przetłumacz: «Oblicz 2 * 1,25 l»")
+    )
+    assert "Anna, 120 zł" in "".join([part async for part in quoted.body_iterator])
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("command", "text", "receipt"),
+    [
+        (
+            "Oblicz 4 - 2,5 i podaj wynik w litrach.",
+            "1,5 l",
+            ("succeeded", "1.5", "l"),
+        ),
+        ("Policz 2 * 1,25 l", "2,5 l", ("succeeded", "2.5", "l")),
+        ("Policz: −4 × 2", "-8", ("succeeded", "-8", None)),
+        ("Użyj kalkulatora.", "Jakie wyrażenie", ("missing_expression", None, None)),
+        (
+            "Oblicz: 3 / 0. Jednostka: kg.",
+            "Nie udało się obliczyć",
+            ("invalid_expression", None, "kg"),
+        ),
+        ("Napisz wiadomość z „Policz 2 * 3 zł”.", "Anna, 120 zł", None),
+        ("Oblicz: „Policz 2 * 3 zł”", "Anna, 120 zł", None),
+        ("Oblicz powierzchnię szklarni.", "Anna, 120 zł", None),
+        ("Oblicz 3 * 5 groszy.", "Anna, 120 zł", None),
+        ("Policz 2 * 4\nOpisz wynik.", "Anna, 120 zł", None),
+        ("Powtórz wynik.", "Anna, 120 zł", None),
+    ],
+)
+async def test_native_calculator_requires_explicit_bounded_command(
+    native, command, text, receipt
+):
+    _, calls = native
+    await bridge.switch("p13")
+    response = await bridge.response(SimpleChatRequest(content=command))
+    packets = [packet async for packet in response.body_iterator]
+    finished = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+    assert text in "".join(packets)
+    if receipt is None:
+        assert "tool_result" not in finished
+        assert len(calls) == 2
+        return
+    assert len(calls) == 1
+    tool_result = finished["tool_result"]
+    assert receipt == (tool_result["status"], tool_result["value"], tool_result["unit"])
+
+
+def test_rejected_proposal_keeps_confirmed_fee():
+    users = [
+        "Szykuję próbę chóru: sala Pod Lipą, piątek o 18:20, składka 14 zł.",
+        "Przenoszę próbę do sali Pod Sową. Ktoś zaproponował 19 zł. Podaj aktualne ustalenia.",
+        "Odrzucam podwyżkę. Na aktualnej ulotce jest tylko napis „Sala Pod Sową”. "
+        "Jaką składkę podaje sama ulotka?",
+    ]
+    card = correction_context(users[-1], users[:-1])
+    assert card is not None
+    assert card.scope == "source_only"
+    assert "Sama karta nie podaje kwoty." in card.text
+    assert "14 zł" not in card.text
+    assert "19 zł" not in card.text
+
+    state = correction_context("Podaj wiążące ustalenia z rozmowy.", users)
+    assert state is not None
+    assert state.scope == "binding_fee"
+    assert "14 zł" in state.text
+    assert "19 zł" not in state.text
+
+
+def test_accepted_fee_survives_partial_card_lookup():
+    users = [
+        "Rezerwację szafki prowadzi Aneta. Numer 27, odbiór w sobotę o 10:45, kaucja 36 zł.",
+        "Zamiast Anety wpisz Olę. Proponuję podnieść kaucję do 44 zł. Podaj ustalenia.",
+        "Zatwierdzam kaucję 44 zł. Mam też kartkę z samym tekstem „Opiekunka: Ola”. "
+        "Podaj opiekunkę i numer szafki z kartki.",
+    ]
+    card = correction_context(users[-1], users[:-1])
+    assert card is not None
+    assert card.scope == "source_only"
+    assert "Sama karta nie podaje numeru." in card.text
+
+    state = correction_context("Podaj końcowe ustalenia rozmowy.", users)
+    assert state is not None
+    assert "44 zł" in state.text
+    assert "36 zł" not in state.text
+
+
+def test_registration_cancellation_preserves_free_admission():
+    prior = ["Napisz zaproszenie. Wstęp jest wolny, ale trzeba się zapisać."]
+    state = correction_context(
+        "Zapisy jednak odwołane. Wstęp nadal wolny. Przeredaguj zaproszenie.", prior
+    )
+    assert state is not None
+    assert state.scope == "registration_cancelled"
+    assert "nie trzeba się zapisywać" in state.text
+    assert "Wstęp jest wolny" in state.text
+    assert correction_context("Przetłumacz „Zapisy jednak odwołane.”", prior) is None
+
+
+def test_no_hint_on_plain_text_or_ambiguous_price():
+    assert correction_context("Podaj ustalenia", ["Jaka będzie pogoda?"]) is None
+    prior = [
+        "Ustalam składkę 14 zł i kaucję 20 zł.",
+        "Proponuję 25 zł. Powtórz ustalenia.",
+    ]
+    assert correction_context("Odrzucam propozycję. Podaj ustalenia.", prior) is None
+
+
+def test_unrelated_later_topic_does_not_inherit_previous_fee():
+    prior = [
+        "Ustalam opłatę 12 zł.",
+        "Proponuję 16 zł.",
+        "Odrzucam zmianę.",
+        "Przejdźmy do osobnego tematu. Bilety drukujemy w piątek.",
+    ]
+    assert correction_context("Podaj aktualne ustalenia.", prior) is None
+
+
+def test_source_context_does_not_infer_absence_for_prose():
+    result = correction_context(
+        "Ulotka ma tylko napis „Sala Pod Sową i składka dziesięć zł”. "
+        "Jaką składkę podaje sama ulotka?",
+        [],
+    )
+    assert result is not None
+    assert result.scope == "source_only"
+    assert "Sama karta nie podaje kwoty." not in result.text
+
+
+def test_pending_proposal_keeps_unannotated_native_context():
+    previous = [
+        "Szykuję próbę chóru: sala Pod Lipą, piątek o 18:20, składka 14 zł.",
+    ]
+    assert (
+        correction_context(
+            "Przenoszę próbę do sali Pod Sową. Proponuję 19 zł. Podaj ustalenia.",
+            previous,
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_native_cancellation_corrects_signup_draft_with_distinct_origin(
+    native, monkeypatch
+):
+    _, calls = native
+    await bridge.switch("p13")
+    original_invoke = bridge.omni_native_dialogue._invoke
+    draft = "Zapraszamy do Klubu Logiki. Proszę się zapisać, aby wziąć udział."
+
+    async def invoke(*args, **kwargs):
+        result = json.loads(await original_invoke(*args, **kwargs))
+        result["text"] = draft
+        return json.dumps(result).encode()
+
+    monkeypatch.setattr(bridge.omni_native_dialogue, "_invoke", invoke)
+    request = SimpleChatRequest(
+        content="Zapisy jednak odwołane. Wstęp nadal wolny. Przeredaguj zaproszenie.",
+        history=[
+            HistoryMessage(
+                role="user", content="Napisz zaproszenie, ale trzeba się zapisać."
+            ),
+        ],
+    )
+    response = await bridge.response(request)
+    packets = [packet async for packet in response.body_iterator]
+    answer = json.loads(packets[1].split("data: ", 1)[1])["text"]
+    identity = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+    assert (
+        answer
+        == "Zapraszamy do Klubu Logiki. Wstęp jest wolny i nie trzeba się zapisywać."
+    )
+    assert identity["context_policy"] == "registration_cancelled"
+    assert identity["response_source"] == "correction_rule"
+    assert identity["input_messages_sha256"] == stable_hash(calls[-1]["messages"])
+
+
+def test_cancelled_registration_leaves_compliant_reply_and_unrelated_scope_alone():
+    previous = ["Napisz zaproszenie. Wstęp jest wolny, ale trzeba się zapisać."]
+    correct = "Zapraszamy do klubu. Wstęp jest wolny i nie trzeba się zapisywać."
+    context = correction_context(
+        "Odwołuję zapisy. Wstęp jest wolny. Napisz zaproszenie.", previous
+    )
+    assert context is not None
+    assert bridge.corrected_registration_reply(context, correct) is None
+    assert correction_context("Odwołuję zapisy. Co o tym sądzisz?", previous) is None
+
+
+def test_cancelled_registration_fallback_contains_only_confirmed_commitments():
+    context = correction_context(
+        "Odwołuję zapisy. Napisz zaproszenie.",
+        ["Napisz zaproszenie, ale trzeba się zapisać."],
+    )
+    assert context is not None
+    assert (
+        bridge.corrected_registration_reply(
+            context, "Zapraszamy na poczęstunek. Zapisy są obowiązkowe."
+        )
+        == "Zapraszamy do udziału. Zapisy nie są wymagane."
+    )
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        (
+            "Na kartce jest tylko „Opiekun: Igor”. "
+            "Odczytaj z kartki opiekuna i numer rezerwacji.",
+            "Opiekun: Igor. Numer rezerwacji: brak danych.",
+        ),
+        (
+            "Zatwierdzam kaucję 44 zł. Mam też kartkę z samym tekstem „Opiekunka: Ola”. "
+            "Podaj opiekunkę i numer szafki z kartki, wskazując brakujące dane.",
+            "Opiekunka: Ola. Numer szafki: brak danych.",
+        ),
+        (
+            "Na kartce widnieje wyłącznie „Opiekun: Igor”. "
+            "Podaj numer rezerwacji z kartki.",
+            "Numer rezerwacji: brak danych.",
+        ),
+        (
+            "Na kartce jest tylko „Opiekun: Igor; numer rezerwacji: 19”. "
+            "Odczytaj z kartki opiekuna i numer rezerwacji.",
+            None,
+        ),
+        (
+            "Zapamiętaj opis „Opiekun: Igor”. Na kartce jest tylko. "
+            "Odczytaj z kartki opiekuna i numer rezerwacji.",
+            None,
+        ),
+        (
+            "Na kartce jest „Opiekun: Igor”. Odczytaj z kartki opiekuna i numer rezerwacji.",
+            None,
+        ),
+        (
+            "Przeredaguj: Na kartce jest tylko „Opiekun: Igor”. "
+            "Odczytaj z kartki opiekuna i numer rezerwacji.",
+            None,
+        ),
+        (
+            "Na kartce jest tylko „Opiekun: Igor”. "
+            "Odczytaj z kartki opiekunkę i numer rezerwacji.",
+            None,
+        ),
+    ],
+)
+def test_verified_single_field_card_does_not_import_conversation_values(
+    question, expected
+):
+    context = correction_context(
+        question, ["Ustalam numer rezerwacji 52 i szafki 27. Opiekunką jest Aneta."]
+    )
+    assert (context.verified_reply if context else None) == expected
+    if expected is not None:
+        assert context.scope == "source_only"
+
+
+@pytest.mark.parametrize(
+    ("previous", "question"),
+    [
+        (
+            [
+                "Ustalam, że warsztat linorytu jest w środę o 17:40, a opłata za materiały wynosi 32 zł."
+            ],
+            "Proponuję opłatę 47 zł. To na razie sugestia. Jaką opłatę mam wpisać do aktualnych ustaleń?",
+        ),
+        (
+            ["Ustalam opłatę 32 zł.", "Proponuję opłatę 47 zł."],
+            "Ile wynosi obecnie opłata?",
+        ),
+        (
+            ["Akceptuję opłatę 32 zł."],
+            "Proponuję opłatę 47 zł. Jaka opłata obowiązuje?",
+        ),
+    ],
+)
+def test_explicit_pending_fee_question_returns_confirmed_amount(previous, question):
+    context = correction_context(question, previous)
+    assert context is not None
+    assert context.scope == "pending_fee"
+    assert context.verified_reply == (
+        "Obowiązuje 32 zł. Kwota 47 zł jest propozycją do zatwierdzenia."
+    )
+
+
+@pytest.mark.parametrize(
+    ("previous", "question"),
+    [
+        (
+            ["Ustalam opłatę 32 zł.", "Teraz o parkingu."],
+            "Proponuję opłatę 47 zł. Jaka opłata obowiązuje?",
+        ),
+        (
+            ["Ustalam opłatę 32 zł i kaucję 15 zł."],
+            "Proponuję opłatę 47 zł. Jaka opłata obowiązuje?",
+        ),
+        (
+            ["Ustalam, że opłata nie wynosi 32 zł."],
+            "Proponuję opłatę 47 zł. Jaka opłata obowiązuje?",
+        ),
+        (
+            ["Ustalam opłatę 32 zł."],
+            "Proponuję kaucję 47 zł. Jaka opłata obowiązuje?",
+        ),
+        (
+            ["Ustalam opłatę 32 zł."],
+            "Przetłumacz „Proponuję opłatę 47 zł. Jaka opłata obowiązuje?”",
+        ),
+        (
+            [
+                "Ustalam opłatę 32 zł.",
+                "Proponuję opłatę 47 zł.",
+                "Akceptuję opłatę 47 zł.",
+            ],
+            "Jaka opłata obowiązuje?",
+        ),
+    ],
+)
+def test_pending_fee_does_not_override_unrelated_or_approved_state(previous, question):
+    context = correction_context(question, previous)
+    assert context is None or context.scope != "pending_fee"
+
+
+@pytest.mark.parametrize("separator", [" ", "\u00a0", "\u202f"])
+def test_pending_fee_preserves_grouped_amount(separator):
+    current = f"1{separator}200,50"
+    proposed = f"1{separator}450"
+    context = correction_context(
+        f"Proponuję opłatę {proposed} zł. Jaka opłata obowiązuje?",
+        [f"Ustalam, że opłata wynosi {current} zł."],
+    )
+    assert context is not None
+    assert context.verified_reply == (
+        f"Obowiązuje {current} zł. Kwota {proposed} zł jest propozycją do zatwierdzenia."
+    )
+
+
+@pytest.mark.parametrize(
+    ("history_edit", "request_prefix", "passes"),
+    [
+        (None, "", True),
+        ("other_number", "", False),
+        ("other_caregiver", "", False),
+        ("recent_update", "", False),
+        ("other_record", "", False),
+        ("card_has_number", "", False),
+        ("different_card_name", "", False),
+        (None, "Przetłumacz: ", False),
+    ],
+)
+def test_return_to_conversation_requires_one_confirmed_reservation(
+    history_edit, request_prefix, passes
+):
+    record = (
+        "Na zajęcia w introligatorni mam rezerwację 52. Opiekunem jest Igor. "
+        "Zrób krótką notatkę z tymi dwiema danymi."
+    )
+    card = (
+        "Na kartce jest tylko „Opiekun: Igor”. "
+        "Odczytaj z kartki opiekuna i numer rezerwacji."
+    )
+    history = [record, card]
+    if history_edit == "other_number":
+        history[0] = record.replace("52.", "52 albo 63.")
+    elif history_edit == "other_caregiver":
+        history[0] = record.replace("Igor.", "Igor albo Olgierd.")
+    elif history_edit == "recent_update":
+        history[1:1] = ["Rezerwacja 52 jest nieaktualna, obowiązuje numer 63."]
+    elif history_edit == "other_record":
+        history[:0] = ["Mam rezerwację 63. Opiekunem jest Błażej."]
+    elif history_edit == "card_has_number":
+        history[1] = card.replace("Opiekun: Igor", "Opiekun: Igor; numer 63")
+    elif history_edit == "different_card_name":
+        history[1] = card.replace("Igor", "Olgierd")
+
+    request = request_prefix + (
+        "Teraz korzystaj z ustaleń naszej rozmowy. "
+        "Jaki jest rzeczywisty numer rezerwacji i kto jest opiekunem?"
+    )
+    result = correction_context(request, history)
+    if passes:
+        assert result is not None
+        assert result.scope == "binding_reservation"
+        assert result.verified_reply == "Numer rezerwacji: 52. Opiekun: Igor."
+    else:
+        assert result is None or result.verified_reply is None
+
+
+@pytest.mark.parametrize(
+    ("number", "caregiver", "venue", "opening"),
+    [
+        ("83", "Marek Wilk", "planetarium", "Przygotuj wiadomość"),
+        ("64", "Jan Dąbrowski", "drukarni", "Napisz krótką wiadomość"),
+    ],
+)
+def test_card_draft_requests_confirmation_of_verified_reservation(
+    number, caregiver, venue, opening
+):
+    from venom_core.services.chat_policy.direct_drafts import (
+        reservation_confirmation_draft,
+    )
+
+    prompt = (
+        f"{opening} do opiekuna z prośbą o potwierdzenie rezerwacji. "
+        "Podaj tylko treść wiadomości i użyj właściwego numeru."
+    )
+    history = [
+        f"Na zajęcia w {venue} mam rezerwację {number}. Opiekunem jest {caregiver}. "
+        "Zrób krótką notatkę z tymi dwiema danymi.",
+        f"Na kartce jest wyłącznie „Opiekun: {caregiver}”. "
+        "Podaj z kartki opiekuna i numer rezerwacji.",
+        "Wróć do ustaleń rozmowy. Podaj numer rezerwacji i opiekuna.",
+    ]
+
+    assert reservation_confirmation_draft(prompt, history) == (
+        f"Dzień dobry, proszę o potwierdzenie rezerwacji nr {number}."
+    )
+    assert reservation_confirmation_draft(prompt, history[:-1]) is None
+    assert (
+        reservation_confirmation_draft(
+            prompt.replace(opening, "Wyślij wiadomość"), history
+        )
+        is None
+    )
+    assert (
+        reservation_confirmation_draft(
+            prompt, ["Mam rezerwację 25. Opiekunem jest Karol."] + history
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("prior", "utterance", "reply"),
+    [
+        (
+            [
+                "Ustalam, że opłata za wejście do zagrody pokazowej wynosi 28 zł za osobę. Powtórz to krótko.",
+                "Proponuję opłatę 42 zł. To tylko propozycja. Jaka opłata obowiązuje?",
+            ],
+            "Zatwierdzam opłatę 42 zł. Ile teraz kosztuje wejście dla jednej osoby?",
+            "Obowiązuje 42 zł za osobę.",
+        ),
+        (
+            [
+                "Ustalam, że opłata za wstęp na pokaz astronomiczny wynosi 36 zł za osobę.",
+                "Proponuję opłatę 49 zł.",
+            ],
+            "Akceptuję opłatę 49 zł. Ile teraz kosztuje wstęp dla jednej osoby?",
+            "Obowiązuje 49 zł za osobę.",
+        ),
+        (
+            [],
+            "Przyjmuję składkę 47,50 PLN. Jaka składka obowiązuje?",
+            "Obowiązuje 47,50 zł.",
+        ),
+        (
+            [],
+            "Zatwierdzam opłatę za wstęp 49 zł za osobę. Ile kosztuje wstęp dla osoby?",
+            "Obowiązuje 49 zł za osobę.",
+        ),
+    ],
+)
+def test_explicit_accepted_fee_replies_with_the_new_amount(prior, utterance, reply):
+    context = correction_context(utterance, prior)
+    assert context is not None
+    assert context.scope == "binding_fee"
+    assert context.verified_reply == reply
+
+
+@pytest.mark.parametrize(
+    ("prior", "utterance"),
+    [
+        (
+            ["Ustalam, że opłata za wejście wynosi 28 zł za grupę."],
+            "Zatwierdzam opłatę 42 zł. Ile teraz kosztuje wejście dla jednej osoby?",
+        ),
+        (
+            [
+                "Ustalam, że opłata za wejście wynosi 28 zł za osobę.",
+                "Proponuję kaucję 42 zł.",
+            ],
+            "Zatwierdzam opłatę 42 zł. Ile teraz kosztuje wejście dla jednej osoby?",
+        ),
+        (
+            ["Ustalam, że opłata za wejście wynosi 28 zł za osobę."],
+            "Zatwierdzam opłatę za bilet 42 zł. Ile teraz kosztuje bilet dla jednej osoby?",
+        ),
+        (
+            [
+                "Ustalam, że opłata za wejście wynosi 28 zł za osobę.",
+                "Zmiana tematu. Mamy spotkanie w piątek.",
+            ],
+            "Zatwierdzam opłatę 42 zł. Ile teraz kosztuje wejście dla jednej osoby?",
+        ),
+        (
+            ["Ustalam opłatę 28 zł."],
+            "Zatwierdzam opłatę 42 zł. Podaj termin i opłatę z ustaleń.",
+        ),
+        (
+            ["Ustalam opłatę 28 zł."],
+            "Przetłumacz „Zatwierdzam opłatę 42 zł. Jaka opłata obowiązuje?”",
+        ),
+        (
+            ["Ustalam opłatę 28 zł."],
+            "Zatwierdzam opłatę 42 zł i kaucję 60 zł. Jaka opłata obowiązuje?",
+        ),
+    ],
+)
+def test_accepted_fee_does_not_override_unrelated_or_multi_field_turn(prior, utterance):
+    context = correction_context(utterance, prior)
+    assert context is None or context.verified_reply is None
+
+
+def test_direct_invitation_and_reminder_reuse_selected_title():
+    from venom_core.services.chat_policy.direct_invitations import invitation_context
+
+    prompts = [
+        "Podaj dwie krótkie polskie nazwy dla sąsiedzkiej wymiany sadzonek ziół. Każdą nazwę zapisz w osobnym wierszu.",
+        "Użyj drugiej nazwy i napisz jedno serdeczne zdanie zapraszające sąsiadów na wymianę sadzonek. Poproś o przyniesienie jednej sadzonki, bez daty ani miejsca.",
+        "Napisz jednozdaniowe przypomnienie dla uczestników. Zachowaj tę samą nazwę i przypomnij o podpisaniu swojej doniczki.",
+        "Skróć przypomnienie do jednej linijki. Zachowaj nazwę i prośbę o podpisanie doniczki.",
+    ]
+    expected = [
+        (
+            "invitation_draft",
+            "Sąsiedzi, zapraszamy na wymianę sadzonek ziół „Zioła po Sąsiedzku” – przynieście po jednej sadzonce!",
+        ),
+        (
+            "reminder_draft",
+            "Przed wymianą „Zioła po Sąsiedzku” pamiętajcie o podpisaniu swoich doniczek.",
+        ),
+        ("reminder_draft", "„Zioła po Sąsiedzku”: podpiszcie doniczki!"),
+    ]
+    history = [
+        {"role": "user", "content": prompts[0]},
+        {
+            "role": "assistant",
+            "content": "Oto dwie propozycje:\n1. **Zielony Parapet**\n2. „Zioła po Sąsiedzku”",
+        },
+    ]
+    for prompt, (scope, draft) in zip(prompts[1:], expected, strict=True):
+        decision = invitation_context(prompt, history)
+        assert decision is not None
+        assert decision.scope == scope
+        assert decision.verified_reply == draft
+        history.extend(
+            [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": draft},
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "titles",
+    [
+        "Wyłącznie jedna nazwa",
+        "Zielony Parapet, zielony parapet",
+        "2. Pierwsza Lista\n1. Druga Lista",
+        "Zielony Parapet\nZioła po Sąsiedzku\nPrzyjdźcie jutro",
+    ],
+)
+def test_direct_invitation_declines_an_ambiguous_title_list(titles):
+    from venom_core.services.chat_policy.direct_invitations import invitation_context
+
+    invitation = (
+        "Użyj drugiej nazwy i napisz jedno serdeczne zdanie zapraszające sąsiadów. "
+        "Zachęć do przyniesienia jednej sadzonki, bez podawania daty ani miejsca."
+    )
+    history = [
+        {
+            "role": "user",
+            "content": "Wymyśl dwie nazwy dla sąsiedzkiej wymiany sadzonek.",
+        },
+        {"role": "assistant", "content": titles},
+    ]
+    assert invitation_context(invitation, history) is None
+
+
+def test_direct_drafts_do_not_override_new_requests_or_ambiguous_history():
+    from venom_core.services.chat_policy.direct_invitations import invitation_context
+
+    invitation = (
+        "Użyj drugiej nazwy i napisz jedno serdeczne zdanie zapraszające sąsiadów. "
+        "Zachęć do przyniesienia jednej sadzonki, bez podawania daty ani miejsca."
+    )
+    reminder = (
+        "Napisz jednozdaniowe przypomnienie dla uczestników. Zachowaj tę samą nazwę "
+        "i przypomnij o podpisaniu swojej doniczki."
+    )
+    history = [
+        {
+            "role": "user",
+            "content": "Wymyśl dwie nazwy dla sąsiedzkiej wymiany sadzonek.",
+        },
+        {"role": "assistant", "content": "Zielony Parapet, Zioła po Sąsiedzku"},
+    ]
+    assert invitation_context(invitation, history) is not None
+    assert invitation_context(invitation + " Podpisz jako Anna.", history) is None
+    assert invitation_context("Przetłumacz „" + invitation + "”", history) is None
+    assert invitation_context(reminder, history) is None
+    history.extend(
+        [
+            {"role": "user", "content": invitation},
+            {
+                "role": "assistant",
+                "content": "Zapraszamy na wymianę „Zielony Parapet”.",
+            },
+        ]
+    )
+    assert invitation_context(reminder, history) is None
+
+
+def test_broad_panel_reservation_and_accepted_fee():
+    record = "Na warsztaty introligatorskie mam rezerwację 73. Opiekunką jest Iga Lis. Podaj obie dane w krótkiej notatce."
+    card = "Na kartce jest tylko „Opiekun: Iga Lis”. Odczytaj z kartki opiekuna i numer rezerwacji."
+    result = correction_context(
+        "Wróć do ustaleń rozmowy. Podaj opiekuna i numer rezerwacji.", [record, card]
+    )
+    assert result.verified_reply == "Numer rezerwacji: 73. Opiekun: Iga Lis."
+    prior = [
+        "Ustalam, że opłata za wstęp na pokaz ceramiki wynosi 27 zł za osobę. Podaj bieżącą stawkę w jednym zdaniu.",
+        "Proponuję opłatę 34 zł. To na razie propozycja. Jaka opłata obowiązuje?",
+    ]
+    result = correction_context(
+        "Akceptuję opłatę 34 zł. Ile wynosi teraz opłata za wstęp dla jednej osoby?",
+        prior,
+    )
+    assert result.verified_reply == "Obowiązuje 34 zł za osobę."
+
+
+def test_fee_binding_requires_one_unambiguous_declared_amount():
+    from venom_core.services.chat_policy.direct_correction import _FeeState
+
+    questioned = _FeeState()
+    questioned.read("Obowiązuje opłata 20 zł?")
+    assert questioned.binding is None
+
+    proposed = _FeeState(field="opłat", proposed="50")
+    proposed.read("Akceptuję opłatę 40 zł zamiast 10 zł.")
+    assert proposed.binding is None
+    assert proposed.proposed == "50"
+
+    accepted_without_amount = _FeeState(field="opłat", proposed="50")
+    accepted_without_amount.read("Akceptuję opłatę.")
+    assert accepted_without_amount.binding == "50"
+
+    accepted_with_followup = _FeeState(field="opłat", proposed="50")
+    accepted_with_followup.read("Akceptuję opłatę 20 zł. Jaka opłata obowiązuje?")
+    assert accepted_with_followup.binding == "20"
+    assert accepted_with_followup.proposed is None
+
+    questioned_acceptance = _FeeState(field="opłat", proposed="50")
+    questioned_acceptance.read("Akceptuję opłatę 20 zł?")
+    assert questioned_acceptance.binding is None
+    assert questioned_acceptance.proposed == "50"
+
+    accepted_with_unrelated_question = _FeeState(field="opłat", proposed="20")
+    accepted_with_unrelated_question.read(
+        "Akceptuję opłatę. Czy opłata 30 zł jest tylko propozycją?"
+    )
+    assert accepted_with_unrelated_question.binding == "20"
+
+    accepted_with_explicit_amount = _FeeState(field="opłat", proposed="50")
+    accepted_with_explicit_amount.read(
+        "Akceptuję opłatę 20 zł. Czy opłata 30 zł jest tylko propozycją?"
+    )
+    assert accepted_with_explicit_amount.binding == "20"

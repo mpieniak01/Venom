@@ -13,7 +13,7 @@ def aggregate(cases: list[dict], answers: list[dict], judgments: list[dict]) -> 
     if len(case_map) != len(cases) or not cases:
         raise ValueError("cases must have unique IDs")
     answer_map = {}
-    labels = None
+    labels: set[str] | None = None
     for item in answers:
         cid = item["case"]["record_id"]
         if cid not in case_map or cid in answer_map:
@@ -32,12 +32,16 @@ def aggregate(cases: list[dict], answers: list[dict], judgments: list[dict]) -> 
         if key in grade_map:
             raise ValueError("duplicate judgment")
         grade_map[key] = grade
+    if labels is None:
+        raise ValueError("missing anonymous labels")
     required = {(cid, label) for cid in case_map for label in labels}
     if grade_map.keys() != required:
         raise ValueError("missing or unexpected judgments")
 
-    scores = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-    verdicts = defaultdict(dict)
+    scores: defaultdict[str, defaultdict[str, defaultdict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(int))
+    )
+    verdicts: defaultdict[str, dict[str, dict[str, int]]] = defaultdict(dict)
     for cid, case in case_map.items():
         criteria = case["criteria"]
         expected = {c["id"]: c["kind"] for c in criteria}
@@ -77,7 +81,7 @@ def aggregate(cases: list[dict], answers: list[dict], judgments: list[dict]) -> 
             }
             for task in ("total", case["task"]):
                 bucket = scores[label][task]
-                for key, value in {
+                for metric, value in {
                     "n": 1,
                     "semantic": semantic,
                     "usable": usable,
@@ -88,7 +92,7 @@ def aggregate(cases: list[dict], answers: list[dict], judgments: list[dict]) -> 
                     "critical": grade["critical_error"],
                     "runtime_or_length_failure": not valid,
                 }.items():
-                    bucket[key] += int(value)
+                    bucket[metric] += int(value)
     return {
         "summaries": {
             label: {task: dict(v) for task, v in tasks.items()}

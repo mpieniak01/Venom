@@ -154,17 +154,21 @@ def _unconditional_release(text: str, end: int) -> bool:
 
 
 def _turn_bans(text: str) -> set[str]:
-    bans = set()
+    bans: set[str] = set()
     for clause in _CLAUSE.split(text):
         for lead in _WITHOUT.finditer(clause):
             if _REPORTED.search(clause[: lead.start()]):
                 continue
-            bans.update(item.lastgroup for item in _matched_items(clause, lead.end()))
+            bans.update(
+                name
+                for item in _matched_items(clause, lead.end())
+                if (name := item.lastgroup) is not None
+            )
     return bans
 
 
 def _allow_releases(text: str) -> set[str]:
-    releases = set()
+    releases: set[str] = set()
     for lead in _ALLOW.finditer(text):
         start = max(
             (sep.end() for sep in _CLAUSE.finditer(text, 0, lead.start())), default=0
@@ -173,7 +177,9 @@ def _allow_releases(text: str) -> set[str]:
             continue
         items = _matched_items(text, lead.end())
         if items and _unconditional_release(text, items[-1].end()):
-            releases.update(item.lastgroup for item in items)
+            releases.update(
+                name for item in items if (name := item.lastgroup) is not None
+            )
     return releases
 
 
@@ -188,7 +194,8 @@ def _declared_releases(text: str) -> set[str]:
         )
         prefix = text[start : item.start()].strip().casefold()
         if not prefix or prefix in {"jednak", "teraz", "od teraz"}:
-            releases.add(item.lastgroup)
+            if item.lastgroup is not None:
+                releases.add(item.lastgroup)
     return releases
 
 
@@ -278,7 +285,7 @@ _NEGATED_REPLACEMENT = re.compile(r"\b(?:nie|raczej\s+nie)\s+$", re.I)
 
 def _mask_replaced_materials(text: str) -> str:
     """Mask only named objects of a positive replacement, never a later use."""
-    pieces = []
+    pieces: list[str] = []
     cursor = 0
     for lead in _REPLACED.finditer(text):
         lead_start = max(0, lead.start() - 20)

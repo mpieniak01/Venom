@@ -15,25 +15,27 @@ from venom_core.api.dependencies import get_session_store
 from venom_core.api.routes import llm_simple
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services import llm_simple_service, vast_chat_runtime
-from venom_core.services.academy.qualified_chat import (
+from venom_core.services.chat_policy.qualified_chat import (
     GENERATION_TRUNCATED,
-    QUALIFIED_BOLT_MODEL,
-    QUALIFIED_MODEL,
     CalendarClaimStream,
     prepare_reply,
 )
-from venom_core.services.academy.qualified_chat_constraints import (
+from venom_core.services.chat_policy.qualified_chat_constraints import (
     active_constraints,
     constraint_conflicts,
     find_violations,
     uncertain_constraints,
 )
-from venom_core.services.academy.qualified_chat_options import (
+from venom_core.services.chat_policy.qualified_chat_options import (
     CountRequirement,
     requested_count,
     split_options,
 )
-from venom_core.services.academy.qualified_chat_schedule import route_shift
+from venom_core.services.chat_policy.qualified_chat_schedule import route_shift
+from venom_core.services.ollama_text_adapter import (
+    QUALIFIED_BOLT_MODEL,
+    QUALIFIED_MODEL,
+)
 from venom_core.services.session_store import SessionStore
 
 
@@ -238,6 +240,18 @@ def test_studio_releases_only_a_terminal_draft(studio_chat, done, reason):
     else:
         assert answer == "Nie udało się uzyskać kompletnej odpowiedzi."
     assert len(sent) == 1
+
+
+@pytest.mark.parametrize("qualified_chat", [False, True])
+def test_studio_works_with_academy_disabled(studio_chat, monkeypatch, qualified_chat):
+    chat, sent, replies = studio_chat
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", qualified_chat
+    )
+    replies.append(streamed("Dobry wieczór."))
+    assert chat("Dobry wieczór!") == "Dobry wieczór."
+    assert sent[0]["completions_url"].endswith("/v1/chat/completions")
 
 
 def test_studio_preserves_compatible_path_when_flag_is_off_or_structured(
@@ -857,7 +871,7 @@ def test_studio_normal_keeps_quote_as_fact_and_streams(studio_chat):
 def test_studio_evidence_uses_scoped_verified_card_and_handles_missing_card(
     studio_chat, monkeypatch
 ):
-    from venom_core.services.academy import qualified_chat_irrigation
+    from venom_core.services.chat_policy import qualified_chat_irrigation
 
     chat, sent, _ = studio_chat
     question = "Co sprawdzić najpierw w nawadnianiu kroplowym?"
@@ -986,7 +1000,7 @@ def test_studio_ventilation_uses_latest_status_and_rejects_assistant_observation
     ],
 )
 def test_studio_evidence_requires_current_observation(question, history, expected):
-    from venom_core.services.academy.qualified_chat_evidence import evidence_reply
+    from venom_core.services.chat_policy.qualified_chat_evidence import evidence_reply
 
     result = evidence_reply(
         question, [HistoryMessage(role="user", content=line) for line in history]
@@ -999,7 +1013,7 @@ def test_studio_evidence_requires_current_observation(question, history, expecte
 
 
 def test_studio_rewrite_disambiguates_outer_instruction_and_checks_draft():
-    from venom_core.services.academy.qualified_chat_quote import (
+    from venom_core.services.chat_policy.qualified_chat_quote import (
         CLARIFY_QUOTE,
         QuoteRewrite,
         parse_quote_rewrite,
@@ -1036,7 +1050,7 @@ def test_studio_rewrite_disambiguates_outer_instruction_and_checks_draft():
 
 
 def test_verified_source_refuses_malformed_or_modified_card(tmp_path, monkeypatch):
-    from venom_core.services.academy import qualified_chat_sources
+    from venom_core.services.chat_policy import qualified_chat_sources
 
     path = tmp_path / "qualified_card_ventilation.json"
     original = Path(qualified_chat_sources.__file__).with_name(path.name).read_bytes()
@@ -1056,7 +1070,7 @@ def test_verified_source_refuses_malformed_or_modified_card(tmp_path, monkeypatc
 
 
 def test_studio_quote_preserves_unspecified_cause_and_accepts_equivalent_count():
-    from venom_core.services.academy.qualified_chat_quote import (
+    from venom_core.services.chat_policy.qualified_chat_quote import (
         QuoteRewrite,
         parse_quote_rewrite,
     )
@@ -1116,7 +1130,9 @@ def test_explanation_stream_preserves_user_topic_after_marked_truncation(studio_
 
 
 def test_explanation_hints_preserve_explicit_format_and_quoted_facts():
-    from venom_core.services.academy.qualified_chat_explanations import explanation_hint
+    from venom_core.services.chat_policy.qualified_chat_explanations import (
+        explanation_hint,
+    )
 
     assert not explanation_hint("Wyjaśnij szczegółowo, skąd bierze się echo.", [])
     assert not explanation_hint("Wyjaśnij echo w pięciu punktach.", [])
@@ -1133,7 +1149,7 @@ def test_plain_source_revision_prefers_explicit_update_and_keeps_the_unmodified_
     monkeypatch,
 ):
     from venom_core.services import studio_normal_chat
-    from venom_core.services.academy.qualified_chat_revisions import (
+    from venom_core.services.chat_policy.qualified_chat_revisions import (
         source_revision_hint,
     )
 
@@ -1161,7 +1177,9 @@ def test_plain_source_revision_prefers_explicit_update_and_keeps_the_unmodified_
 
 
 def test_explanation_of_protection_distinguishes_event_from_intervention():
-    from venom_core.services.academy.qualified_chat_explanations import explanation_hint
+    from venom_core.services.chat_policy.qualified_chat_explanations import (
+        explanation_hint,
+    )
 
     prompt = "Wyjaśnij, co robią pasy bezpieczeństwa podczas hamowania."
     correction = "Pokaż na innym przykładzie, z samochodem."
@@ -1174,7 +1192,9 @@ def test_explanation_of_protection_distinguishes_event_from_intervention():
 
 
 def test_explanation_keeps_the_shared_condition_after_a_new_example():
-    from venom_core.services.academy.qualified_chat_explanations import explanation_hint
+    from venom_core.services.chat_policy.qualified_chat_explanations import (
+        explanation_hint,
+    )
 
     prompt = "Wyjaśnij, dlaczego dwa materiały w tym samym pokoju wydają się mieć różną temperaturę."
     correction = "Zmień przykład na krzesła z metalu i plastiku."
@@ -1210,7 +1230,7 @@ def test_explanation_keeps_the_shared_condition_after_a_new_example():
 def test_checked_explanation_keeps_mechanism_and_named_example(
     topic, correction, before, after
 ):
-    from venom_core.services.academy.qualified_chat_mechanisms import (
+    from venom_core.services.chat_policy.qualified_chat_mechanisms import (
         checked_explanation,
     )
 
@@ -1231,7 +1251,7 @@ def test_checked_explanation_keeps_mechanism_and_named_example(
 
 
 def test_checked_explanation_keeps_open_requests_on_the_ordinary_path():
-    from venom_core.services.academy.qualified_chat_mechanisms import (
+    from venom_core.services.chat_policy.qualified_chat_mechanisms import (
         checked_explanation,
     )
 
@@ -1273,11 +1293,11 @@ def test_studio_explanation_is_published_only_with_resolved_publication_slots(
     assert "parowanie" not in answer
     assert "kubek" not in answer
     assert not sent
-    assert evidence.await_count == 2
+    evidence.assert_not_awaited()
 
 
 def test_checked_explanation_supports_repeated_example_changes_without_resuming_old_topic():
-    from venom_core.services.academy.qualified_chat_mechanisms import (
+    from venom_core.services.chat_policy.qualified_chat_mechanisms import (
         checked_explanation,
     )
 
@@ -1361,7 +1381,9 @@ def test_studio_refraction_accepts_an_explicit_counterexample_without_an_invente
     ],
 )
 def test_public_lookup_respects_the_outer_instruction(question, expected):
-    from venom_core.services.academy.qualified_chat_revisions import public_lookup_query
+    from venom_core.services.chat_policy.qualified_chat_revisions import (
+        public_lookup_query,
+    )
 
     assert public_lookup_query(question) == expected
 
@@ -1397,7 +1419,7 @@ def test_studio_explicit_no_search_and_quoted_news_do_not_reach_the_public_provi
 
 
 def test_short_drafting_hint_constraints_and_no_variant_override(studio_chat):
-    from venom_core.services.academy.qualified_chat_writing import writing_hint
+    from venom_core.services.chat_policy.qualified_chat_writing import writing_hint
 
     chat, sent, replies = studio_chat
     replies.append(streamed("Dzięki za książki. Bardzo doceniam pomoc."))
@@ -1470,7 +1492,7 @@ def test_studio_does_not_attribute_supplied_revision_to_a_previous_public_link(
 
 
 def test_studio_quoted_english_translation_retains_plain_stream(studio_chat):
-    from venom_core.services.academy.qualified_chat_quote import (
+    from venom_core.services.chat_policy.qualified_chat_quote import (
         english_translation_hint,
     )
 
@@ -1575,7 +1597,7 @@ def test_studio_current_news_keeps_source_response_in_standard_stream(
 
 
 def test_studio_short_choice_states_complete_answer_before_explanation():
-    from venom_core.services.academy.qualified_chat_writing import (
+    from venom_core.services.chat_policy.qualified_chat_writing import (
         ordinary_reply_hint,
         selects_one_proposal,
     )
@@ -1597,7 +1619,7 @@ def test_studio_short_choice_states_complete_answer_before_explanation():
 
 
 def test_studio_fitting_applies_latest_user_side_and_ignores_assistant_numbers():
-    from venom_core.services.academy.qualified_chat_fit import fit_hint
+    from venom_core.services.chat_policy.qualified_chat_fit import fit_hint
 
     capacity = "Koperta ma 20 na 30 cm. Czy kartka się zmieści? Nie mogę jej zginać."
     assert "Zapytaj krótko" in fit_hint(capacity, [])
@@ -1615,7 +1637,7 @@ def test_studio_fitting_applies_latest_user_side_and_ignores_assistant_numbers()
 
 
 def test_native_quote_rewrite_keeps_sentence_count_attached_to_instruction():
-    from venom_core.services.academy.qualified_chat_quote import QuoteRewrite
+    from venom_core.services.chat_policy.qualified_chat_quote import QuoteRewrite
 
     rewrite = QuoteRewrite("Wyjaśnij w dwóch zdaniach, dlaczego ustał deszcz.", False)
     prompt = rewrite.messages(plain_text=True)[0]["content"]
@@ -1715,7 +1737,9 @@ def test_studio_keeps_heat_flow_from_user_premise_after_shortening(studio_chat):
 
 
 def test_ice_comparison_requires_known_premise_and_does_not_resume_stale_topic():
-    from venom_core.services.academy.qualified_chat_mechanisms import ice_melting_reply
+    from venom_core.services.chat_policy.qualified_chat_mechanisms import (
+        ice_melting_reply,
+    )
 
     known = (
         "Przy jednakowej temperaturze obu podłoży lód topi się szybciej na miedzi "
@@ -1765,7 +1789,9 @@ def test_studio_edits_reminder_draft_without_routing_to_event_shift(studio_chat)
 
 
 def test_draft_time_edit_does_not_trust_unknown_or_conflicting_old_time():
-    from venom_core.services.academy.qualified_chat_schedule import draft_time_revision
+    from venom_core.services.chat_policy.qualified_chat_schedule import (
+        draft_time_revision,
+    )
 
     edit = "Przesuń godzinę w tym szkicu na 20:15."
     draft = HistoryMessage(
@@ -1815,7 +1841,9 @@ def test_studio_keeps_lookup_ban_for_revisions_until_explicit_permission(
 
 
 def test_lookup_ban_does_not_carry_to_a_new_topic_or_from_a_quote():
-    from venom_core.services.academy.qualified_chat_revisions import lookup_forbidden
+    from venom_core.services.chat_policy.qualified_chat_revisions import (
+        lookup_forbidden,
+    )
 
     assert not lookup_forbidden(
         "Podaj aktualną pogodę w Warszawie.", ["Opisz przewodnictwo. Bez wyszukiwania."]
@@ -1857,7 +1885,9 @@ def test_studio_reminder_draft_preserves_recipient_and_corrected_time(studio_cha
 
 
 def test_quoted_reminder_is_a_single_unambiguous_drafting_operand():
-    from venom_core.services.academy.qualified_chat_schedule import draft_reminder_reply
+    from venom_core.services.chat_policy.qualified_chat_schedule import (
+        draft_reminder_reply,
+    )
 
     assert draft_reminder_reply("Przypomnij mi o odbiorze paczki o 07:35.") is None
     assert (
@@ -1946,7 +1976,7 @@ def test_quoted_reminder_is_a_single_unambiguous_drafting_operand():
 def test_thermal_followup_preserves_direction_rule_with_latest_user_premise(
     previous, revision, expected
 ):
-    from venom_core.services.academy.qualified_chat_mechanisms import (
+    from venom_core.services.chat_policy.qualified_chat_mechanisms import (
         thermal_followup_reply,
     )
 
@@ -1967,7 +1997,7 @@ def test_thermal_followup_preserves_direction_rule_with_latest_user_premise(
 
 
 def test_thermal_followup_leaves_unrelated_or_ambiguous_request_to_existing_path():
-    from venom_core.services.academy.qualified_chat_mechanisms import (
+    from venom_core.services.chat_policy.qualified_chat_mechanisms import (
         thermal_followup_reply,
     )
 
@@ -2106,7 +2136,7 @@ def test_studio_rss_without_headlines_has_no_draft_or_citation(
     ],
 )
 def test_rss_publication_rejects_forged_fields_and_indices(draft):
-    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
 
     summary = RSSSummary(
@@ -2176,7 +2206,7 @@ def test_studio_shortens_rss_instruction_as_quoted_text(studio_chat, monkeypatch
     ],
 )
 def test_rss_draft_cannot_drop_source_uncertainty_or_negation(source, draft):
-    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
 
     plan = RSSSummary((NewsHeadline("https://bbc.co.uk/a", source, "2026-11-20"),))
@@ -2245,7 +2275,7 @@ def test_studio_one_sentence_for_value_missing_in_the_conversation(
 def test_rss_binds_the_speaker_to_the_title_and_distinguishes_the_month(
     source, summary, expected, speaker
 ):
-    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
 
     link = "https://www.bbc.co.uk/news/articles/source"
@@ -2272,7 +2302,9 @@ def test_studio_message_subject_is_local_and_opening_edit_publishes_only_sentenc
     studio_chat, monkeypatch
 ):
     from venom_core.services import studio_normal_chat
-    from venom_core.services.academy.qualified_chat_writing import revises_opening_only
+    from venom_core.services.chat_policy.qualified_chat_writing import (
+        revises_opening_only,
+    )
 
     ground = AsyncMock()
     monkeypatch.setattr(studio_normal_chat, "current_chat_context", ground)
@@ -2316,7 +2348,9 @@ def test_studio_message_subject_is_local_and_opening_edit_publishes_only_sentenc
 
 
 def test_composition_can_request_an_explicit_public_lookup():
-    from venom_core.services.academy.qualified_chat_revisions import public_lookup_query
+    from venom_core.services.chat_policy.qualified_chat_revisions import (
+        public_lookup_query,
+    )
 
     question = "Potrzebuję tematu wiadomości i zdania otwarcia. Sprawdź źródło w sieci."
     assert public_lookup_query(question) == question
@@ -2440,7 +2474,7 @@ def test_wiki_duration_checks_a_reported_question_with_a_spelled_fraction(
 def test_rss_uses_the_clause_relation_and_preserves_literal_attribution(
     title, first, second, expected
 ):
-    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
 
     summary = RSSSummary(
@@ -2468,7 +2502,7 @@ def test_rss_uses_the_clause_relation_and_preserves_literal_attribution(
     ],
 )
 def test_rss_rejects_merged_or_unverified_clause_drafts(first, second):
-    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
 
     summary = RSSSummary(
@@ -2486,7 +2520,7 @@ def test_rss_rejects_merged_or_unverified_clause_drafts(first, second):
 
 
 def test_rss_does_not_split_as_in_a_role():
-    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
 
     title = "Taylor serves as a senior envoy"
@@ -2515,7 +2549,7 @@ def test_rss_does_not_split_as_in_a_role():
 
 
 def test_rss_keeps_the_simultaneous_event_outside_the_attributed_quote():
-    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
 
     item = NewsHeadline(
@@ -2586,7 +2620,7 @@ def test_count_sees_extra_option_after_bullet_and_keeps_normal_continuations():
 
 
 def test_quote_rewrite_preserves_command_and_prohibition():
-    from venom_core.services.academy.qualified_chat_quote import QuoteRewrite
+    from venom_core.services.chat_policy.qualified_chat_quote import QuoteRewrite
 
     command = QuoteRewrite("Podaj wynik.", False)
     assert command.publish("Wynik wynosi zero.").startswith("Nie udało się")
@@ -2597,7 +2631,7 @@ def test_quote_rewrite_preserves_command_and_prohibition():
 
 
 def test_opening_edit_validates_the_latest_proposition_and_preserves_abbreviation():
-    from venom_core.services.academy.qualified_chat import prepare_studio_reply
+    from venom_core.services.chat_policy.qualified_chat import prepare_studio_reply
 
     reply = prepare_studio_reply(
         "Zmień tylko zdanie otwarcia, żeby informowało, że nie potwierdzam spotkania o godz. 15:00.",
@@ -2678,7 +2712,7 @@ def test_opening_edit_validates_the_latest_proposition_and_preserves_abbreviatio
 def test_rss_keeps_direction_causality_modality_and_translated_names(
     title, draft, secondary, expected
 ):
-    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
 
     summary = RSSSummary(
@@ -2691,8 +2725,8 @@ def test_rss_keeps_direction_causality_modality_and_translated_names(
 
 
 def test_rss_at_most_count_accepts_one_item_and_exact_requires_two():
-    from venom_core.services.academy.qualified_chat_options import CountRequirement
-    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.chat_policy.qualified_chat_options import CountRequirement
+    from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
 
     titles = tuple(

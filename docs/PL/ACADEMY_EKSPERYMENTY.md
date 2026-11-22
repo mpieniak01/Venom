@@ -189,6 +189,55 @@ Raport pokazuje wyniki osobno dla każdej pary przebieg i krok. Wybór wymaga sp
 Przy `discard_rejected` retencja chroni cały przebieg, w którym znajduje się wybrany checkpoint, i sprawdza dostępność jego wag przed usunięciem plików odrzuconych prób. Brak kandydata zachowuje pliki do analizy.
 
 
+### Automatyczny odbiór checkpointów względem rodzica
+
+Dla profilu dev z kalibracją `exact-v1` można zarejestrować referencję rodzica z ukończonej, zapieczętowanej generacji M0 i adaptera. Użyj tego samego profilu co w kampanii, w tym tej samej kalibracji, dev, bazy i środowiska inferencji. Katalog generacji w poniższym przykładzie zawiera wynik ewaluatora dla ramion `base` oraz `checkpoint-145`.
+
+```bash
+python -m scripts.academy.quality --root "$experiment_root" register-parent \
+  "$profile_id" omni-p13-145 145 "$parent_generation" p13-dev
+```
+
+Rejestracja sprawdza tożsamość i sumy kontrolne zarejestrowanego adaptera, zapieczętowane odpowiedzi, własną historię obu ramion oraz zgodność protokołu. Oblicza werdykty kalibracją profilu. Powtórne wykonanie na tych samych wejściach zwraca ten sam rekord. Zmiana danych wymaga nowej tożsamości referencji. W manifeście kampanii powiąż rekord z wariantami startującymi od tego samego `initial_adapter_id`.
+
+```json
+{
+  "review_mode": "automatic",
+  "checkpoint_steps": [21, 42, 63],
+  "quality_policy": {
+    "reference_record_ids": ["history:p13-dev"],
+    "parent_reference_record_id": "history:p13-dev",
+    "protect_parent_full_pass": true,
+    "no_new_critical": true
+  },
+  "selection": {
+    "min_usable_delta": 0.05,
+    "max_critical_delta": 0.0,
+    "protect_parent_full_pass": true
+  },
+  "conversation_review": {
+    "panel_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "receipt_id_prefix": "review-0a"
+  },
+  "final_qualification": {
+    "inputs_id": "fresh-final",
+    "reserve_seconds": 900
+  }
+}
+```
+
+`conversation_review` jest jawnym opt-in dla odbioru 0A. Hash panelu to SHA-256
+kanonicznego JSON panelu: klucze sortowane, UTF-8, bez spacji separatorów.
+Przed kwalifikacją checkpointu wymagany jest osobny immutable receipt dla każdej
+pary run/krok. Receipt wiąże hash raportu checkpointu, wagi i konfigurację obu
+adapterów, snapshot, referencję P13, panel i wynik scorera 96 pełnych rozmów.
+Brak receipt pozostawia kampanię w `awaiting_review`; po ręcznej rejestracji
+wykonawca ponawia assessment. Mismatch blokuje awans, a wynik `STOP` odrzuca
+checkpoint. Przykładowy hash z samymi zerami jest placeholderem; w planie podaj
+rzeczywisty hash panelu.
+
+`campaigns plan` zamraża identyfikator i hash referencji. Przy automatycznej ocenie każdy checkpoint trafia do rankingu po porównaniu z rodzicem. Utrata użytecznego wyniku lub pełnego zaliczenia P13 blokuje wybór nawet przy poprawie średniej. Remis nie spełnia wymagania przyrostu. Jeśli plan przewiduje powtórzenie receptury i żaden krok nie przejdzie bramki, kolejny seed zostaje pominięty. Raport zachowuje deltę względem M0, deltę względem rodzica i identyfikatory utraconych przypadków. Kalibracja `exact-v1` ocenia zadeklarowane odpowiedzi i ich format. Otwarty dialog i kwalifikacja do wydania mają osobny protokół i niezależny finał.
+
 ## Kampania Optuna
 
 Optuna jest opcjonalnym narzędziem uruchamianym przez kontroler kampanii. Utwórz środowisko CPU z Pythonem 3.12 i zainstaluj przypięte wersje.
@@ -317,3 +366,16 @@ Do katalogu profili wgraj `$profile_id.data-audit.json` (wygenerowany `audit.jso
 Odczytaj stan przez `python -m scripts.academy.experiments --root "$experiment_root" audit "$profile_id"` lub w Academy. Raport, taksonomia, dane, przypięta baza, tokenizacja i limit wejścia muszą się zgadzać. Audyt blokuje duplikaty train, dokładnie wspólne znormalizowane pytania lub prefiksy train/dev i niespełnione progi. Porównanie tekstu używa normalizacji NFKC, składania wielkości liter i białych znaków. Nie mierzy podobieństwa semantycznego. Po zmianie plików wygeneruj nowy audyt i zapisz nowy plan.
 
 Raport pokazuje liczbę rekordów, liczbę tokenów nadzoru oraz pokrycie umiejętności. Liczniki dotyczą jednego przejścia przez plik train. Trener przed załadowaniem modelu sprawdza sumaryczne pomiary z raportu przy niezależnym kodowaniu. Budżet kroków oraz tryb `loss_mode` określają osobno ekspozycję danych i sposób ważenia straty. Zaliczenie audytu oznacza spełnienie zdefiniowanych warunków składu danych.
+
+
+## Rejestracja ręcznej oceny pełnych rozmów 0A
+
+Gdy kampania czeka na ocenę checkpointu, `status` zwraca `conversation_review_id` i dokładny `conversation_review_binding` dla każdej brakującej oceny. Zapisz do pliku JSON żądanie z polami `review_id`, `mode`, `panel`, `p13`, `candidate`, `binding`, `p13_identity`, `candidate_identity`, `reviewer_id` i `reviewer_note`. `panel` zawiera definicje rozmów i kryteriów; `p13` oraz `candidate` zawierają ręczne werdykty dla każdej tury w tym samym układzie. Tożsamości modeli muszą odpowiadać polom z bindingu. Dla oceny końcowej `mode` ma wartość `final`; dla checkpointu `dev`.
+
+Zarejestruj pakiet z katalogu Academy:
+
+```bash
+python -m scripts.academy.quality --root "$experiment_root" register-review "$request_json"
+```
+
+Polecenie ponownie liczy progi 0A, zapisuje niezmienny `receipt.json` i `judgments.json` atomowo oraz wypisuje wynik. Następne `status`/`advance` kampanii odczyta potwierdzenie i ponownie oceni wyłącznie oczekujące checkpointy. Nie edytuj ręcznie zapisanych plików.

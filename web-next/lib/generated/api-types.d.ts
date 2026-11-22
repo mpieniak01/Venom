@@ -6776,6 +6776,16 @@ export interface components {
             /** Min Free Bytes */
             min_free_bytes: number;
         };
+        /**
+         * CampaignConversationReview
+         * @description Opt-in 0A development conversation receipt gate for each checkpoint.
+         */
+        CampaignConversationReview: {
+            /** Panel Sha256 */
+            panel_sha256: string;
+            /** Receipt Id Prefix */
+            receipt_id_prefix: string;
+        };
         /** CampaignExtension */
         CampaignExtension: {
             /** Initial Trials */
@@ -6797,6 +6807,13 @@ export interface components {
             inputs_id: string;
             /** Reserve Seconds */
             reserve_seconds: number;
+            /**
+             * Conversation Review Required
+             * @default false
+             */
+            conversation_review_required: boolean;
+            /** Conversation Review Id */
+            conversation_review_id?: string | null;
         };
         /** CampaignPlanReference */
         CampaignPlanReference: {
@@ -6904,6 +6921,7 @@ export interface components {
              */
             review_mode: "manual" | "automatic";
             quality_policy?: components["schemas"]["CampaignQualityPolicy"] | null;
+            conversation_review?: components["schemas"]["CampaignConversationReview"] | null;
             extension?: components["schemas"]["CampaignExtension"] | null;
             final_qualification?: components["schemas"]["CampaignFinalQualification"] | null;
             /** Checkpoint Steps */

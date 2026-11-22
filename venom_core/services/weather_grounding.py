@@ -18,8 +18,8 @@ from venom_core.execution.skills.assistant_skill import (
     weather_area_name,
     weather_temperature,
 )
-from venom_core.services.academy.qualified_chat_quote import without_quotes
-from venom_core.services.academy.qualified_chat_revisions import (
+from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_revisions import (
     explicit_lookup_allowed,
     lookup_forbidden,
 )

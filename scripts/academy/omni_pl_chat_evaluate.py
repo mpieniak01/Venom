@@ -142,6 +142,7 @@ def _predict(
         enable_thinking=False,
     )
     prompt_len = inputs["input_ids"].shape[1]
+    response: dict[str, str | None]
     if prompt_len > MAX_PROMPT_TOKENS:
         response = {"text": "", "finish": "error", "error": "prompt_too_long"}
         ids = []

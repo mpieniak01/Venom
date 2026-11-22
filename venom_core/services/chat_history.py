@@ -57,6 +57,7 @@ class DirectHistory:
         self.length_limited = False
         self.cost: dict[str, Any] | None = None
         self.model_identity: dict[str, str] | None = None
+        self.tool_result: dict[str, Any] | None = None
         self.public_source_evidence = public_source_evidence
 
     def feed(self, chunk: str | bytes | memoryview) -> str | None:
@@ -89,9 +90,12 @@ class DirectHistory:
                     "snapshot_sha256",
                     "config_sha256",
                     "weights_sha256",
+                    "response_source",
                 )
                 if isinstance(identity.get(key), str) and len(identity[key]) <= 256
             }
+            if kind == "done" and identity.get("response_source") == "calculator":
+                self.tool_result = _calculator_snapshot(identity.get("tool_result"))
         charge = value if kind == "cost" else value.get("cost")
         if isinstance(charge, dict):
             self.cost = _cost_snapshot(charge)
@@ -147,6 +151,8 @@ class DirectHistory:
             assistant["model_identity"] = dict(self.model_identity)
         if self.cost is not None:
             assistant["cost"] = dict(self.cost)
+        if status == "COMPLETED" and self.tool_result is not None:
+            assistant["tool_result"] = dict(self.tool_result)
         if (
             self.mode == "studio_normal"
             and status == "COMPLETED"
@@ -177,6 +183,29 @@ def _parse_packet(packet: str) -> tuple[str, dict[str, Any]] | None:
     except ValueError:
         return None
     return (kind, value) if isinstance(value, dict) else None
+
+
+def _calculator_snapshot(receipt: Any) -> dict[str, Any] | None:
+    if not isinstance(receipt, dict) or receipt.get("tool") != "calculator":
+        return None
+    status = receipt.get("status")
+    value, unit = receipt.get("value"), receipt.get("unit")
+    recomputed = receipt.get("recomputed")
+    if (
+        status not in ("succeeded", "missing_expression", "invalid_expression")
+        or (value is not None and (not isinstance(value, str) or len(value) > 160))
+        or (status == "succeeded") != (value is not None)
+        or (unit is not None and (not isinstance(unit, str) or len(unit) > 16))
+        or not isinstance(recomputed, bool)
+    ):
+        return None
+    return {
+        "tool": "calculator",
+        "status": status,
+        "value": value,
+        "unit": unit,
+        "recomputed": recomputed,
+    }
 
 
 def _cost_snapshot(charge: dict[str, Any]) -> dict[str, Any]:

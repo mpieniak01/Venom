@@ -6,7 +6,9 @@ import json
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
+from typing import cast
 
 SOURCE_REPO = "NASK-PIB/PLLuM-Align"
 SOURCE_REVISION = "aa9ae3d4e0d4ffa7b5f52548928de20517122e4b"
@@ -110,14 +112,15 @@ def validate_splits(*collections: list[dict]) -> None:
     prompts: dict[tuple[tuple[str, str], ...], str] = {}
     for rows in collections:
         for row in rows:
-            record_id, group, split = (
-                row.get(key) for key in ("record_id", "group_id", "split")
-            )
+            record_id = row.get("record_id")
+            group = row.get("group_id")
+            split = row.get("split")
             if (
-                not all(
-                    isinstance(item, str) and item.strip()
-                    for item in (record_id, group)
-                )
+                not isinstance(record_id, str)
+                or not record_id.strip()
+                or not isinstance(group, str)
+                or not group.strip()
+                or not isinstance(split, str)
                 or split not in ("train", "dev", "pilot")
                 or row.get("language") != "pl"
             ):
@@ -129,10 +132,12 @@ def validate_splits(*collections: list[dict]) -> None:
             ids.add(record_id)
             if groups.setdefault(group, split) != split:
                 raise ValueError(f"group appears in multiple splits: {group}")
-            messages = row.get("messages")
+            raw_messages = row.get("messages")
+            validate_messages(raw_messages, "assistant" if split == "train" else "user")
+            messages = cast(list[dict], raw_messages)
             if split == "train":
-                validate_messages(messages, "assistant")
-                validate_supervision(messages, row.get("supervision"))
+                supervision = row.get("supervision")
+                validate_supervision(messages, supervision)
                 if row.get("quality_status") != "accepted" or any(
                     not isinstance(row.get(key), str) or not row[key].strip()
                     for key in (
@@ -146,9 +151,9 @@ def validate_splits(*collections: list[dict]) -> None:
                     raise ValueError(
                         f"{record_id}: training record needs provenance and explicit review"
                     )
-                contexts = (messages[:index] for index in row["supervision"])
+                indices = cast(list[int], supervision)
+                contexts: Iterable[list[dict]] = (messages[:index] for index in indices)
             else:
-                validate_messages(messages, "user")
                 contexts = (messages,)
             for context in contexts:
                 if prompts.setdefault(_normalized(context), split) != split:
@@ -186,6 +191,7 @@ def extract_candidates(raw_dir: Path) -> tuple[list[dict], dict]:
             except ValueError:
                 rejections["invalid_text_or_structure"] += 1
                 continue
+            messages = cast(list[dict], messages)
             identity = _normalized(messages)
             if identity in seen:
                 rejections["duplicate_chosen_transcript"] += 1

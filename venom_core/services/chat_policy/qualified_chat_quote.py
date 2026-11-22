@@ -219,9 +219,12 @@ class QuoteRewrite:
             and _CAUSAL_DETAIL.search(text)
         ):
             return True
-        return self.shorten and (
-            len(text.split()) >= len(self.source.split())
-            or (_FULL_LINK.search(self.source) and not _FULL_LINK.search(text))
+        return bool(
+            self.shorten
+            and (
+                len(text.split()) >= len(self.source.split())
+                or (_FULL_LINK.search(self.source) and not _FULL_LINK.search(text))
+            )
         )
 
     def _act_matches(self, text: str, act: str) -> bool:

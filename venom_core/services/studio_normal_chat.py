@@ -9,7 +9,6 @@ from fastapi import HTTPException
 
 from venom_core.api.schemas.llm_simple import (
     MAX_CHAT_HISTORY_CHARS,
-    MAX_CHAT_MESSAGE_CHARS,
     HistoryMessage,
     SimpleChatRequest,
 )
@@ -20,33 +19,28 @@ from venom_core.memory.chat_retrieval import (
     note_request_language,
     retrieve_chat_memory,
 )
-from venom_core.services.academy.qualified_chat import GENERATION_TRUNCATED
-from venom_core.services.academy.qualified_chat_explanations import changes_example
-from venom_core.services.academy.qualified_chat_quote import without_quotes
-from venom_core.services.academy.qualified_chat_revisions import (
-    explicit_lookup_allowed,
-    lookup_forbidden,
-    public_lookup_query,
-    source_revision_hint,
-    without_previous_links,
-)
 from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_grounding import (
     PUBLIC_SOURCE_BLOCK,
     PublicSourceUnavailable,
     current_chat_context,
-    grounding_follow_up,
     is_current_news_request,
-    is_rss_read_request,
-    rss_editorial_query,
+)
+from venom_core.services.chat_policy.history import recent_turns
+from venom_core.services.chat_policy.qualified_chat_explanations import changes_example
+from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_revisions import (
+    explicit_lookup_allowed,
+    public_lookup_query,
+    source_revision_hint,
+)
+from venom_core.services.chat_policy.studio_sources import (
+    StudioSourcePlan,
+    plan_studio_source,
 )
 from venom_core.services.public_source_evidence import (
     PublicSourceContext,
     PublicSourceEvidence,
-    asks_about_previous_scope,
-    previous_public_fact_context,
-    previous_scope_reply,
-    previous_verified_fact_reply,
 )
 from venom_core.services.session_store import SessionStore
 
@@ -116,6 +110,7 @@ _SOURCE_STATUS_POLICY = (
 @dataclass
 class _NormalChatSetup:
     session_id: str
+    store: SessionStore
     output_tokens: int
     budget: int
     system_context: str
@@ -126,14 +121,6 @@ class _NormalChatSetup:
     omit_assistant_links: bool
     history_records: list[dict[str, object]]
     history: list[HistoryMessage]
-
-
-@dataclass
-class _SourcePlan:
-    query: str | None
-    explicit_rss: bool
-    scope_reply: str | None
-    prior_context: str
 
 
 def _wiki_sentence_format(message: str) -> tuple[int, bool] | None:
@@ -171,110 +158,6 @@ def _wiki_local_reply(message: str, reply: str) -> str:
     if count == 1:
         return f"{fact} ({url})."
     return f"{fact}. Potwierdza to polska Wikipedia ({url})."
-
-
-def _recent_turns(
-    store: SessionStore,
-    session_id: str,
-    budget: int,
-    *,
-    omit_truncated: bool = False,
-    omit_assistant_links: bool = False,
-    history: list[dict[str, object]] | None = None,
-) -> list[HistoryMessage]:
-    if history is None:
-        history = store.get_history(session_id)
-    result: list[HistoryMessage] = []
-    end = len(history)
-    while end > 1:
-        user, assistant = history[end - 2 : end]
-        if not _completed_pair(user, assistant):
-            end -= 1
-            continue
-        end -= 2
-        contents = _history_pair_contents(user, assistant)
-        if contents is None:
-            continue
-        prompt, reply = contents
-        reply = _prepare_history_reply(
-            reply,
-            assistant,
-            omit_truncated=omit_truncated,
-            omit_assistant_links=omit_assistant_links,
-        )
-        cost = len(prompt) + len(reply) + 64
-        if cost > budget:
-            break
-        budget -= cost
-        result.extend(
-            (
-                HistoryMessage(role="assistant", content=reply),
-                HistoryMessage(role="user", content=prompt),
-            )
-        )
-    result.reverse()
-    return result
-
-
-def _completed_pair(user: dict[str, object], assistant: dict[str, object]) -> bool:
-    return (
-        user.get("role") == "user"
-        and assistant.get("role") == "assistant"
-        and user.get("request_id") == assistant.get("request_id")
-        and assistant.get("status") in {None, "COMPLETED"}
-    )
-
-
-def _history_pair_contents(
-    user: dict[str, object], assistant: dict[str, object]
-) -> tuple[str, str] | None:
-    prompt, reply = user.get("content"), assistant.get("content")
-    if (
-        not isinstance(prompt, str)
-        or not isinstance(reply, str)
-        or not prompt
-        or not reply
-        or max(len(prompt), len(reply)) > MAX_CHAT_MESSAGE_CHARS
-    ):
-        return None
-    return prompt, reply
-
-
-def _prepare_history_reply(
-    reply: str,
-    assistant: dict[str, object],
-    *,
-    omit_truncated: bool,
-    omit_assistant_links: bool,
-) -> str:
-    if omit_truncated and (
-        assistant.get("finish_reason") == "length"
-        or reply.endswith(f"\n\n{GENERATION_TRUNCATED}")
-        or reply == GENERATION_TRUNCATED
-    ):
-        reply = "Poprzednia odpowiedź została przerwana przed zakończeniem."
-    if omit_assistant_links:
-        reply = (
-            without_previous_links(reply)
-            or "Poprzednia odpowiedź zawierała tylko odnośnik."
-        )
-    return reply
-
-
-def _previous_evidence(history: list[dict[str, object]]) -> PublicSourceEvidence | None:
-    if len(history) < 2:
-        return None
-    user, assistant = history[-2:]
-    if (
-        user.get("role") != "user"
-        or assistant.get("role") != "assistant"
-        or not assistant.get("request_id")
-        or user.get("request_id") != assistant.get("request_id")
-        or assistant.get("status") != "COMPLETED"
-        or assistant.get("finish_reason") == "length"
-    ):
-        return None
-    return PublicSourceEvidence.from_record(assistant.get("public_source_evidence"))
 
 
 async def _note_context(
@@ -326,7 +209,7 @@ async def _normal_chat_setup(
         request
     )
     history_records = store.get_history(session_id)
-    history = _recent_turns(
+    history = recent_turns(
         store,
         session_id,
         max(0, min(remaining, MAX_CHAT_HISTORY_CHARS)),
@@ -336,6 +219,7 @@ async def _normal_chat_setup(
     )
     return _NormalChatSetup(
         session_id,
+        store,
         output_tokens,
         budget,
         system_context,
@@ -404,53 +288,6 @@ def _normal_history_options(request: SimpleChatRequest) -> tuple[bool, bool, boo
     return omit_truncated, local_qualification, omit_assistant_links
 
 
-def _source_plan(
-    request: SimpleChatRequest,
-    history: list[HistoryMessage],
-    history_records: list[dict[str, object]],
-    *,
-    local_qualification: bool,
-    provided_information_only: bool,
-) -> _SourcePlan:
-    previous_users = [turn.content for turn in history if turn.role == "user"]
-    previous = previous_users[-1] if previous_users else ""
-    query = grounding_follow_up(request.content, previous)
-    prior_evidence = (
-        _previous_evidence(history_records) if local_qualification else None
-    )
-    explicit_rss = local_qualification and is_rss_read_request(request.content)
-    scope_reply = (
-        previous_scope_reply(prior_evidence)
-        if local_qualification
-        and asks_about_previous_scope(request.content)
-        and not explicit_rss
-        else None
-    )
-    if local_qualification and not explicit_rss and scope_reply is None:
-        scope_reply = previous_verified_fact_reply(request.content, prior_evidence)
-    prior_context = (
-        ""
-        if explicit_rss
-        else previous_public_fact_context(request.content, prior_evidence)
-    )
-    if (
-        scope_reply
-        or prior_context
-        or provided_information_only
-        or lookup_forbidden(request.content, previous_users)
-    ):
-        query = None
-    elif local_qualification:
-        query = (
-            None
-            if source_revision_hint(request.content)
-            else public_lookup_query(query)
-        )
-    if explicit_rss and query is not None:
-        query = rss_editorial_query(query)
-    return _SourcePlan(query, explicit_rss, scope_reply, prior_context)
-
-
 def _source_policy(
     request: SimpleChatRequest,
     source_context: str,
@@ -481,7 +318,7 @@ def _source_policy(
 def _source_context_state(
     request: SimpleChatRequest,
     source_context: Any,
-    plan: _SourcePlan,
+    plan: StudioSourcePlan,
     setup: _NormalChatSetup,
 ) -> tuple[str, tuple[Any, ...], str | None, PublicSourceEvidence | None]:
     headlines = (
@@ -543,12 +380,13 @@ async def prepare_studio_normal(
 ) -> tuple[SimpleChatRequest, str]:
     """Build a single prompt with history and retrieve notes only when requested."""
     setup = await _normal_chat_setup(request, store, get_vector_store)
-    plan = _source_plan(
-        request,
+    plan = plan_studio_source(
+        request.content,
         setup.history,
         setup.history_records,
         local_qualification=setup.local_qualification,
         provided_information_only=setup.provided_information_only,
+        use_notes=request.use_notes,
     )
     source_context = (
         ""
@@ -572,8 +410,8 @@ async def prepare_studio_normal(
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})
     prepared = request.model_copy(
         update={
-            "history": _recent_turns(
-                store,
+            "history": recent_turns(
+                setup.store,
                 setup.session_id,
                 min(budget, MAX_CHAT_HISTORY_CHARS),
                 omit_truncated=setup.omit_truncated,

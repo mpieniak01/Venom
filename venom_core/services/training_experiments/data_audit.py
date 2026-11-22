@@ -109,7 +109,9 @@ def _verify_coverage(
 ) -> None:
     if train_ids != taxonomy.records.keys() or report.totals.records != len(train_ids):
         raise AuditError("invalid")
-    counts = Counter((tag.skill, tag.group) for tag in taxonomy.records.values())
+    counts: Counter[tuple[str, str]] = Counter(
+        (tag.skill, tag.group) for tag in taxonomy.records.values()
+    )
     if report.skills.keys() != {tag.skill for tag in taxonomy.records.values()}:
         raise AuditError("invalid")
     for group in _GROUPS:

@@ -115,7 +115,7 @@ def _count_requirement(text: str, match: re.Match[str]) -> CountRequirement | No
     if not _proposal_phrase(text[match.end() :], verb, number):
         return None
     modifier = (match["modifier"] or "").casefold()
-    mode = "at_most" if re.fullmatch(_BOUND, modifier) else "exact"
+    mode: Mode = "at_most" if re.fullmatch(_BOUND, modifier) else "exact"
     return CountRequirement(mode, number)
 
 
@@ -178,7 +178,7 @@ def _decode_json(text: str) -> list[str]:
 
 def _decode_bullets(text: str) -> list[str]:
     items = []
-    current = []
+    current: list[str] = []
     for line in text.splitlines():
         bullet = _BULLET.match(line)
         if bullet:
@@ -197,15 +197,15 @@ def _decode_bullets(text: str) -> list[str]:
 
 
 def _decode(text: str) -> list[str]:
-    text = _unfence(text.strip())
-    if text is None:
+    unfenced = _unfence(text.strip())
+    if unfenced is None:
         return []
-    if text.startswith(("{", "[")):
-        return _decode_json(text)
-    items = _decode_bullets(text)
+    if unfenced.startswith(("{", "[")):
+        return _decode_json(unfenced)
+    items = _decode_bullets(unfenced)
     if items:
         return items
-    plain = _SUMMARY.split(text, maxsplit=1)[0]
+    plain = _SUMMARY.split(unfenced, maxsplit=1)[0]
     return _NEW_OPTION.split(plain) if plain else []
 
 
@@ -214,7 +214,7 @@ def option_key(text: str) -> str:
 
 
 def _effective(items: Sequence[str]) -> tuple[str, ...]:
-    options = {}
+    options: dict[str, str] = {}
     for item in items:
         nested = (
             _decode(item)

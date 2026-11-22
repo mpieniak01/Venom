@@ -7,6 +7,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import academy_experiment_campaigns as routes
+from venom_core.services.training_experiments import quality_native
+from venom_core.services.training_experiments.checkpoint_evaluation import (
+    seal_generation,
+)
 from venom_core.services.training_experiments.profiles import MODEL, digest, stable_hash
 from venom_core.services.training_experiments.quality import QualityStore
 from venom_core.services.training_experiments.quality_native import (
@@ -99,6 +103,137 @@ def sealed_run(tmp_path):
     result_hash = write(run / "result.json", report)
     write(run / "result-seal.json", {"result_sha256": result_hash})
     return service, gen_manifest
+
+
+@pytest.fixture
+def parent_reference(sealed_run, monkeypatch):
+    service, generated = sealed_run
+    root = service.root
+    generation = root / "parent-evaluation"
+    case = {
+        "record_id": "a",
+        "task": "init",
+        "split": "dev",
+        "language": "pl",
+        "group_id": "one",
+        "messages": [{"role": "user", "content": "Podaj cenę z rekordów."}],
+        "criteria": [{"id": "price", "kind": "content", "description": "Cena 37 zł"}],
+    }
+    profile_path = root / "profiles/pilot.json"
+    profile = json.loads(profile_path.read_text())
+    profile["dev_sha256"] = write(root / "dev.jsonl", case)
+    pass_grade = {
+        "criteria": {"price": True},
+        "natural_ok": True,
+        "polish_ok": True,
+        "critical_error": False,
+        "reason": "Cena zgodna z kartą.",
+    }
+    profile["calibration_sha256"] = write(
+        root / "profiles/pilot.calibration.json",
+        {
+            "schema_version": 1,
+            "judge": "exact-v1",
+            "reviewer": "fixture",
+            "dev_sha256": profile["dev_sha256"],
+            "cases": {
+                "a": {
+                    "outputs": {"37 zł": pass_grade},
+                    "fallback": {**pass_grade, "criteria": {"price": False}},
+                }
+            },
+        },
+    )
+    write(profile_path, profile)
+    hashes = {"adapter_config.json": "e" * 64, "adapter_model.safetensors": "f" * 64}
+    monkeypatch.setattr(quality_native, "recipe_for", lambda *_: {})
+    monkeypatch.setattr(
+        quality_native,
+        "resolve_adapter",
+        lambda *_: (root, {"config_sha256": "e" * 64, "weights_sha256": "f" * 64}),
+    )
+    generated = {
+        **generated,
+        "data_sha256": profile["dev_sha256"],
+        "case_max_new_tokens": {"a": 512},
+        "evaluated_ids": ["a"],
+        "models": {"base": {"base": True}, "checkpoint-145": hashes},
+        "dialogue_protocol": "own-history-v1",
+    }
+    expected = evaluation_identity(generated, profile["calibration_sha256"])
+    monkeypatch.setattr(
+        quality_native, "frozen_evaluation_identity", lambda *_: expected
+    )
+    base = {"text": "18 zł", "finish": "stop", "error": None}
+    parent = {**base, "text": "37 zł"}
+    generation.mkdir()
+    raw = generation / "raw.jsonl"
+    raw.write_text(
+        "\n".join(
+            json.dumps({"case": "a", "model": variant, "response": answer})
+            for variant, answer in (("base", base), ("checkpoint-145", parent))
+        )
+    )
+    generated["outputs"] = {
+        "raw.jsonl": digest(raw),
+        "unblind.json": write(
+            generation / "unblind.json", {"a": {"A": "base", "B": "checkpoint-145"}}
+        ),
+        "blind.jsonl": write(
+            generation / "blind.jsonl",
+            {"case": case, "answers": {"A": base, "B": parent}},
+        ),
+    }
+    write(generation / "manifest.json", generated)
+    seal_generation(generation)
+    return service, generation, generated
+
+
+def test_register_parent_seals_automatic_exact_grades(parent_reference):
+    service, generation, _ = parent_reference
+    args = (service, "pilot", "omni-p13-145", generation, 145, "p13-dev")
+    result = quality_native.register_parent_reference(*args)
+    assert result == get_record(service, "history:p13-dev")
+    assert quality_native.register_parent_reference(*args) == result
+    assert result["candidate_sha256"] == "f" * 64
+    assert result["cases"]["a"]["base"]["passed"] is False
+    assert result["cases"]["a"]["candidate"] == {
+        "passed": True,
+        "usable": True,
+        "critical": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("problem", "error"),
+    [
+        ("weights", "campaign_quality_parent_adapter_changed"),
+        ("protocol", "campaign_quality_identity_changed"),
+        ("seal", "experiment_evidence_changed"),
+        ("blind", "experiment_checkpoint_baseline_generation_changed"),
+    ],
+)
+def test_register_parent_fails_closed(parent_reference, problem, error):
+    service, generation, manifest = parent_reference
+    if problem == "weights":
+        manifest["models"]["checkpoint-145"]["adapter_model.safetensors"] = "0" * 64
+    elif problem == "protocol":
+        manifest["seed"] = 99
+    elif problem == "seal":
+        (generation / "raw.jsonl").write_text("{}")
+    else:
+        path = generation / "blind.jsonl"
+        blind = json.loads(path.read_text())
+        blind["answers"]["B"]["text"] = "Inna odpowiedź."
+        manifest["outputs"]["blind.jsonl"] = write(path, blind)
+    if problem != "seal":
+        write(generation / "manifest.json", manifest)
+        seal_generation(generation)
+    with pytest.raises(ValueError, match=error):
+        quality_native.register_parent_reference(
+            service, "pilot", "omni-p13-145", generation, 145, "p13-dev"
+        )
+    assert not (service.root / "quality/p13-dev.json").exists()
 
 
 def test_sealed_result_preserves_paired_critical_evidence(sealed_run):

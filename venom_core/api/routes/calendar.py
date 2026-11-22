@@ -12,7 +12,6 @@ from venom_core.api.schemas.calendar import (
     CreateEventResponse,
     EventsResponse,
 )
-from venom_core.config import SETTINGS
 from venom_core.services.calendar_execution import CalendarCreate
 from venom_core.utils.logger import get_logger
 
@@ -188,36 +187,8 @@ def create_calendar_event(request: CreateEventRequest, http_request: Request):
                 status_code=400, detail="Czas trwania musi być większy od 0"
             )
 
-        if SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED:
-            return _create_verified_event(
-                skill, request, http_request.headers.get("Idempotency-Key")
-            )
-
-        # Wywołaj skill do utworzenia wydarzenia
-        result_text = skill.schedule_task(
-            title=request.title,
-            start_time=request.start_time,
-            duration_minutes=request.duration_minutes,
-            description=request.description,
-        )
-
-        logger.info(f"Utworzono wydarzenie: {request.title}")
-
-        # Parse result
-        success = "✅" in result_text and "Zaplanowano" in result_text
-        event_link = None
-
-        # Wyciągnij link z wyniku
-        if "🔗 Link:" in result_text:
-            parts = result_text.split("🔗 Link:")
-            if len(parts) > 1:
-                link_line = parts[1].strip().split("\n")[0].strip()
-                event_link = link_line
-
-        return CreateEventResponse(
-            status="success" if success else "error",
-            message=result_text,
-            event_link=event_link,
+        return _create_verified_event(
+            skill, request, http_request.headers.get("Idempotency-Key")
         )
 
     except HTTPException:

@@ -555,7 +555,8 @@ def run(mode: str) -> None:
 
     import torch
     from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
-    from peft.tuners.lora import LoraLayer
+
+    LoraLayer = import_module("peft.tuners.lora").LoraLayer
     from transformers import (
         AutoModelForMultimodalLM,
         Trainer,

@@ -70,3 +70,14 @@ def calculate(expression: str) -> str:
         return "0" if value == 0 else result
     except (SyntaxError, DecimalException, RecursionError) as exc:
         raise CalculationError("calculation_invalid") from exc
+
+
+def result_with_unit(expression: str, unit: str | None) -> dict[str, str | None]:
+    """Expose a numeric result and its declared display unit without conversion."""
+    if not expression:
+        return {"status": "missing_expression", "value": None, "unit": unit}
+    try:
+        value = calculate(expression)
+    except CalculationError:
+        return {"status": "invalid_expression", "value": None, "unit": unit}
+    return {"status": "succeeded", "value": value, "unit": unit}

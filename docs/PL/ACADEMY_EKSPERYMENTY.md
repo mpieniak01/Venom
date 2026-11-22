@@ -407,3 +407,28 @@ python -m scripts.academy.quality --root "$experiment_root" register-review "$re
 ```
 
 Polecenie ponownie liczy progi 0A, zapisuje niezmienny `receipt.json` i `judgments.json` atomowo oraz wypisuje wynik. Następne `status`/`advance` kampanii odczyta potwierdzenie i ponownie oceni wyłącznie oczekujące checkpointy. Ponowne zarejestrowanie identycznego pakietu zwraca pierwotny wynik po sprawdzeniu jego integralności. Zmiana danych, recenzenta lub uszkodzenie zapisanych plików powoduje konflikt. Nie edytuj ręcznie zapisanych plików.
+
+### Diagnostyczna generacja 96 rozmów
+
+Do ponownego pomiaru użyj świeżego panelu DEV z 96 rozmowami po cztery tury. Uruchom generację na hoście Academy ze wspólną konfiguracją dzierżaw GPU i wskaż katalog wyników na trwałym dysku.
+
+```bash
+python -m scripts.academy.conversation_generate \
+  --panel panel.json --dataset dev.jsonl --snapshot "$snapshot" \
+  --venv "$training_venv" --parent "$p13" --parent-step 145 \
+  --candidate "$checkpoint" --candidate-step 21 \
+  --output "$out" --max-seconds 7200
+```
+
+Generacja używa izolowanego wykonawcy Academy i własnej historii każdej rozmowy. Dla odrębnego hosta bez aktywnego API można dodać `--dedicated-runtime`. Ta opcja nadal wymaga wspólnej dzierżawy GPU. Zadbaj o te same ustawienia `RUNTIME_ADMISSION_ENABLED`, `MEMORY_ROOT` i port API co host. Po przerwaniu powtórz polecenie z tym samym katalogiem i wejściami. Wykonawca odzyska zapisane tury, a limit czasu obowiązuje dla pojedynczego wywołania. Ukończony przebieg przy ponowieniu weryfikuje pieczęcie bez generacji.
+
+`generation-acceptance.json` zawiera tożsamości, skróty wejść i pieczęci oraz osobne liczniki dla M0, P13 i kandydata. Liczniki pokazują pokrycie, liczbę niepustych odpowiedzi i sposób zakończenia (`stop`, `length`, `error`). Status `complete` oznacza sprawdzone pokrycie generacji. Werdykt jakościowy powstaje po ocenie.
+
+Przygotuj pakiet dla recenzenta i przelicz wypełniony formularz.
+
+```bash
+python -m scripts.academy.conversation_diagnostic prepare "$out" panel.json dev.jsonl "$package"
+python -m scripts.academy.conversation_diagnostic score "$out" "$package" judgments.json
+```
+
+Recenzent otrzymuje `reviewer.json` i `judgments-template.json`. Operator zachowuje prywatną mapę aliasów. Scorer wymaga kompletu ocen i odrzuca zaliczenie odpowiedzi uciętej przez limit długości. Wynik `diagnostic_only` jest wypisywany jako osobny dowód i nie tworzy potwierdzenia dla kampanii. Kampania kwalifikuje checkpoint własną ścieżką wiązania i rejestracji.

@@ -20,6 +20,7 @@ from venom_core.services.training_experiments.conversation_review import (
     payload_sha,
     prepare_checkpoint_review,
     register_review_request,
+    score,
 )
 from venom_core.services.training_experiments.profiles import (
     digest,
@@ -114,7 +115,6 @@ def prepare_blind_package(
         raise ValueError("conversation_review_dataset_binding_invalid")
     cases = read_jsonl(dataset)
     index = _case_index(cases, panel)
-    cases_by_id = {case["record_id"]: case for case in cases}
     parent, parent_seal, parent_manifest = _verified_arm(
         parent_generation, cases, binding["p13_identity"], dataset_hash
     )
@@ -148,6 +148,31 @@ def prepare_blind_package(
         or digest(result_file) != binding["checkpoint_result_sha256"]
     ):
         raise ValueError("conversation_review_generation_changed")
+    return _render_blind_package(
+        panel,
+        cases,
+        index,
+        parent,
+        candidate,
+        dataset_hash,
+        pending["conversation_review_id"],
+        stable_hash(binding),
+    )
+
+
+def _render_blind_package(
+    panel: dict,
+    cases: list[dict],
+    index: dict,
+    parent: dict,
+    candidate: dict,
+    dataset_hash: str,
+    review_id: str,
+    binding_hash: str,
+    *,
+    allow_cutoff: bool = False,
+) -> tuple[dict, dict]:
+    cases_by_id = {case["record_id"]: case for case in cases}
     rng = random.SystemRandom()
     reviewer, mapping = {}, {}
     for conversation, spec in panel.items():
@@ -160,17 +185,7 @@ def prepare_blind_package(
             views = {}
             for alias, arm in mapping[conversation].items():
                 answer = (parent if arm == "p13" else candidate)[record_id]["answer"]
-                if (
-                    answer.get("finish") != "stop"
-                    or answer.get("error") is not None
-                    or not isinstance(answer.get("text"), str)
-                    or not answer["text"].strip()
-                ):
-                    raise ValueError("conversation_review_generation_incomplete")
-                views[alias] = {
-                    "text": answer["text"],
-                    "input_messages": answer["input_messages"],
-                }
+                views[alias] = _review_answer(answer, allow_cutoff=allow_cutoff)
             turns[turn] = {
                 "criteria": spec["turns"][turn],
                 "criterion_descriptions": {
@@ -186,13 +201,29 @@ def prepare_blind_package(
         "conversations": reviewer,
     }
     private = {
-        "review_id": pending["conversation_review_id"],
-        "binding_sha256": stable_hash(binding),
+        "review_id": review_id,
+        "binding_sha256": binding_hash,
         "package_sha256": stable_hash(package),
         "aliases": mapping,
     }
     private["manifest_sha256"] = stable_hash(private)
     return package, private
+
+
+def _review_answer(answer: dict, *, allow_cutoff: bool) -> dict:
+    finish = answer.get("finish")
+    if (
+        (finish != "stop" and not (allow_cutoff and finish == "length"))
+        or answer.get("error") is not None
+        or not isinstance(answer.get("text"), str)
+        or not answer["text"].strip()
+    ):
+        raise ValueError("conversation_review_generation_incomplete")
+    return {
+        "text": answer["text"],
+        "input_messages": answer["input_messages"],
+        **({"finish": "length"} if finish == "length" else {}),
+    }
 
 
 def publish_blind_package(target: Path, package: dict, private: dict) -> Path:
@@ -245,30 +276,14 @@ def register_blind_review(
     package = read_json(package_dir / "reviewer.json")
     private = read_json(package_dir / "private.json")
     _verify_blind_package(pending, package, private)
-    if (
-        not isinstance(submitted, dict)
-        or set(submitted)
-        != {"package_sha256", "reviewer_id", "reviewer_note", "judgments"}
-        or submitted["package_sha256"] != private["package_sha256"]
-    ):
-        raise ValueError("conversation_review_blind_submission_invalid")
-
-    panel = {
-        conversation: {
-            "group": spec["group"],
-            "turns": {turn: row["criteria"] for turn, row in spec["turns"].items()},
-        }
-        for conversation, spec in package["conversations"].items()
-    }
+    panel, arms = _decode_judgments(package, private, submitted)
+    assert isinstance(submitted, dict)
     request = prepare_checkpoint_review(pending, panel)
-    request["reviewer_id"] = submitted["reviewer_id"]
-    request["reviewer_note"] = submitted["reviewer_note"]
-    judgments = submitted["judgments"]
-    aliases = private["aliases"]
-    _require_keys(judgments, panel)
-    _require_keys(aliases, panel)
-    for conversation, spec in panel.items():
-        _unblind_conversation(request, conversation, spec, judgments, aliases)
+    request.update(
+        **arms,
+        reviewer_id=submitted["reviewer_id"],
+        reviewer_note=submitted["reviewer_note"],
+    )
     return register_review_request(
         root,
         request,
@@ -283,6 +298,19 @@ def register_blind_review(
 
 
 def _verify_blind_package(pending: dict, package: dict, private: dict) -> None:
+    _verify_package_seal(package, private)
+    binding = pending["conversation_review_binding"]
+    if (
+        private["review_id"] != pending["conversation_review_id"]
+        or private["binding_sha256"] != stable_hash(binding)
+        or package["panel_sha256"] != binding["panel_sha256"]
+        or package["dataset_sha256"]
+        != binding["development_identity"]["dataset_sha256"]
+    ):
+        raise ValueError("conversation_review_blind_package_mismatch")
+
+
+def _verify_package_seal(package: dict, private: dict) -> None:
     fields = {
         "review_id",
         "binding_sha256",
@@ -292,20 +320,42 @@ def _verify_blind_package(pending: dict, package: dict, private: dict) -> None:
     }
     if not isinstance(private, dict) or private.keys() != fields:
         raise ValueError("conversation_review_blind_manifest_invalid")
-    binding = pending["conversation_review_binding"]
     manifest = {
         key: value for key, value in private.items() if key != "manifest_sha256"
     }
-    if (
-        private["manifest_sha256"] != stable_hash(manifest)
-        or private["package_sha256"] != stable_hash(package)
-        or private["review_id"] != pending["conversation_review_id"]
-        or private["binding_sha256"] != stable_hash(binding)
-        or package["panel_sha256"] != binding["panel_sha256"]
-        or package["dataset_sha256"]
-        != binding["development_identity"]["dataset_sha256"]
-    ):
+    if private["manifest_sha256"] != stable_hash(manifest) or private[
+        "package_sha256"
+    ] != stable_hash(package):
         raise ValueError("conversation_review_blind_package_mismatch")
+
+
+def _decode_judgments(
+    package: dict, private: dict, submitted: object
+) -> tuple[dict, dict]:
+    if (
+        not isinstance(submitted, dict)
+        or set(submitted)
+        != {"package_sha256", "reviewer_id", "reviewer_note", "judgments"}
+        or submitted["package_sha256"] != private["package_sha256"]
+    ):
+        raise ValueError("conversation_review_blind_submission_invalid")
+    panel = {
+        conversation: {
+            "group": spec["group"],
+            "turns": {turn: row["criteria"] for turn, row in spec["turns"].items()},
+        }
+        for conversation, spec in package["conversations"].items()
+    }
+    judgments = submitted["judgments"]
+    aliases = private["aliases"]
+    _require_keys(judgments, panel)
+    _require_keys(aliases, panel)
+    arms: dict[str, dict] = {"p13": {}, "candidate": {}}
+    for conversation, spec in panel.items():
+        for verdicts in arms.values():
+            verdicts[conversation] = {}
+        _unblind_conversation(arms, conversation, spec, judgments, aliases)
+    return panel, arms
 
 
 def _require_keys(value: object, expected: dict | set) -> None:
@@ -326,3 +376,137 @@ def _unblind_conversation(
         _require_keys(verdicts, alias_map)
         for alias, arm in alias_map.items():
             request[arm][conversation][turn] = verdicts[alias]
+
+
+def _diagnostic_manifest(run: Path) -> dict:
+    manifest = read_json(run / "generation-acceptance.json")
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema_version") != 1
+        or manifest.get("status") != "complete"
+    ):
+        raise ValueError("conversation_review_diagnostic_generation_incomplete")
+    return manifest
+
+
+def _diagnostic_folder(run: Path, entry: dict) -> Path:
+    step = entry["step"]
+    if type(step) is not int or not 1 <= step <= 10000:
+        raise ValueError("conversation_review_diagnostic_step_invalid")
+    relative = f"checkpoint-evaluations/{step}"
+    if entry["path"] != relative:
+        raise ValueError("conversation_review_diagnostic_path_invalid")
+    return run / relative
+
+
+def _diagnostic_arm(
+    run: Path, entry: dict, cases: list[dict], dataset_hash: str
+) -> dict:
+    folder = _diagnostic_folder(run, entry)
+    seal_path = folder / "generation-seal.json"
+    expected = entry["generation_seal_sha256"]
+    if digest(seal_path) != expected:
+        raise ValueError("conversation_review_diagnostic_seal_mismatch")
+    answers, _seal, _manifest = _verified_arm(
+        folder, cases, entry["identity"], dataset_hash
+    )
+    if digest(seal_path) != expected:
+        raise ValueError("conversation_review_diagnostic_seal_mismatch")
+    return answers
+
+
+def prepare_diagnostic_review(
+    run: Path, panel: dict, dataset: Path
+) -> tuple[dict, dict]:
+    """Prepare an acceptance package for sealed inference, outside a campaign."""
+    manifest = _diagnostic_manifest(run)
+    size, _, _, _, turns = _validate_panel("dev", panel)
+    dataset_hash = digest(dataset)
+    expected = {
+        "panel_sha256": payload_sha(panel),
+        "dataset_sha256": dataset_hash,
+        "conversations": size,
+        "turns": turns,
+    }
+    if any(manifest.get(key) != value for key, value in expected.items()):
+        raise ValueError("conversation_review_diagnostic_inputs_mismatch")
+    cases = read_jsonl(dataset)
+    index = _case_index(cases, panel)
+    parent = _diagnostic_arm(run, manifest["parent"], cases, dataset_hash)
+    candidate = _diagnostic_arm(run, manifest["candidate"], cases, dataset_hash)
+    if digest(dataset) != dataset_hash or _diagnostic_manifest(run) != manifest:
+        raise ValueError("conversation_review_diagnostic_inputs_mismatch")
+    run_hash = stable_hash(manifest)
+    return _render_blind_package(
+        panel,
+        cases,
+        index,
+        parent,
+        candidate,
+        dataset_hash,
+        f"diagnostic-{run_hash[:20]}",
+        run_hash,
+        allow_cutoff=True,
+    )
+
+
+def score_diagnostic_review(run: Path, package_dir: Path, submitted: object) -> dict:
+    """Score a completed blind diagnostic without publishing a campaign receipt."""
+    manifest = _diagnostic_manifest(run)
+    package = read_json(package_dir / "reviewer.json")
+    private = read_json(package_dir / "private.json")
+    _verify_package_seal(package, private)
+    run_hash = stable_hash(manifest)
+    if (
+        private["review_id"] != f"diagnostic-{run_hash[:20]}"
+        or private["binding_sha256"] != run_hash
+        or any(
+            package[key] != manifest[key] for key in ("panel_sha256", "dataset_sha256")
+        )
+    ):
+        raise ValueError("conversation_review_diagnostic_package_mismatch")
+    for name in ("parent", "candidate"):
+        entry = manifest[name]
+        seal = _diagnostic_folder(run, entry) / "generation-seal.json"
+        if digest(seal) != entry["generation_seal_sha256"]:
+            raise ValueError("conversation_review_diagnostic_seal_mismatch")
+        read_generation(seal.parent)
+    panel, arms = _decode_judgments(package, private, submitted)
+    assert isinstance(submitted, dict)
+    if any(
+        not isinstance(submitted[key], str) or not submitted[key].strip()
+        for key in ("reviewer_id", "reviewer_note")
+    ):
+        raise ValueError("conversation_review_diagnostic_reviewer_required")
+    result = score("dev", panel, arms["p13"], arms["candidate"])
+    cutoffs = _diagnostic_cutoffs(package)
+    _require_failed_cutoffs(submitted["judgments"], cutoffs)
+    return {
+        "cutoff_answers": len(cutoffs),
+        "scope": "diagnostic_only",
+        "generation_acceptance_sha256": run_hash,
+        "package_sha256": private["package_sha256"],
+        "judgments_sha256": stable_hash(submitted),
+        "reviewer_id": submitted["reviewer_id"].strip(),
+        "reviewer_note": submitted["reviewer_note"].strip(),
+        **result,
+    }
+
+
+def _diagnostic_cutoffs(package: dict) -> list[tuple[str, str, str]]:
+    return [
+        (conversation, turn, alias)
+        for conversation, spec in package["conversations"].items()
+        for turn, row in spec["turns"].items()
+        for alias, answer in row["answers"].items()
+        if answer.get("finish") == "length"
+    ]
+
+
+def _require_failed_cutoffs(
+    judgments: dict, cutoffs: list[tuple[str, str, str]]
+) -> None:
+    for conversation, turn, alias in cutoffs:
+        verdict = judgments[conversation][turn][alias]
+        if not verdict["critical"] and all(verdict["criteria"].values()):
+            raise ValueError("conversation_review_cutoff_cannot_pass")

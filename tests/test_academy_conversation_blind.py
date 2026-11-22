@@ -353,3 +353,207 @@ def test_blind_import_rejects_incomplete_or_unbound_review(
     with pytest.raises(ValueError, match=error):
         register_blind_review(root, pending, output, submitted)
     assert not root.exists()
+
+
+def test_blind_diagnostic_scores_without_campaign_receipt(input_data, tmp_path, capsys):
+    from scripts.academy.conversation_diagnostic import main
+
+    pending, panel, dataset, parent, candidate = input_data
+    run = tmp_path / "diagnostic"
+    pair_dir = run / "checkpoint-evaluations"
+    pair_dir.mkdir(parents=True)
+    entries = {}
+    binding = pending["conversation_review_binding"]
+    for name, step, source, identity in (
+        ("parent", 145, parent, binding["p13_identity"]),
+        ("candidate", 21, candidate, binding["candidate_identity"]),
+    ):
+        target = pair_dir / str(step)
+        source.rename(target)
+        entries[name] = {
+            "step": step,
+            "path": f"checkpoint-evaluations/{step}",
+            "identity": identity,
+            "generation_seal_sha256": digest(target / "generation-seal.json"),
+        }
+    manifest = {
+        "schema_version": 1,
+        "status": "complete",
+        "panel_sha256": payload_sha(panel),
+        "dataset_sha256": digest(dataset),
+        "conversations": 96,
+        "turns": 384,
+        **entries,
+    }
+    _write(run / "generation-acceptance.json", manifest)
+    panel_path = tmp_path / "panel.json"
+    _write(panel_path, panel)
+    output = tmp_path / "diagnostic-package"
+    main(["prepare", str(run), str(panel_path), str(dataset), str(output)])
+    capsys.readouterr()
+    submitted = read_json(output / "judgments-template.json")
+    submitted.update(reviewer_id="operator", reviewer_note="Diagnostic review")
+    _fill_review(submitted)
+    submitted_path = tmp_path / "judgments.json"
+    _write(submitted_path, submitted)
+    args = ["score", str(run), str(output), str(submitted_path)]
+    main(args)
+    result = json.loads(capsys.readouterr().out)
+    assert result["scope"] == "diagnostic_only"
+    assert result["status"] == "PASS"
+    assert result["conversations"] == 96
+    assert not list(tmp_path.rglob("receipt.json"))
+
+    (pair_dir / "21" / "raw.jsonl").write_text("{}")
+    with pytest.raises(SystemExit):
+        main(args)
+    assert "experiment_evidence_changed" in capsys.readouterr().err
+
+
+def test_generation_runner_records_full_dev_and_reuses_sealed_evidence(
+    input_data, tmp_path
+):
+    from argparse import Namespace
+    from pathlib import Path
+
+    from scripts.academy.conversation_generate import generate_panel
+    from scripts.academy.omni_pl_chat_data import read_jsonl, write_jsonl
+    from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
+
+    _, panel, old_dataset, _, _ = input_data
+    panel_path = tmp_path / "panel.json"
+    _write(panel_path, panel)
+    cases = read_jsonl(old_dataset)
+    for case in cases:
+        case.update(split="dev", language="pl", task="coverage")
+    dataset = tmp_path / "dev.jsonl"
+    write_jsonl(dataset, cases)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin/python").touch()
+
+    def adapter(name):
+        path = tmp_path / name
+        path.mkdir()
+        (path / "adapter_config.json").write_text("{}")
+        (path / "adapter_model.safetensors").write_text(name)
+        hashes = {file.name: digest(file) for file in path.iterdir()}
+        _write(path / "hashes.json", hashes)
+        return path, hashes
+
+    parent, parent_hashes = adapter("p13")
+    candidate, candidate_hashes = adapter("candidate-weights")
+    output = tmp_path / "output"
+    args = Namespace(
+        panel=panel_path,
+        dataset=dataset,
+        snapshot=snapshot,
+        venv=venv,
+        parent=parent,
+        parent_step=145,
+        candidate=candidate,
+        candidate_step=21,
+        output=output,
+        max_seconds=144,
+        dedicated_runtime=True,
+    )
+    attempts = []
+
+    def fake_evaluator(command, log, timeout, run_id, model, *, shared_runtime):
+        stage = Path(command[8])
+        assert command[10:12] == ["--resume-partial", "base"]
+        assert log.parent == output
+        assert timeout == 144 and not shared_runtime
+        attempts.append((run_id, stage))
+        stage.mkdir()
+        if len(attempts) == 1:
+            raise TimeoutError("fixture interruption")
+
+        models = {
+            "base": {"base": True},
+            "checkpoint-145": parent_hashes,
+            "checkpoint-21": candidate_hashes,
+        }
+        mapping = blind_mapping(cases, list(models))
+        raw, blind = [], []
+        histories = {tag: DialogueHistory() for tag in models}
+        for case in cases:
+            answers = {}
+            record_id = case["record_id"]
+            for label, tag in mapping[record_id].items():
+                finish = "stop"
+                text = "Odpowiedź"
+                if record_id == "C000-1":
+                    if tag == "checkpoint-21":
+                        finish = "length"
+                    elif tag == "base":
+                        finish, text = "error", ""
+                history = histories[tag]
+                context = history.context(case)
+                row = {
+                    "case": record_id,
+                    "model": tag,
+                    "label": label,
+                    "response": {"text": text, "finish": finish, "error": None},
+                    **context,
+                }
+                history.remember(case, row, context)
+                raw.append(row)
+                answers[label] = blind_answer(row)
+            blind.append({"case": case, "answers": answers})
+
+        write_jsonl(stage / "raw.jsonl", raw)
+        write_jsonl(stage / "blind.jsonl", blind)
+        _write(stage / "unblind.json", mapping)
+        _write(
+            stage / "manifest.json",
+            {
+                "models": models,
+                "model_repo": model,
+                "snapshot_manifest_sha256": digest(SNAPSHOT_PIN),
+                "data_sha256": digest(dataset),
+                "evaluated_ids": [case["record_id"] for case in cases],
+                "max_new_tokens": 512,
+                "case_max_new_tokens": {case["record_id"]: 512 for case in cases},
+                "dialogue_protocol": "own-history-v1",
+                "resumed_generations": 1,
+                "generation_identity_sha256": "0" * 64,
+                "outputs": {
+                    name: digest(stage / name)
+                    for name in ("raw.jsonl", "blind.jsonl", "unblind.json")
+                },
+            },
+        )
+
+    with pytest.raises(TimeoutError, match="fixture interruption"):
+        generate_panel(args, evaluator=fake_evaluator)
+    assert not (output / "generation-acceptance.json").exists()
+    report = generate_panel(args, evaluator=fake_evaluator)
+    assert attempts[0][0] == attempts[1][0]
+    assert attempts[0][1] != attempts[1][1]
+    assert report["status"] == "complete"
+    assert report["conversations"] == 96
+    assert report["resumed_generations"] == 1
+    assert report["generation_counts"] == {
+        "base": {"turns": 384, "stop": 383, "error": 1, "length": 0, "nonempty": 383},
+        "parent": {"turns": 384, "stop": 384, "error": 0, "length": 0, "nonempty": 384},
+        "candidate": {
+            "turns": 384,
+            "stop": 383,
+            "error": 0,
+            "length": 1,
+            "nonempty": 384,
+        },
+    }
+    for arm in ("parent", "candidate"):
+        pair_seal = output / report[arm]["path"] / "generation-seal.json"
+        assert report[arm]["generation_seal_sha256"] == digest(pair_seal)
+    assert generate_panel(args, evaluator=fake_evaluator) == report
+    assert len(attempts) == 2
+    cases[0]["messages"][0]["content"] += " Dopisek."
+    args.dataset = tmp_path / "changed.jsonl"
+    write_jsonl(args.dataset, cases)
+    with pytest.raises(ValueError, match="generation_intent_changed"):
+        generate_panel(args, evaluator=fake_evaluator)

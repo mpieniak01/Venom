@@ -31,9 +31,7 @@ class MissingConversationReview(FileNotFoundError):
 
 def score(mode: str, panel: dict, p13: dict, candidate: dict) -> dict:
     """Score complete paired conversations using the offline 0A thresholds."""
-    size, group_size, total_minimum, group_minimum, turns_total = _validate_panel(
-        mode, panel
-    )
+    size, _, total_minimum, group_minimum, turns_total = _validate_panel(mode, panel)
     parent_passed, _ = _arm(panel, p13, "p13")
     passed, critical = _arm(panel, candidate, "candidate")
     by_group = Counter(panel[key]["group"] for key in passed)
@@ -67,33 +65,41 @@ def _validate_panel(mode: str, panel: dict) -> tuple[int, int, int, int, int]:
     groups: Counter[str] = Counter()
     turns_total = 0
     for conversation, spec in panel.items():
-        if (
-            not isinstance(conversation, str)
-            or not conversation.strip()
-            or not isinstance(spec, dict)
-            or set(spec) != {"group", "turns"}
-        ):
-            raise ValueError("conversation_review_panel_invalid")
-        group, turns = spec["group"], spec["turns"]
-        if not isinstance(group, str) or group not in _GROUPS:
-            raise ValueError("conversation_review_group_invalid")
-        if not isinstance(turns, dict) or not 4 <= len(turns) <= 8:
-            raise ValueError("conversation_review_turns_invalid")
-        turns_total += len(turns)
-        for turn, criteria in turns.items():
-            if (
-                not isinstance(turn, str)
-                or not turn.strip()
-                or not isinstance(criteria, list)
-                or not criteria
-                or not all(isinstance(item, str) and item.strip() for item in criteria)
-                or len(criteria) != len(set(criteria))
-            ):
-                raise ValueError("conversation_review_criteria_invalid")
+        group, turn_count = _validate_conversation_spec(conversation, spec)
         groups[group] += 1
+        turns_total += turn_count
     if groups != Counter(dict.fromkeys(_GROUPS, group_size)):
         raise ValueError("conversation_review_group_counts_invalid")
     return size, group_size, total_minimum, group_minimum, turns_total
+
+
+def _validate_conversation_spec(conversation: object, spec: object) -> tuple[str, int]:
+    if (
+        not isinstance(conversation, str)
+        or not conversation.strip()
+        or not isinstance(spec, dict)
+        or set(spec) != {"group", "turns"}
+    ):
+        raise ValueError("conversation_review_panel_invalid")
+    group, turns = spec["group"], spec["turns"]
+    if not isinstance(group, str) or group not in _GROUPS:
+        raise ValueError("conversation_review_group_invalid")
+    if not isinstance(turns, dict) or not 4 <= len(turns) <= 8:
+        raise ValueError("conversation_review_turns_invalid")
+    if not all(_valid_criteria(turn, criteria) for turn, criteria in turns.items()):
+        raise ValueError("conversation_review_criteria_invalid")
+    return group, len(turns)
+
+
+def _valid_criteria(turn: object, criteria: object) -> bool:
+    return (
+        isinstance(turn, str)
+        and bool(turn.strip())
+        and isinstance(criteria, list)
+        and bool(criteria)
+        and all(isinstance(item, str) and item.strip() for item in criteria)
+        and len(criteria) == len(set(criteria))
+    )
 
 
 def _score_failures(

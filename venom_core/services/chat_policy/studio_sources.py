@@ -74,7 +74,6 @@ def plan_studio_source(
         query,
         local_qualification,
         provided_information_only,
-        explicit_rss,
         scope_reply,
         prior_context,
     )
@@ -108,7 +107,6 @@ def _lookup_query(
     query: str | None,
     local_qualification: bool,
     provided_information_only: bool,
-    explicit_rss: bool,
     scope_reply: str | None,
     prior_context: str,
 ) -> str | None:

@@ -1962,8 +1962,8 @@ class CampaignService:
         if state.get("phase") == "qualification":
             return self._advance_qualification(campaign_id, directory, state)
         if self._awaiting_conversation_review(state):
-            return self._advance_conversation_review(campaign_id, directory)
-        return self._advance_active(campaign_id, directory)
+            return self._advance_conversation_review(directory)
+        return self._advance_active(directory)
 
     def _advance_qualification(
         self, campaign_id: str, directory: Path, state: dict
@@ -1987,7 +1987,7 @@ class CampaignService:
             and state["plan"].get("conversation_review") is not None
         )
 
-    def _advance_conversation_review(self, campaign_id: str, directory: Path) -> dict:
+    def _advance_conversation_review(self, directory: Path) -> dict:
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
             self._review_selection(state)
@@ -2003,7 +2003,7 @@ class CampaignService:
             self._save(directory, state)
             return state
 
-    def _advance_active(self, campaign_id: str, directory: Path) -> dict:
+    def _advance_active(self, directory: Path) -> dict:
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
             if state["status"] not in _ACTIVE:

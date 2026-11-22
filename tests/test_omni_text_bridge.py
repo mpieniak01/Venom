@@ -413,7 +413,8 @@ async def test_native_exchange_title_guidance_keeps_model_output(
     assert messages[-1] == {"role": "user", "content": prompt}
     meta = json.loads(events[-1].split("data: ", 1)[1])["model_identity"]
     assert meta["input_messages_sha256"] == stable_hash(messages)
-    assert "response_source" not in meta and "tool_result" not in meta
+    assert "response_source" not in meta
+    assert "tool_result" not in meta
     assert json.loads(events[1].split("data: ", 1)[1])["text"] == "Anna, 120 zł"
     if guided:
         assert messages[0]["role"] == "system"
@@ -457,10 +458,12 @@ async def test_native_invitation_draft_has_no_model_or_tool_receipt(native, prom
     events = [packet async for packet in stream.body_iterator]
     output = json.loads(events[1].split("data: ", 1)[1])["text"]
     meta = json.loads(events[-1].split("data: ", 1)[1])["model_identity"]
-    assert "Wspólny Ogród" in output and "Zielony Kącik" not in output
+    assert "Wspólny Ogród" in output
+    assert "Zielony Kącik" not in output
     assert meta["context_policy"] == "invitation_draft"
     assert meta["response_source"] == "correction_rule"
-    assert "input_messages_sha256" not in meta and "tool_result" not in meta
+    assert "input_messages_sha256" not in meta
+    assert "tool_result" not in meta
     assert len(calls) == 1  # Adapter probe only.
 
 
@@ -706,7 +709,8 @@ async def test_native_direct_calculator_preserves_unit_and_own_provenance(
         )
     )
     repeated_text = "".join([part async for part in repeated.body_iterator])
-    assert '"recomputed": true' in repeated_text and "2,5 l" in repeated_text
+    assert '"recomputed": true' in repeated_text
+    assert "2,5 l" in repeated_text
     quoted = await bridge.response(
         SimpleChatRequest(content="Przetłumacz: «Oblicz 2 * 1,25 l»")
     )
@@ -749,11 +753,12 @@ async def test_native_calculator_requires_explicit_bounded_command(
     finished = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
     assert text in "".join(packets)
     if receipt is None:
-        assert "tool_result" not in finished and len(calls) == 2
+        assert "tool_result" not in finished
+        assert len(calls) == 2
         return
     assert len(calls) == 1
     tool_result = finished["tool_result"]
-    assert (tool_result["status"], tool_result["value"], tool_result["unit"]) == receipt
+    assert receipt == (tool_result["status"], tool_result["value"], tool_result["unit"])
 
 
 def test_rejected_proposal_keeps_confirmed_fee():
@@ -764,13 +769,17 @@ def test_rejected_proposal_keeps_confirmed_fee():
         "Jaką składkę podaje sama ulotka?",
     ]
     card = correction_context(users[-1], users[:-1])
-    assert card and card.scope == "source_only"
+    assert card is not None
+    assert card.scope == "source_only"
     assert "Sama karta nie podaje kwoty." in card.text
-    assert "14 zł" not in card.text and "19 zł" not in card.text
+    assert "14 zł" not in card.text
+    assert "19 zł" not in card.text
 
     state = correction_context("Podaj wiążące ustalenia z rozmowy.", users)
-    assert state and state.scope == "binding_fee"
-    assert "14 zł" in state.text and "19 zł" not in state.text
+    assert state is not None
+    assert state.scope == "binding_fee"
+    assert "14 zł" in state.text
+    assert "19 zł" not in state.text
 
 
 def test_accepted_fee_survives_partial_card_lookup():
@@ -781,11 +790,14 @@ def test_accepted_fee_survives_partial_card_lookup():
         "Podaj opiekunkę i numer szafki z kartki.",
     ]
     card = correction_context(users[-1], users[:-1])
-    assert card and card.scope == "source_only"
+    assert card is not None
+    assert card.scope == "source_only"
     assert "Sama karta nie podaje numeru." in card.text
 
     state = correction_context("Podaj końcowe ustalenia rozmowy.", users)
-    assert state and "44 zł" in state.text and "36 zł" not in state.text
+    assert state is not None
+    assert "44 zł" in state.text
+    assert "36 zł" not in state.text
 
 
 def test_registration_cancellation_preserves_free_admission():
@@ -793,7 +805,8 @@ def test_registration_cancellation_preserves_free_admission():
     state = correction_context(
         "Zapisy jednak odwołane. Wstęp nadal wolny. Przeredaguj zaproszenie.", prior
     )
-    assert state and state.scope == "registration_cancelled"
+    assert state is not None
+    assert state.scope == "registration_cancelled"
     assert "nie trzeba się zapisywać" in state.text
     assert "Wstęp jest wolny" in state.text
     assert correction_context("Przetłumacz „Zapisy jednak odwołane.”", prior) is None
@@ -979,7 +992,8 @@ def test_verified_single_field_card_does_not_import_conversation_values(
 )
 def test_explicit_pending_fee_question_returns_confirmed_amount(previous, question):
     context = correction_context(question, previous)
-    assert context and context.scope == "pending_fee"
+    assert context is not None
+    assert context.scope == "pending_fee"
     assert context.verified_reply == (
         "Obowiązuje 32 zł. Kwota 47 zł jest propozycją do zatwierdzenia."
     )

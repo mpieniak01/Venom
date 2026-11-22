@@ -16,6 +16,8 @@ from .profiles import stable_hash
 _GROUPS = frozenset("SKWR")
 _LIMITS = {"dev": (96, 24, 72, 16), "final": (48, 12, 36, 8)}
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
+_RECEIPT_FILE = "receipt.json"
+_JUDGMENTS_FILE = "judgments.json"
 
 
 class MissingConversationReview(FileNotFoundError):
@@ -29,6 +31,34 @@ class MissingConversationReview(FileNotFoundError):
 
 def score(mode: str, panel: dict, p13: dict, candidate: dict) -> dict:
     """Score complete paired conversations using the offline 0A thresholds."""
+    size, group_size, total_minimum, group_minimum, turns_total = _validate_panel(
+        mode, panel
+    )
+    parent_passed, _ = _arm(panel, p13, "p13")
+    passed, critical = _arm(panel, candidate, "candidate")
+    by_group = Counter(panel[key]["group"] for key in passed)
+    lost = sorted(parent_passed - passed)
+    failures = _score_failures(
+        passed, by_group, critical, lost, total_minimum, group_minimum
+    )
+    return {
+        "mode": mode,
+        "status": "PASS" if not failures else "STOP",
+        "conversations": size,
+        "turns": turns_total,
+        "passed": len(passed),
+        "minimum": total_minimum,
+        "groups": {group: by_group[group] for group in sorted(_GROUPS)},
+        "group_minimum": group_minimum,
+        "p13_passed": len(parent_passed),
+        "retained": len(parent_passed & passed),
+        "lost": lost,
+        "critical": critical,
+        "failures": failures,
+    }
+
+
+def _validate_panel(mode: str, panel: dict) -> tuple[int, int, int, int, int]:
     if mode not in _LIMITS:
         raise ValueError("conversation_review_mode_invalid")
     size, group_size, total_minimum, group_minimum = _LIMITS[mode]
@@ -61,13 +91,19 @@ def score(mode: str, panel: dict, p13: dict, candidate: dict) -> dict:
             ):
                 raise ValueError("conversation_review_criteria_invalid")
         groups[group] += 1
-    if groups != Counter({group: group_size for group in _GROUPS}):
+    if groups != Counter(dict.fromkeys(_GROUPS, group_size)):
         raise ValueError("conversation_review_group_counts_invalid")
+    return size, group_size, total_minimum, group_minimum, turns_total
 
-    parent_passed, _ = _arm(panel, p13, "p13")
-    passed, critical = _arm(panel, candidate, "candidate")
-    by_group = Counter(panel[key]["group"] for key in passed)
-    lost = sorted(parent_passed - passed)
+
+def _score_failures(
+    passed: set[str],
+    by_group: Counter,
+    critical: list[str],
+    lost: list[str],
+    total_minimum: int,
+    group_minimum: int,
+) -> list[str]:
     failures = []
     if len(passed) < total_minimum:
         failures.append("total_below_minimum")
@@ -77,21 +113,7 @@ def score(mode: str, panel: dict, p13: dict, candidate: dict) -> dict:
         failures.append("critical_error")
     if lost:
         failures.append("parent_conversation_lost")
-    return {
-        "mode": mode,
-        "status": "PASS" if not failures else "STOP",
-        "conversations": size,
-        "turns": turns_total,
-        "passed": len(passed),
-        "minimum": total_minimum,
-        "groups": {group: by_group[group] for group in sorted(_GROUPS)},
-        "group_minimum": group_minimum,
-        "p13_passed": len(parent_passed),
-        "retained": len(parent_passed & passed),
-        "lost": lost,
-        "critical": critical,
-        "failures": failures,
-    }
+    return failures
 
 
 def _arm(panel: dict, results: dict, arm: str) -> tuple[set[str], list[str]]:
@@ -100,33 +122,43 @@ def _arm(panel: dict, results: dict, arm: str) -> tuple[set[str], list[str]]:
     passed: set[str] = set()
     critical: list[str] = []
     for conversation, spec in panel.items():
-        records = results[conversation]
-        if not isinstance(records, dict) or records.keys() != spec["turns"].keys():
-            raise ValueError(f"conversation_review_{arm}_turn_coverage_invalid")
-        full_pass = True
-        for turn, expected in spec["turns"].items():
-            verdict = records[turn]
-            if (
-                not isinstance(verdict, dict)
-                or set(verdict) != {"criteria", "critical"}
-                or type(verdict["critical"]) is not bool
-                or not isinstance(verdict["criteria"], dict)
-                or verdict["criteria"].keys() != set(expected)
-                or not all(
-                    type(value) is bool for value in verdict["criteria"].values()
-                )
-            ):
-                raise ValueError(f"conversation_review_{arm}_verdict_invalid")
-            if verdict["critical"]:
-                critical.append(f"{conversation}/{turn}")
-            full_pass = (
-                full_pass
-                and not verdict["critical"]
-                and all(verdict["criteria"].values())
-            )
+        full_pass, turn_critical = _conversation_verdicts(
+            conversation, spec, results[conversation], arm
+        )
+        critical.extend(turn_critical)
         if full_pass:
             passed.add(conversation)
     return passed, sorted(critical)
+
+
+def _conversation_verdicts(
+    conversation: str, spec: dict, records: dict, arm: str
+) -> tuple[bool, list[str]]:
+    if not isinstance(records, dict) or records.keys() != spec["turns"].keys():
+        raise ValueError(f"conversation_review_{arm}_turn_coverage_invalid")
+    critical = []
+    full_pass = True
+    for turn, expected in spec["turns"].items():
+        verdict = records[turn]
+        if not _valid_verdict(verdict, expected):
+            raise ValueError(f"conversation_review_{arm}_verdict_invalid")
+        if verdict["critical"]:
+            critical.append(f"{conversation}/{turn}")
+        full_pass = (
+            full_pass and not verdict["critical"] and all(verdict["criteria"].values())
+        )
+    return full_pass, critical
+
+
+def _valid_verdict(verdict: object, expected: list[str]) -> bool:
+    return (
+        isinstance(verdict, dict)
+        and set(verdict) == {"criteria", "critical"}
+        and type(verdict["critical"]) is bool
+        and isinstance(verdict["criteria"], dict)
+        and verdict["criteria"].keys() == set(expected)
+        and all(type(value) is bool for value in verdict["criteria"].values())
+    )
 
 
 def _payload_sha(payload: dict) -> str:
@@ -166,32 +198,14 @@ def register_review(
     reviewer_note: str,
 ) -> dict:
     """Register a human-reported review once; records are immutable after creation."""
-    if not _ID.fullmatch(review_id):
-        raise ValueError("conversation_review_id_invalid")
-    if not isinstance(reviewer_id, str) or not reviewer_id.strip():
-        raise ValueError("conversation_review_reviewer_required")
-    if not isinstance(reviewer_note, str) or not reviewer_note.strip():
-        raise ValueError("conversation_review_note_required")
-    if not isinstance(binding, dict) or not binding:
-        raise ValueError("conversation_review_binding_required")
-    for identity in (p13_identity, candidate_identity):
-        if set(identity) != {
-            "model",
-            "weights_sha256",
-            "config_sha256",
-            "snapshot_sha256",
-        }:
-            raise ValueError("conversation_review_model_identity_invalid")
-        if any(
-            not isinstance(value, str) or not value.strip()
-            for value in identity.values()
-        ):
-            raise ValueError("conversation_review_model_identity_invalid")
-    if (
-        binding.get("p13_identity") != p13_identity
-        or binding.get("candidate_identity") != candidate_identity
-    ):
-        raise ValueError("conversation_review_model_binding_invalid")
+    _validate_registration(
+        review_id,
+        binding,
+        p13_identity,
+        candidate_identity,
+        reviewer_id,
+        reviewer_note,
+    )
     report = score(mode, panel, p13, candidate)
     data = {"panel": panel, "p13": p13, "candidate": candidate}
     if binding.get("panel_sha256") is not None and binding[
@@ -218,9 +232,42 @@ def register_review(
         if target.exists():
             raise ValueError("conversation_review_immutable_conflict")
         target.mkdir(mode=0o700)
-        atomic_json(target / "judgments.json", data)
-        atomic_json(target / "receipt.json", receipt)
+        atomic_json(target / _JUDGMENTS_FILE, data)
+        atomic_json(target / _RECEIPT_FILE, receipt)
     return receipt
+
+
+def _validate_registration(
+    review_id: str,
+    binding: dict,
+    p13_identity: dict[str, str],
+    candidate_identity: dict[str, str],
+    reviewer_id: str,
+    reviewer_note: str,
+) -> None:
+    if not _ID.fullmatch(review_id):
+        raise ValueError("conversation_review_id_invalid")
+    if not isinstance(reviewer_id, str) or not reviewer_id.strip():
+        raise ValueError("conversation_review_reviewer_required")
+    if not isinstance(reviewer_note, str) or not reviewer_note.strip():
+        raise ValueError("conversation_review_note_required")
+    if not isinstance(binding, dict) or not binding:
+        raise ValueError("conversation_review_binding_required")
+    for identity in (p13_identity, candidate_identity):
+        _validate_model_identity(identity)
+    if (
+        binding.get("p13_identity") != p13_identity
+        or binding.get("candidate_identity") != candidate_identity
+    ):
+        raise ValueError("conversation_review_model_binding_invalid")
+
+
+def _validate_model_identity(identity: dict[str, str]) -> None:
+    fields = {"model", "weights_sha256", "config_sha256", "snapshot_sha256"}
+    if set(identity) != fields or any(
+        not isinstance(value, str) or not value.strip() for value in identity.values()
+    ):
+        raise ValueError("conversation_review_model_identity_invalid")
 
 
 def verify_review(
@@ -230,8 +277,8 @@ def verify_review(
     if not _ID.fullmatch(review_id):
         raise ValueError("conversation_review_id_invalid")
     target = operator_path(root / "conversation-reviews" / review_id)
-    receipt_path = operator_path(target / "receipt.json")
-    judgments_path = operator_path(target / "judgments.json")
+    receipt_path = operator_path(target / _RECEIPT_FILE)
+    judgments_path = operator_path(target / _JUDGMENTS_FILE)
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     data = json.loads(judgments_path.read_text(encoding="utf-8"))
     if receipt.get("review_id") != review_id:
@@ -273,7 +320,7 @@ def verify_final_review(
     """Re-bind an immutable review to final result data when serving qualification."""
     target = operator_path(root / "conversation-reviews" / review_id)
     receipt = json.loads(
-        operator_path(target / "receipt.json").read_text(encoding="utf-8")
+        operator_path(target / _RECEIPT_FILE).read_text(encoding="utf-8")
     )
     binding = receipt.get("binding")
     if (

@@ -932,25 +932,11 @@ def _qualify_locked(
     check: Callable[[], float] | None = None,
 ) -> dict:
     with file_lock(directory / ".lock"):
-        review_receipt = None
-        if spec.conversation_review_required and spec.conversation_review_id is None:
-            raise ValueError("remote_text_conversation_review_required")
-        intent = directory / "intent.json"
-        if intent.exists() and read_json(intent) != binding:
-            raise ValueError("remote_text_final_already_bound")
-        _verify_parent(binding, academy_root)
-        result = _read_result(directory, binding)
-        if (
-            result is not None
-            and "parent" in binding
-            and read_run(evidence_root, binding["run_id"])["archive_sha256"]
-            != binding["archive_sha256"]
-        ):
-            raise ValueError("remote_text_final_archive_changed")
-        if result is not None and (
-            result["qualified"] is None
-            or _catalog_published(directory, result, academy_root)
-        ):
+        _validate_review_requirement(spec)
+        result, completed = _existing_qualification_result(
+            directory, evidence_root, academy_root, binding
+        )
+        if completed:
             return result
         if check is not None:
             check()
@@ -973,35 +959,9 @@ def _qualify_locked(
                 expected_archive_sha256=binding["archive_sha256"],
             )
             adapter = _adapter_identity(checkpoint, binding, manifest)
-            if spec.conversation_review_id is not None:
-                from .conversation_review import verify_review
-
-                parent_entry = (binding.get("parent") or {}).get("entry")
-                if parent_entry is None:
-                    raise ValueError("remote_text_conversation_review_parent_required")
-                p13_identity = {
-                    name: parent_entry[name]
-                    for name in (
-                        "model",
-                        "weights_sha256",
-                        "config_sha256",
-                        "snapshot_sha256",
-                    )
-                }
-                candidate_identity = {
-                    "model": adapter["model"],
-                    "weights_sha256": adapter["weights_sha256"],
-                    "config_sha256": adapter["config_sha256"],
-                    "snapshot_sha256": adapter["snapshot_sha256"],
-                }
-                review_binding = {
-                    "qualification": binding,
-                    "p13_identity": p13_identity,
-                    "candidate_identity": candidate_identity,
-                }
-                review_receipt = verify_review(
-                    evidence_root, spec.conversation_review_id, review_binding
-                )
+            review_receipt = _qualification_review_receipt(
+                spec, binding, evidence_root, adapter
+            )
             parent = _stage_parent(binding, manifest, academy_root, workspace)
             if result is None:
                 result = _run_final(
@@ -1028,6 +988,69 @@ def _qualify_locked(
                     {"result_sha256": digest(directory / "result.json")},
                 )
             return result
+
+
+def _validate_review_requirement(spec: QualificationInputs) -> None:
+    if spec.conversation_review_required and spec.conversation_review_id is None:
+        raise ValueError("remote_text_conversation_review_required")
+
+
+def _existing_qualification_result(
+    directory: Path, evidence_root: Path, academy_root: Path, binding: dict
+) -> tuple[dict | None, bool]:
+    intent = directory / "intent.json"
+    if intent.exists() and read_json(intent) != binding:
+        raise ValueError("remote_text_final_already_bound")
+    _verify_parent(binding, academy_root)
+    result = _read_result(directory, binding)
+    if result is not None and "parent" in binding:
+        archive_sha256 = read_run(evidence_root, binding["run_id"])["archive_sha256"]
+        if archive_sha256 != binding["archive_sha256"]:
+            raise ValueError("remote_text_final_archive_changed")
+    completed = bool(
+        result is not None
+        and (
+            result["qualified"] is None
+            or _catalog_published(directory, result, academy_root)
+        )
+    )
+    return result, completed
+
+
+def _qualification_review_receipt(
+    spec: QualificationInputs, binding: dict, evidence_root: Path, adapter: dict
+) -> dict | None:
+    if spec.conversation_review_id is None:
+        return None
+    from .conversation_review import verify_review
+
+    parent_entry = (binding.get("parent") or {}).get("entry")
+    if parent_entry is None:
+        raise ValueError("remote_text_conversation_review_parent_required")
+    p13_identity = {
+        name: parent_entry[name]
+        for name in (
+            "model",
+            "weights_sha256",
+            "config_sha256",
+            "snapshot_sha256",
+        )
+    }
+    candidate_identity = {
+        name: adapter[name]
+        for name in (
+            "model",
+            "weights_sha256",
+            "config_sha256",
+            "snapshot_sha256",
+        )
+    }
+    review_binding = {
+        "qualification": binding,
+        "p13_identity": p13_identity,
+        "candidate_identity": candidate_identity,
+    }
+    return verify_review(evidence_root, spec.conversation_review_id, review_binding)
 
 
 def _run_final(

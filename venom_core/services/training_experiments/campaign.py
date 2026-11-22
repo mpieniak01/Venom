@@ -1960,35 +1960,50 @@ class CampaignService:
         directory = self.directory(campaign_id)
         state = self._state(directory)
         if state.get("phase") == "qualification":
-            if state["plan"].get("conversation_review") is not None:
-                with file_lock(directory / ".state.lock"):
-                    state = self._state(directory)
-                    self._review_selection(state)
-                    if state.get("phase") != "qualification":
-                        self._save(directory, state)
-                        return state
-            from .local_campaign_final import advance
+            return self._advance_qualification(campaign_id, directory, state)
+        if self._awaiting_conversation_review(state):
+            return self._advance_conversation_review(campaign_id, directory)
+        return self._advance_active(campaign_id, directory)
 
-            return advance(self, campaign_id)
-        if (
-            state.get("phase") == "trials"
-            and state.get("status") == "awaiting_review"
-            and state["plan"].get("conversation_review") is not None
-        ):
+    def _advance_qualification(
+        self, campaign_id: str, directory: Path, state: dict
+    ) -> dict:
+        if state["plan"].get("conversation_review") is not None:
             with file_lock(directory / ".state.lock"):
                 state = self._state(directory)
                 self._review_selection(state)
-                state["status"] = state.get("training_status", "succeeded")
-                if state["plan"].get("final_qualification"):
-                    from .local_campaign_final import transition
+                if state.get("phase") != "qualification":
+                    self._save(directory, state)
+                    return state
+        from .local_campaign_final import advance
 
-                    transition(state, service=self)
-                else:
-                    state["status"] = "succeeded"
-                if state["status"] not in _ACTIVE:
-                    state["worker"] = None
-                self._save(directory, state)
-                return state
+        return advance(self, campaign_id)
+
+    @staticmethod
+    def _awaiting_conversation_review(state: dict) -> bool:
+        return (
+            state.get("phase") == "trials"
+            and state.get("status") == "awaiting_review"
+            and state["plan"].get("conversation_review") is not None
+        )
+
+    def _advance_conversation_review(self, campaign_id: str, directory: Path) -> dict:
+        with file_lock(directory / ".state.lock"):
+            state = self._state(directory)
+            self._review_selection(state)
+            state["status"] = state.get("training_status", "succeeded")
+            if state["plan"].get("final_qualification"):
+                from .local_campaign_final import transition
+
+                transition(state, service=self)
+            else:
+                state["status"] = "succeeded"
+            if state["status"] not in _ACTIVE:
+                state["worker"] = None
+            self._save(directory, state)
+            return state
+
+    def _advance_active(self, campaign_id: str, directory: Path) -> dict:
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
             if state["status"] not in _ACTIVE:

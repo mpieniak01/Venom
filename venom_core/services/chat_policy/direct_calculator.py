@@ -11,7 +11,9 @@ _PREFIX = re.compile(
     re.IGNORECASE,
 )
 _UNIT_CLAUSE = re.compile(
-    r"\s*(?:[.;]\s*jednostka\s*:\s*|\s+i podaj wynik w\s+)", re.IGNORECASE
+    r"[.;][ \t]*jednostka[ \t]*:[ \t]*|"
+    r"[ \t]+i[ \t]+podaj[ \t]+wynik[ \t]+w[ \t]+",
+    re.IGNORECASE,
 )
 _UNITS = {
     "zł": "zł",
@@ -38,7 +40,7 @@ _UNITS = {
 }
 _ARITHMETIC = re.compile(r"[0-9.,()+*/ \t×÷−-]+")
 _NUMERIC_START = re.compile(r"[0-9.,(+−-]")
-_INLINE_UNIT = re.compile(r"(.+?)[ \t]+([A-Za-złŁ²³]+\.?)$")
+_UNIT_SUFFIX = re.compile(r"[A-Za-złŁ²³]+\.?\Z")
 _REPEAT = re.compile(
     r"powtórz(?: tylko)? (?:wynik|ostatni wynik)(?: obliczenia)?[.!]?", re.IGNORECASE
 )
@@ -66,13 +68,13 @@ def _command(content: str) -> CalculatorRequest | None:
         return CalculatorRequest("")
     if _NUMERIC_START.match(body) is None:
         return None
-    parts = _UNIT_CLAUSE.split(body, maxsplit=1)
-    expression = parts[0].strip()
+    unit_clause = _UNIT_CLAUSE.search(body)
+    expression = body[: unit_clause.start()].strip() if unit_clause else body.strip()
     unit = ""
-    if len(parts) == 2:
-        unit = parts[1].strip().removesuffix(".")
-    elif inline := _INLINE_UNIT.fullmatch(expression):
-        expression, unit = inline[1], inline[2].removesuffix(".")
+    if unit_clause is not None:
+        unit = body[unit_clause.end() :].strip().removesuffix(".")
+    else:
+        expression, unit = _split_inline_unit(expression)
     if unit and unit.casefold() not in _UNITS:
         return None
     expression = expression.strip().removesuffix(".").rstrip()
@@ -81,6 +83,13 @@ def _command(content: str) -> CalculatorRequest | None:
     return CalculatorRequest(
         expression.translate(_OPERATORS), _UNITS.get(unit.casefold())
     )
+
+
+def _split_inline_unit(expression: str) -> tuple[str, str]:
+    parts = expression.rsplit(maxsplit=1)
+    if len(parts) != 2 or _UNIT_SUFFIX.fullmatch(parts[1]) is None:
+        return expression, ""
+    return parts[0], parts[1].removesuffix(".")
 
 
 def plan_calculator(

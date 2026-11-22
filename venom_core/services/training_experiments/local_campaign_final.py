@@ -196,11 +196,7 @@ def incomplete(state: dict, reason: str) -> None:
 
 def transition(state: dict, *, service=None) -> None:
     """Reserve the exact selected finalist after trials become quiescent."""
-    if (
-        service is not None
-        and state["plan"].get("conversation_review") is not None
-        and state.get("selected_run_id")
-    ):
+    if _review_is_needed(state, service):
         service._review_selection(state)
         if state.get("phase") == "complete" or not state.get("selected_run_id"):
             return
@@ -211,47 +207,68 @@ def transition(state: dict, *, service=None) -> None:
     state["training_status"] = state["status"]
     confirmation = state.get("repeat_confirmation", {})
     if confirmation.get("status") in {"failed_quality", "incomplete"}:
-        finish(
-            state,
-            {
-                "status": confirmation["status"],
-                "qualified": None,
-                "reason": confirmation["reason"],
-            },
-        )
+        _finish_failed_confirmation(state, confirmation)
     elif state["status"] in {"stopped", "blocked"}:
         incomplete(state, state.get("error") or f"campaign_{state['status']}")
     elif state["selected_run_id"] is None:
-        from .campaign import development_complete
-
-        if development_complete(state):
-            if state["plan"].get("conversation_review") and any(
-                row.get("conversation_review_status") == "pending"
-                for trial in state["trials"]
-                for row in trial.get("checkpoint_evaluations", ())
-            ):
-                state.update(
-                    phase="trials",
-                    status="awaiting_review",
-                    training_status=state.get("training_status", state["status"]),
-                    qualification_status="pending_conversation_review",
-                    worker=None,
-                )
-                return
-            finish(
-                state,
-                {
-                    "status": "failed_quality",
-                    "qualified": None,
-                    "reason": "campaign_no_eligible_finalist",
-                },
-            )
-        else:
-            incomplete(state, "campaign_development_incomplete")
+        _finish_without_finalist(state)
     else:
         state.update(
             phase="qualification", status="qualifying", qualification_status="pending"
         )
+
+
+def _review_is_needed(state: dict, service) -> bool:
+    return bool(
+        service is not None
+        and state["plan"].get("conversation_review") is not None
+        and state.get("selected_run_id")
+    )
+
+
+def _finish_failed_confirmation(state: dict, confirmation: dict) -> None:
+    finish(
+        state,
+        {
+            "status": confirmation["status"],
+            "qualified": None,
+            "reason": confirmation["reason"],
+        },
+    )
+
+
+def _finish_without_finalist(state: dict) -> None:
+    from .campaign import development_complete
+
+    if not development_complete(state):
+        incomplete(state, "campaign_development_incomplete")
+    elif _has_pending_conversation_review(state):
+        state.update(
+            phase="trials",
+            status="awaiting_review",
+            training_status=state.get("training_status", state["status"]),
+            qualification_status="pending_conversation_review",
+            worker=None,
+        )
+    else:
+        finish(
+            state,
+            {
+                "status": "failed_quality",
+                "qualified": None,
+                "reason": "campaign_no_eligible_finalist",
+            },
+        )
+
+
+def _has_pending_conversation_review(state: dict) -> bool:
+    if not state["plan"].get("conversation_review"):
+        return False
+    return any(
+        row.get("conversation_review_status") == "pending"
+        for trial in state["trials"]
+        for row in trial.get("checkpoint_evaluations", ())
+    )
 
 
 def _error_code(exc: Exception) -> str:

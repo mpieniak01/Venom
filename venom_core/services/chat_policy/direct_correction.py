@@ -260,6 +260,32 @@ def correction_context(
         without_quotes(text) for text in preceding_users[-6:] if not _EDIT.match(text)
     ]
     source = single_quoted_operand(content)
+    context = _source_card_context(visible, content, source)
+    if context is not None:
+        return context
+    context = _cancelled_registration_context(visible, previous)
+    if context is not None:
+        return context
+    if visible == content:
+        context = _conversation_fact_context(visible, preceding_users)
+        if context is not None:
+            return context
+    if not _is_fee_state_request(visible):
+        return None
+    state = _fee_state_from_history(visible, previous)
+    if state is None or state.binding is None or not state.decision:
+        return None
+    return CorrectionContext(
+        "binding_fee",
+        f"Obowiązująca kwota przekazana przez użytkownika: {state.binding} zł. "
+        "Podaj tę wiążącą kwotę. Zachowaj pozostałe ustalenia użytkownika, "
+        "których nowsza wiadomość nie zmienia. Odróżnij kartę od ustaleń w rozmowie.",
+    )
+
+
+def _source_card_context(
+    visible: str, content: str, source: str | None
+) -> CorrectionContext | None:
     if (
         source
         and _SOURCE.search(visible)
@@ -280,6 +306,11 @@ def correction_context(
             + absent,
             verified_reply=_verified_number_card_reply(source, content),
         )
+
+
+def _cancelled_registration_context(
+    visible: str, previous: Sequence[str]
+) -> CorrectionContext | None:
     if (
         _CANCEL_REGISTRATION.match(visible)
         and _INVITATION_TASK.search(visible)
@@ -293,23 +324,30 @@ def correction_context(
             "Zaproszenie ma jasno mówić, że nie trzeba się zapisywać." + admission,
             free_admission=free_admission,
         )
-    if visible == content:
-        reservation = _reservation_from_conversation(visible, preceding_users)
-        if reservation is not None:
-            return reservation
-        accepted = _accepted_fee_context(visible, preceding_users)
-        if accepted is not None:
-            return accepted
-        pending = _pending_fee_context(visible, preceding_users)
-        if pending is not None:
-            return pending
 
-    if not (
+
+def _conversation_fact_context(
+    visible: str, preceding_users: Sequence[str]
+) -> CorrectionContext | None:
+    for resolver in (
+        _reservation_from_conversation,
+        _accepted_fee_context,
+        _pending_fee_context,
+    ):
+        context = resolver(visible, preceding_users)
+        if context is not None:
+            return context
+
+
+def _is_fee_state_request(visible: str) -> bool:
+    return bool(
         _STATE_QUERY.search(visible)
         or _ACCEPT.search(visible)
         or _REJECT.search(visible)
-    ):
-        return None
+    )
+
+
+def _fee_state_from_history(visible: str, previous: Sequence[str]) -> _FeeState | None:
     if not (
         _FEE.search(visible) or _ACCEPT.search(visible) or _REJECT.search(visible)
     ) and not (
@@ -322,14 +360,7 @@ def correction_context(
     state = _FeeState()
     for message in [*previous, visible]:
         state.read(message)
-    if state.binding is None or not state.decision:
-        return None
-    return CorrectionContext(
-        "binding_fee",
-        f"Obowiązująca kwota przekazana przez użytkownika: {state.binding} zł. "
-        "Podaj tę wiążącą kwotę. Zachowaj pozostałe ustalenia użytkownika, "
-        "których nowsza wiadomość nie zmienia. Odróżnij kartę od ustaleń w rozmowie.",
-    )
+    return state
 
 
 def _proposal_question(text: str) -> tuple[str, str]:
@@ -378,37 +409,54 @@ def _accepted_fee_context(
     prior = _accepted_fee_reference(category, preceding_users)
     prior_amount = _AMOUNT.search(prior)
     known_subjects = {item.casefold() for item in _ENTRY_SUBJECT.findall(prior)}
-    subject = decision["subject"]
-    if subject:
-        subject = subject.casefold()
-    per_person = bool(
-        decision["unit"]
+    subject = (decision["subject"] or "").casefold() or None
+    per_person = _accepted_fee_is_per_person(
+        decision["unit"], prior_amount, prior, subject, known_subjects
+    )
+    question = decision["question"]
+    if not _accepted_fee_question_matches(
+        question, category, per_person, subject, known_subjects
+    ):
+        return None
+    unit = " za osobę" if per_person else ""
+    reply = f"Obowiązuje {amount[1]} zł{unit}."
+    return CorrectionContext("binding_fee", reply, verified_reply=reply)
+
+
+def _accepted_fee_is_per_person(
+    unit: str | None,
+    prior_amount: re.Match[str] | None,
+    prior: str,
+    subject: str | None,
+    known_subjects: set[str],
+) -> bool:
+    return bool(
+        unit
         or (
             prior_amount
             and (subject is None or known_subjects == {subject})
             and _PER_PERSON_UNIT.match(prior, prior_amount.end())
         )
     )
-    question = decision["question"]
-    if entry := _ENTRY_FEE_QUESTION.fullmatch(question):
-        entry_subject = entry["subject"].casefold()
-        if subject:
-            known_subjects = {subject}
-        if not per_person or known_subjects != {entry_subject}:
-            return None
-    else:
-        requested = _FEE.search(question)
-        if (
-            not _CURRENT_FEE_QUERY.fullmatch(question)
-            or not requested
-            or requested[1].casefold() != category
-        ):
-            return None
-    if "dla jednej osoby" in question.casefold() and not per_person:
-        return None
-    unit = " za osobę" if per_person else ""
-    reply = f"Obowiązuje {amount[1]} zł{unit}."
-    return CorrectionContext("binding_fee", reply, verified_reply=reply)
+
+
+def _accepted_fee_question_matches(
+    question: str,
+    category: str,
+    per_person: bool,
+    subject: str | None,
+    known_subjects: set[str],
+) -> bool:
+    entry = _ENTRY_FEE_QUESTION.fullmatch(question)
+    if entry is not None:
+        subjects = {subject} if subject else known_subjects
+        return per_person and subjects == {entry["subject"].casefold()}
+    requested = _FEE.search(question)
+    if not _CURRENT_FEE_QUERY.fullmatch(question) or requested is None:
+        return False
+    if requested[1].casefold() != category:
+        return False
+    return "dla jednej osoby" not in question.casefold() or per_person
 
 
 def _pending_fee_context(

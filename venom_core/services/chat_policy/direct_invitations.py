@@ -72,26 +72,42 @@ def exchange_title_context(content: str) -> CorrectionContext | None:
 
 def _titles(text: str) -> list[str]:
     """Parse two bare items, without using descriptions as titles."""
+    lines = _title_lines(text)
+    if len(lines) != 2:
+        return []
+    titles = [_title_item(line, index) for index, line in enumerate(lines, 1)]
+    if any(title is None for title in titles):
+        return []
+    normalized = [title for title in titles if title is not None]
+    return normalized if normalized[0].casefold() != normalized[1].casefold() else []
+
+
+def _title_lines(text: str) -> list[str]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if lines and _TITLE_LIST_INTRO.fullmatch(lines[0]):
         lines = lines[1:]
     if len(lines) == 1 and lines[0].count(",") == 1:
-        lines = [part.strip() for part in lines[0].split(",")]
-    if len(lines) != 2:
-        return []
-    titles = []
-    for index, line in enumerate(lines, 1):
-        marker = _TITLE_ITEM.match(line)
-        if marker and marker["number"] and marker["number"] != str(index):
-            return []
-        title = line[marker.end() :] if marker else line
-        for left, right in (("**", "**"), ("„", "”"), ('"', '"'), ("«", "»")):
-            if title.startswith(left) and title.endswith(right):
-                title = title[len(left) : -len(right)].strip()
-        if len(title) > 70 or _TITLE.fullmatch(title) is None:
-            return []
-        titles.append(" ".join(title.split()))
-    return titles if titles[0].casefold() != titles[1].casefold() else []
+        return [part.strip() for part in lines[0].split(",")]
+    return lines
+
+
+def _title_item(line: str, index: int) -> str | None:
+    marker = _TITLE_ITEM.match(line)
+    if marker and marker["number"] and marker["number"] != str(index):
+        return None
+    title = line[marker.end() :] if marker else line
+    title = _unquote_title(title)
+    if len(title) > 70 or _TITLE.fullmatch(title) is None:
+        return None
+    return " ".join(title.split())
+
+
+def _unquote_title(title: str) -> str:
+    wrappers = (("**", "**"), ("„", "”"), ('"', '"'), ("«", "»"))
+    for left, right in wrappers:
+        if title.startswith(left) and title.endswith(right):
+            return title[len(left) : -len(right)].strip()
+    return title
 
 
 def _holds_title(text: str, title: str) -> bool:

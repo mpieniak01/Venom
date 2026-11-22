@@ -357,61 +357,14 @@ async def response(
         if selection is None:
             raise _error("omni_native_text_selection_changed")
         messages = _validate_request(request, selection)
-        preceding_users = [
-            message["content"] for message in messages[:-1] if message["role"] == "user"
-        ]
-        correction = correction_context(request.content, preceding_users)
-        if correction is None:
-            correction = invitation_context(request.content, messages[:-1])
-        if correction is None:
-            draft = reservation_confirmation_draft(request.content, preceding_users)
-            if draft is not None:
-                correction = CorrectionContext(
-                    "reservation_confirmation_draft", draft, verified_reply=draft
-                )
-        if correction is None:
-            correction = exchange_title_context(request.content)
-        if correction:
-            system_context = "\n\n".join(
-                filter(None, (system_context, correction.text))
-            )
-        if system_context:
-            messages.insert(0, {"role": "system", "content": system_context})
-        max_tokens = request.max_tokens if request.max_tokens is not None else 256
-        if type(max_tokens) is not int or not 1 <= max_tokens <= 1024:
-            raise _error("omni_native_text_token_limit", 422)
+        correction, system_context = _chat_context(request, messages, system_context)
+        max_tokens = _request_token_limit(request)
         ordinary = _check_ordinary()
-        async with runtime_request_guard(
-            request_kind=RUNTIME,
-            provider=RUNTIME,
-            model=selection.identity["adapter_id"],
-        ):
-            failure = None
-            try:
-                if correction and correction.verified_reply is not None:
-                    _verify_selection(selection)
-                    result = {
-                        "text": correction.verified_reply,
-                        "response_source": "correction_rule",
-                    }
-                else:
-                    result = _calculator_reply(selection, messages)
-                    if result is None:
-                        result = await _generate(selection, messages, max_tokens)
-            except (HTTPException, asyncio.CancelledError) as exc:
-                failure = exc
-        if failure:
-            raise failure
+        result = await _run_native_response(selection, messages, max_tokens, correction)
         if _ordinary_identity() != ordinary:
             raise _error("omni_native_text_runtime_changed")
         result["previous_runtime"] = ordinary
-        if correction:
-            result["context_policy"] = correction.scope
-            if result.get("response_source") is None:
-                revised = corrected_registration_reply(correction, result["text"])
-                if revised is not None:
-                    result["text"] = revised
-                    result["response_source"] = "correction_rule"
+        _finalize_correction(result, correction)
     request_id = str(uuid4())
     metadata = {
         **selection.payload(),
@@ -435,3 +388,81 @@ async def response(
     return StreamingResponse(
         chunks(), media_type="text/event-stream", headers={"X-Request-ID": request_id}
     )
+
+
+def _chat_context(
+    request: SimpleChatRequest, messages: list[dict[str, str]], system_context: str
+) -> tuple[CorrectionContext | None, str]:
+    preceding_users = [
+        message["content"] for message in messages[:-1] if message["role"] == "user"
+    ]
+    correction = correction_context(request.content, preceding_users)
+    if correction is None:
+        correction = invitation_context(request.content, messages[:-1])
+    if correction is None:
+        draft = reservation_confirmation_draft(request.content, preceding_users)
+        if draft is not None:
+            correction = CorrectionContext(
+                "reservation_confirmation_draft", draft, verified_reply=draft
+            )
+    if correction is None:
+        correction = exchange_title_context(request.content)
+    if correction:
+        system_context = "\n\n".join(filter(None, (system_context, correction.text)))
+    if system_context:
+        messages.insert(0, {"role": "system", "content": system_context})
+    return correction, system_context
+
+
+def _request_token_limit(request: SimpleChatRequest) -> int:
+    max_tokens = request.max_tokens if request.max_tokens is not None else 256
+    if type(max_tokens) is not int or not 1 <= max_tokens <= 1024:
+        raise _error("omni_native_text_token_limit", 422)
+    return max_tokens
+
+
+async def _run_native_response(
+    selection: Selection,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    correction: CorrectionContext | None,
+) -> dict[str, Any]:
+    result: dict[str, Any] | None = None
+    failure: BaseException | None = None
+    async with runtime_request_guard(
+        request_kind=RUNTIME,
+        provider=RUNTIME,
+        model=selection.identity["adapter_id"],
+    ):
+        try:
+            if correction and correction.verified_reply is not None:
+                _verify_selection(selection)
+                result = {
+                    "text": correction.verified_reply,
+                    "response_source": "correction_rule",
+                }
+            else:
+                result = _calculator_reply(selection, messages)
+                if result is None:
+                    result = await _generate(selection, messages, max_tokens)
+        except (HTTPException, asyncio.CancelledError) as exc:
+            failure = exc
+    if failure is not None:
+        raise failure
+    if result is None:
+        raise _error("omni_native_text_response_missing")
+    return result
+
+
+def _finalize_correction(
+    result: dict[str, Any], correction: CorrectionContext | None
+) -> None:
+    if correction is None:
+        return
+    result["context_policy"] = correction.scope
+    if result.get("response_source") is not None:
+        return
+    revised = corrected_registration_reply(correction, result["text"])
+    if revised is not None:
+        result["text"] = revised
+        result["response_source"] = "correction_rule"

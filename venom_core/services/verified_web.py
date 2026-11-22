@@ -6,11 +6,12 @@ import asyncio
 import codecs
 import ipaddress
 import socket
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
+from typing import cast
 from urllib.parse import urlparse
 from xml.etree import ElementTree
 
@@ -275,7 +276,8 @@ def _parse_rss(data: bytearray, *, truncated: bool) -> ElementTree.Element | Non
     root = ElementTree.Element("rss")
     channel = ElementTree.SubElement(root, "channel")
     stack: list[str] = []
-    for event, element in parser.read_events():
+    events = cast(Iterable[tuple[str, ElementTree.Element]], parser.read_events())
+    for event, element in events:
         if event == "start":
             stack.append(element.tag)
             continue

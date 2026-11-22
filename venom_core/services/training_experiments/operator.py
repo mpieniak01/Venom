@@ -374,7 +374,7 @@ def render_campaign_result(action: str, result: dict, language: str | None) -> s
     if "evaluations" not in result:
         return text
     evaluations = result["evaluations"]
-    rows = []
+    rows: list[str] = []
     for trial in state["trials"]:
         evidence = evaluations.get(trial["run_id"], {})
         rows.extend(

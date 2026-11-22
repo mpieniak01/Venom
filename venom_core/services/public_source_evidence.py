@@ -63,7 +63,7 @@ class PublicSourceEvidence:
     weather: WeatherEvidence | None = None
 
     def to_record(self) -> dict[str, str]:
-        record = {"scope": self.scope}
+        record: dict[str, str] = {"scope": self.scope}
         if self.scope == "wiki" and self.excerpt:
             record["excerpt"] = self.excerpt[:MAX_PUBLIC_EXCERPT_CHARS]
         if self.wiki_unit is not None:

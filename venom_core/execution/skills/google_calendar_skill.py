@@ -84,7 +84,7 @@ class GoogleCalendarSkill:
         )
         self.token_path = token_path or SETTINGS.GOOGLE_CALENDAR_TOKEN_PATH
         self.venom_calendar_id = venom_calendar_id or SETTINGS.VENOM_CALENDAR_ID
-        self.service = None
+        self.service: Any | None = None
         self.credentials_available = False
 
         # Safety check: warn if venom_calendar_id is 'primary' (violates Safe Layering)
@@ -323,21 +323,27 @@ class GoogleCalendarSkill:
         )
 
     def _find_venom_event(self, event_id: str):
+        service = self.service
+        if service is None:
+            raise RuntimeError("Google Calendar service is not configured")
         try:
             return (
-                self.service.events()
+                service.events()
                 .get(calendarId=self.venom_calendar_id, eventId=event_id)
                 .execute()
             )
         except HttpError as error:
-            if error.resp.status == 404:
+            if getattr(getattr(error, "resp", None), "status", None) == 404:
                 return None
             raise
 
     def _write_venom_event(self, event: dict, operation: CalendarCreate | None):
+        service = self.service
+        if service is None:
+            raise RuntimeError("Google Calendar service is not configured")
         if operation is None or not operation.idempotent:
             return (
-                self.service.events()
+                service.events()
                 .insert(calendarId=self.venom_calendar_id, body=event)
                 .execute()
             )
@@ -347,14 +353,14 @@ class GoogleCalendarSkill:
             return existing
         try:
             return (
-                self.service.events()
+                service.events()
                 .insert(
                     calendarId=self.venom_calendar_id, body={**event, "id": event_id}
                 )
                 .execute()
             )
         except HttpError as error:
-            if error.resp.status != 409:
+            if getattr(getattr(error, "resp", None), "status", None) != 409:
                 raise
             return self._find_venom_event(event_id) or {"id": event_id}
 

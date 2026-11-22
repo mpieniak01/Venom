@@ -470,8 +470,11 @@ class QualifiedReply:
         values: dict[str, str] = {}
         for option in [*self.options(draft), *self.options(repair or "")]:
             values.setdefault(option_key(option), option)
-        options = list(values.values())[: self.count.count]
-        if not options or not self.count.accepts(len(options)):
+        count = self.count
+        if count is None:
+            return GENERATION_TRUNCATED if truncated else _CLARIFICATION
+        options = list(values.values())[: count.count]
+        if not options or not count.accepts(len(options)):
             return GENERATION_TRUNCATED if truncated else _CLARIFICATION
         if len(options) == 1:
             return options[0]

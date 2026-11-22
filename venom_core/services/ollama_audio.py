@@ -270,10 +270,17 @@ async def _transcribe(
         try:
             async with asyncio.timeout(_ASR_RETRY_TIMEOUT_SECONDS):
                 faster_audio = await asyncio.to_thread(_faster_asr_audio, audio)
+                messages = payload.get("messages")
+                if (
+                    not isinstance(messages, list)
+                    or not messages
+                    or not isinstance(messages[0], dict)
+                ):
+                    return text
                 retry_payload = {
                     **payload,
                     "messages": [
-                        payload["messages"][0],
+                        messages[0],
                         {"role": "user", "content": "", "images": [faster_audio]},
                     ],
                 }

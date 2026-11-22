@@ -21,7 +21,7 @@ HANDOFF_FIELDS = {
 }
 _MAX_CONFIG_BYTES = 16 * 1024
 _MODEL_ALIASES = {"/inputs/model"}
-_OPTIONAL_DEFAULTS = {
+_OPTIONAL_DEFAULTS: dict[str, object] = {
     "alora_invocation_tokens": None,
     "alpha_pattern": {},
     "arrow_config": None,

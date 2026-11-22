@@ -173,7 +173,7 @@ def _fan_state(users: Sequence[str]) -> str:
 
 
 def _active_topic(users: Sequence[str]) -> list[str]:
-    recent = []
+    recent: list[str] = []
     for message in users:
         fragments = _TOPIC_CHANGE.split(message)
         if len(fragments) > 1:

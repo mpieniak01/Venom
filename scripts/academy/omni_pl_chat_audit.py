@@ -102,7 +102,7 @@ def _bucket(observations: list[dict]) -> dict:
 
 
 def _buckets(observations: list[dict], labels: dict) -> tuple[dict, dict]:
-    groups = {group: [] for group in GROUPS}
+    groups: dict[str, list[dict]] = {group: [] for group in GROUPS}
     skills: dict[str, dict[str, list[dict]]] = {}
     for row in observations:
         label = labels[row["record_id"]]

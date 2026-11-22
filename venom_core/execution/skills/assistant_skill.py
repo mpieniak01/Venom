@@ -76,7 +76,11 @@ def imgw_station_url(location: str) -> str | None:
 
 
 def imgw_observation_time(day: object, hour: object) -> datetime | None:
-    if not isinstance(day, str) or type(hour) not in (int, str):
+    if (
+        not isinstance(day, str)
+        or not isinstance(hour, (int, str))
+        or isinstance(hour, bool)
+    ):
         return None
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) or not re.fullmatch(
         r"\d{1,2}", str(hour)

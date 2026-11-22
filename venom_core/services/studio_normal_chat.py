@@ -110,6 +110,7 @@ _SOURCE_STATUS_POLICY = (
 @dataclass
 class _NormalChatSetup:
     session_id: str
+    store: SessionStore
     output_tokens: int
     budget: int
     system_context: str
@@ -218,6 +219,7 @@ async def _normal_chat_setup(
     )
     return _NormalChatSetup(
         session_id,
+        store,
         output_tokens,
         budget,
         system_context,
@@ -409,7 +411,7 @@ async def prepare_studio_normal(
     prepared = request.model_copy(
         update={
             "history": recent_turns(
-                store,
+                setup.store,
                 setup.session_id,
                 min(budget, MAX_CHAT_HISTORY_CHARS),
                 omit_truncated=setup.omit_truncated,

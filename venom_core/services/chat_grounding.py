@@ -6,6 +6,7 @@ import re
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timezone
 from enum import StrEnum
+from typing import Literal
 from urllib.parse import urlparse
 
 from venom_core.execution.skills.assistant_skill import (
@@ -444,7 +445,9 @@ async def _weather_context(message: str, policy: str) -> str:
             station = None
         if station is not None:
             result = weather_observation_reply(station, message, aliases)
-    scope = "weather" if result.verified else "unavailable"
+    scope: Literal["weather", "unavailable"] = (
+        "weather" if result.verified else "unavailable"
+    )
     context = (
         f"{policy}{result.excerpt}\n[/PUBLIC_SOURCES]"
         if result.verified

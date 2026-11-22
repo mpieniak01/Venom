@@ -32,7 +32,7 @@ def _evidence(conversations=96):
     return panel, p13, candidate
 
 
-def _register(tmp_path, mode="dev"):
+def _register(tmp_path, mode="dev", source=None):
     panel, p13, candidate = _evidence(96 if mode == "dev" else 48)
     qualification_binding = {
         "campaign_id": "campaign-01",
@@ -53,6 +53,8 @@ def _register(tmp_path, mode="dev"):
             }
         },
     }
+    if source is not None:
+        qualification_binding["source"] = source
     identity = {
         "model": "P13",
         "weights_sha256": "f" * 64,
@@ -141,21 +143,24 @@ def test_final_binding_rechecks_weights_config_snapshot_and_parent(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("mode", "expected_path"),
+    ("mode", "source", "expected_path"),
     [
-        ("dev", ("campaigns", "campaign-01")),
-        (
-            "final",
-            ("local-text-qualification", "campaign-01", "evidence"),
-        ),
+        ("dev", None, ("campaigns", "campaign-01")),
+        ("final", None, ("remote-text", "campaign-01", "evidence")),
+        ("final", "local", ("local-text-qualification", "campaign-01", "evidence")),
     ],
 )
-def test_cli_registration_writes_where_campaign_reads(tmp_path, mode, expected_path):
-    source = tmp_path / "source"
-    binding, receipt = _register(source, mode=mode)
+def test_cli_registration_writes_where_campaign_reads(
+    tmp_path, mode, source, expected_path
+):
+    source_directory = tmp_path / "source"
+    binding, receipt = _register(source_directory, mode=mode, source=source)
     judgments = json.loads(
         (
-            source / "conversation-reviews" / receipt["review_id"] / "judgments.json"
+            source_directory
+            / "conversation-reviews"
+            / receipt["review_id"]
+            / "judgments.json"
         ).read_text(encoding="utf-8")
     )
     request = {

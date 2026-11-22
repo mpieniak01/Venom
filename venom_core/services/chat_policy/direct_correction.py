@@ -156,8 +156,13 @@ class CorrectionContext:
 
 def _question_in_clause(text: str, start: int) -> bool:
     """Return whether the clause starting at ``start`` is phrased as a question."""
-    terminator = re.search(r"(?<!\d)\.(?!\d)|[!?]", text[start:])
+    terminator = _clause_terminator(text, start)
     return terminator is not None and terminator.group() == "?"
+
+
+def _clause_terminator(text: str, start: int) -> re.Match[str] | None:
+    """Find sentence punctuation while allowing decimal points in amounts."""
+    return re.search(r"(?<!\d)\.(?!\d)|[!?]", text[start:])
 
 
 @dataclass
@@ -186,8 +191,19 @@ class _FeeState:
         elif (acceptance := _ACCEPT.search(text)) and not _question_in_clause(
             text, acceptance.start()
         ):
+            acceptance_clause = text[acceptance.start() :]
+            terminator = _clause_terminator(text, acceptance.start())
+            if terminator is not None:
+                acceptance_clause = text[
+                    acceptance.start() : acceptance.start() + terminator.end()
+                ]
+            acceptance_amounts = _AMOUNT.findall(acceptance_clause)
             accepted = (
-                amount if amount is not None else self.proposed if not amounts else None
+                acceptance_amounts[0]
+                if len(acceptance_amounts) == 1
+                else self.proposed
+                if not acceptance_amounts
+                else None
             )
             if accepted is not None:
                 self.binding, self.proposed, self.decision = accepted, None, True

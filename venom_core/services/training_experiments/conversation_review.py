@@ -277,6 +277,11 @@ def register_review_request(root: Path, request: object) -> dict:
         target_root = root / "campaigns" / campaign_id
     elif mode == "final":
         qualification = binding.get("qualification")
+        source = (
+            qualification.get("source", "remote")
+            if isinstance(qualification, dict)
+            else None
+        )
         campaign_id = (
             qualification.get("campaign_id")
             if isinstance(qualification, dict)
@@ -284,7 +289,12 @@ def register_review_request(root: Path, request: object) -> dict:
         )
         if not isinstance(campaign_id, str) or not _ID.fullmatch(campaign_id):
             raise ValueError("conversation_review_campaign_binding_invalid")
-        target_root = root / "local-text-qualification" / campaign_id / "evidence"
+        if source == "local":
+            target_root = root / "local-text-qualification" / campaign_id / "evidence"
+        elif source == "remote":
+            target_root = root / "remote-text" / campaign_id / "evidence"
+        else:
+            raise ValueError("conversation_review_campaign_binding_invalid")
     else:
         raise ValueError("conversation_review_campaign_binding_invalid")
     return register_review(

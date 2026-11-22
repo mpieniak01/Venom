@@ -1361,3 +1361,13 @@ def test_fee_binding_requires_one_unambiguous_declared_amount():
     accepted_without_amount = _FeeState(field="opłat", proposed="50")
     accepted_without_amount.read("Akceptuję opłatę.")
     assert accepted_without_amount.binding == "50"
+
+    accepted_with_followup = _FeeState(field="opłat", proposed="50")
+    accepted_with_followup.read("Akceptuję opłatę 20 zł. Jaka opłata obowiązuje?")
+    assert accepted_with_followup.binding == "20"
+    assert accepted_with_followup.proposed is None
+
+    questioned_acceptance = _FeeState(field="opłat", proposed="50")
+    questioned_acceptance.read("Akceptuję opłatę 20 zł?")
+    assert questioned_acceptance.binding is None
+    assert questioned_acceptance.proposed == "50"

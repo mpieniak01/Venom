@@ -154,8 +154,10 @@ class CorrectionContext:
     verified_reply: str | None = None
 
 
-def _fee_question(text: str) -> bool:
-    return "?" in text and bool(_FEE.search(text))
+def _question_in_clause(text: str, start: int) -> bool:
+    """Return whether the clause starting at ``start`` is phrased as a question."""
+    terminator = re.search(r"(?<!\d)\.(?!\d)|[!?]", text[start:])
+    return terminator is not None and terminator.group() == "?"
 
 
 @dataclass
@@ -181,7 +183,9 @@ class _FeeState:
         if _REJECT.search(text) and self.proposed is not None:
             self.proposed = None
             self.decision = True
-        elif _ACCEPT.search(text) and not _fee_question(text):
+        elif (acceptance := _ACCEPT.search(text)) and not _question_in_clause(
+            text, acceptance.start()
+        ):
             accepted = (
                 amount if amount is not None else self.proposed if not amounts else None
             )
@@ -189,13 +193,9 @@ class _FeeState:
                 self.binding, self.proposed, self.decision = accepted, None, True
         elif _PROPOSAL.search(text) and amount:
             self.proposed, self.decision = amount, False
-        elif (
-            self.field is not None
-            and amount
-            and _INITIAL.search(text)
-            and not _fee_question(text)
-        ):
-            self.binding, self.proposed, self.decision = amount, None, False
+        elif self.field is not None and amount and (initial := _INITIAL.search(text)):
+            if not _question_in_clause(text, initial.start()):
+                self.binding, self.proposed, self.decision = amount, None, False
 
 
 def _verified_number_card_reply(source: str, content: str) -> str | None:

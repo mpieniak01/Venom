@@ -9,6 +9,7 @@ import pytest
 
 from venom_core.services.training_experiments.conversation_review import (
     register_review,
+    register_review_request,
     score,
     verify_final_review,
     verify_review,
@@ -31,8 +32,8 @@ def _evidence(conversations=96):
     return panel, p13, candidate
 
 
-def _register(tmp_path):
-    panel, p13, candidate = _evidence()
+def _register(tmp_path, mode="dev"):
+    panel, p13, candidate = _evidence(96 if mode == "dev" else 48)
     qualification_binding = {
         "campaign_id": "campaign-01",
         "run_id": "run-01",
@@ -64,6 +65,7 @@ def _register(tmp_path):
         "weights_sha256": qualification_binding["checkpoint_sha256"],
     }
     binding = {
+        "campaign_id": "campaign-01",
         "qualification": qualification_binding,
         "p13_identity": identity,
         "candidate_identity": candidate_identity,
@@ -71,7 +73,7 @@ def _register(tmp_path):
     receipt = register_review(
         tmp_path,
         "review-0a-01",
-        mode="dev",
+        mode=mode,
         panel=panel,
         p13=p13,
         candidate=candidate,
@@ -119,7 +121,7 @@ def test_receipt_rejects_other_checkpoint_and_tampered_judgments(tmp_path):
 
 
 def test_final_binding_rechecks_weights_config_snapshot_and_parent(tmp_path):
-    binding, receipt = _register(tmp_path)
+    binding, receipt = _register(tmp_path, mode="final")
 
     verified = verify_final_review(
         tmp_path,
@@ -135,6 +137,57 @@ def test_final_binding_rechecks_weights_config_snapshot_and_parent(tmp_path):
             receipt["review_id"],
             binding["qualification"],
             candidate_config_sha256="9" * 64,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_path"),
+    [
+        ("dev", ("campaigns", "campaign-01")),
+        (
+            "final",
+            ("local-text-qualification", "campaign-01", "evidence"),
+        ),
+    ],
+)
+def test_cli_registration_writes_where_campaign_reads(tmp_path, mode, expected_path):
+    source = tmp_path / "source"
+    binding, receipt = _register(source, mode=mode)
+    judgments = json.loads(
+        (
+            source / "conversation-reviews" / receipt["review_id"] / "judgments.json"
+        ).read_text(encoding="utf-8")
+    )
+    request = {
+        "review_id": f"request-{mode}",
+        "mode": mode,
+        **judgments,
+        "binding": binding,
+        "p13_identity": binding["p13_identity"],
+        "candidate_identity": binding["candidate_identity"],
+        "reviewer_id": "operator-7",
+        "reviewer_note": "Wynik ręcznej oceny.",
+    }
+
+    registered = register_review_request(tmp_path, request)
+
+    assert (
+        tmp_path.joinpath(*expected_path, "conversation-reviews", f"request-{mode}")
+        .joinpath("receipt.json")
+        .exists()
+    )
+    assert registered["status"] == "PASS"
+
+
+def test_final_review_rejects_dev_receipt(tmp_path):
+    binding, receipt = _register(tmp_path, mode="dev")
+
+    with pytest.raises(ValueError, match="final_mode_required"):
+        verify_final_review(
+            tmp_path,
+            receipt["review_id"],
+            binding["qualification"],
+            candidate_config_sha256=binding["candidate_identity"]["config_sha256"],
         )
 
 

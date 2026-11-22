@@ -266,8 +266,29 @@ def register_review_request(root: Path, request: object) -> dict:
     }
     if not isinstance(request, dict) or set(request) != fields:
         raise ValueError("conversation_review_request_invalid")
+    mode = request["mode"]
+    binding = request["binding"]
+    if not isinstance(binding, dict):
+        raise ValueError("conversation_review_binding_required")
+    if mode == "dev":
+        campaign_id = binding.get("campaign_id")
+        if not isinstance(campaign_id, str) or not _ID.fullmatch(campaign_id):
+            raise ValueError("conversation_review_campaign_binding_invalid")
+        target_root = root / "campaigns" / campaign_id
+    elif mode == "final":
+        qualification = binding.get("qualification")
+        campaign_id = (
+            qualification.get("campaign_id")
+            if isinstance(qualification, dict)
+            else None
+        )
+        if not isinstance(campaign_id, str) or not _ID.fullmatch(campaign_id):
+            raise ValueError("conversation_review_campaign_binding_invalid")
+        target_root = root / "local-text-qualification" / campaign_id / "evidence"
+    else:
+        raise ValueError("conversation_review_campaign_binding_invalid")
     return register_review(
-        root,
+        target_root,
         request["review_id"],
         mode=request["mode"],
         panel=request["panel"],
@@ -412,6 +433,8 @@ def verify_final_review(
         raise ValueError("conversation_review_receipt_invalid") from exc
     if not isinstance(receipt, dict):
         raise ValueError("conversation_review_receipt_invalid")
+    if receipt.get("mode") != "final":
+        raise ValueError("conversation_review_final_mode_required")
     binding = receipt.get("binding")
     if (
         not isinstance(binding, dict)

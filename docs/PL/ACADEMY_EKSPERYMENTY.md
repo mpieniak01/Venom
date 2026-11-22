@@ -389,9 +389,18 @@ python -m scripts.academy.conversation_blind \
   --output /prywatny/katalog/ocena-01
 ```
 
-Polecenie atomowo tworzy nowy katalog o uprawnieniach 0700. Recenzentowi przekazuj wyłącznie `reviewer.json`, który zawiera pełne wejście i odpowiedzi obu ramion pod aliasami. `private.json` zawiera przypisanie aliasów i musi pozostać prywatny. Ponowienie do istniejącego katalogu kończy się błędem; gotowy pakiet można ponownie wykorzystać. Wyniki recenzenta trzeba przepisać do szablonu `request.json` z uwzględnieniem prywatnego przypisania aliasów. Historyczne generacje na innym zbiorze nie spełniają tego kontraktu.
+Polecenie atomowo tworzy nowy katalog o uprawnieniach 0700. Przekaż recenzentowi `reviewer.json` z pytaniami, opisami kryteriów i odpowiedziami pod aliasami oraz `judgments-template.json` z formularzem. `private.json` zawiera przypisanie aliasów i ma zostać u operatora. Zachowaj wydaną paczkę do ponowienia. Jeżeli istniejąca paczka pochodzi sprzed dodania formularza, przygotuj nową w odrębnym katalogu na tych samych zapieczętowanych generacjach.
 
-Zarejestruj pakiet z katalogu Academy:
+Recenzent zapisuje wypełniony formularz jako `judgments.json`. Podaje identyfikator, notatkę, oceny wszystkich kryteriów i flagę `critical` każdego aliasu w każdej turze. Pole `package_sha256` pozostaje takie jak w formularzu. Gdy wpłynie komplet ocen, operator rejestruje go jednym poleceniem:
+
+```bash
+python -m scripts.academy.quality --root "$experiment_root" register-blind-review \
+  pending.json /prywatny/katalog/ocena-01 judgments.json
+```
+
+Import sprawdza zgodność paczki, mapy aliasów, formularza, panelu i wiązania checkpointu. Weryfikacja sum wykrywa zmianę lokalnych plików przy zachowaniu zaufania do miejsca ich przechowywania. Scorer zapisuje PASS albo STOP z hashem dowodów. Identyczny import można ponowić na tym samym zapisie `pending.json`. Kampania uwzględnia potwierdzenie przy następnym odczycie lub przejściu. Historyczna generacja na innym zbiorze wymaga osobnego protokołu.
+
+Jeżeli używasz ręcznie wypełnionego `request.json`, zarejestruj go poleceniem:
 
 ```bash
 python -m scripts.academy.quality --root "$experiment_root" register-review "$request_json"

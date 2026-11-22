@@ -28,7 +28,8 @@ def main(argv: list[str] | None = None) -> None:
         target = publish_blind_package(args.output, package, private)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         parser.exit(1, f"Blind review failed: {exc}\n")
-    print(f"Review package saved to {target}; share only reviewer.json.")
+    print(f"Review package saved to {target}.")
+    print("Share reviewer.json and judgments-template.json with the reviewer.")
 
 
 if __name__ == "__main__":

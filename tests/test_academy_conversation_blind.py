@@ -11,6 +11,8 @@ from venom_core.services.training_experiments.checkpoint_evaluation import (
 )
 from venom_core.services.training_experiments.conversation_blind import (
     prepare_blind_package,
+    publish_blind_package,
+    register_blind_review,
 )
 from venom_core.services.training_experiments.conversation_review import payload_sha
 from venom_core.services.training_experiments.profiles import (
@@ -124,6 +126,7 @@ def input_data(tmp_path):
         },
     )
     binding = {
+        "campaign_id": "campaign-01",
         "panel_sha256": payload_sha(panel),
         "development_identity": {"dataset_sha256": digest(dataset)},
         "p13_identity": parent,
@@ -201,6 +204,12 @@ def test_cli_publishes_only_anonymous_review_and_private_mapping(
     assert private["package_sha256"] == stable_hash(review)
     assert "aliases" not in json.dumps(review)
     assert "Question 1" in json.dumps(review)
+    template = read_json(output / "judgments-template.json")
+    assert template["package_sha256"] == private["package_sha256"]
+    assert template["judgments"]["C000"]["T1"]["A"]["critical"] is None
+    turn = review["conversations"]["C000"]["turns"]["T1"]
+    assert turn["criterion_descriptions"] == {"content": "Answer"}
+    assert set(turn["answers"]["A"]) == {"text", "input_messages"}
     assert "candidate" not in capsys.readouterr().out
     assert (output.stat().st_mode & 0o777) == 0o700
     before = (output / "reviewer.json").read_bytes()
@@ -248,3 +257,99 @@ def test_blind_package_rejects_different_history_after_resealing(input_data):
     )
     with pytest.raises(ValueError):
         prepare_blind_package(pending, panel, dataset, parent, candidate)
+
+
+@pytest.fixture
+def issued_review(input_data, tmp_path):
+    pending = input_data[0]
+    package, private = prepare_blind_package(*input_data)
+    output = publish_blind_package(tmp_path / "package", package, private)
+    template = read_json(output / "judgments-template.json")
+    template.update(reviewer_id="operator", reviewer_note="Ocena całego panelu.")
+    return pending, output, template, private
+
+
+def _fill_review(submission):
+    for turns in submission["judgments"].values():
+        for arms in turns.values():
+            for verdict in arms.values():
+                verdict.update(criteria={"content": True}, critical=False)
+
+
+@pytest.mark.parametrize("critical", [False, True])
+def test_cli_registers_blind_verdict_with_original_aliases(
+    issued_review, tmp_path, capsys, critical
+):
+    from scripts.academy.quality import main
+
+    pending, output, submitted, private = issued_review
+    _fill_review(submitted)
+    alias = next(
+        alias for alias, arm in private["aliases"]["C000"].items() if arm == "candidate"
+    )
+    submitted["judgments"]["C000"]["T2"][alias]["critical"] = critical
+    pending_file, judgments_file = (
+        tmp_path / "pending.json",
+        tmp_path / "judgments.json",
+    )
+    _write(pending_file, pending)
+    _write(judgments_file, submitted)
+    root = tmp_path / "experiments"
+    args = [
+        "--root",
+        str(root),
+        "register-blind-review",
+        str(pending_file),
+        str(output),
+        str(judgments_file),
+    ]
+    main(args)
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["status"] == ("STOP" if critical else "PASS")
+    assert receipt["critical"] == (["C000/T2"] if critical else [])
+    assert receipt["lost"] == (["C000"] if critical else [])
+    assert len(receipt["blind_review_sha256"]) == 64
+    main(args)
+    assert json.loads(capsys.readouterr().out) == receipt
+    submitted["reviewer_note"] = "Inna ocena."
+    with pytest.raises(ValueError, match="immutable_conflict"):
+        register_blind_review(root, pending, output, submitted)
+
+
+@pytest.mark.parametrize(
+    ("change", "error"),
+    [
+        ("blank", "verdict_invalid"),
+        ("missing", "blind_coverage_invalid"),
+        ("other_package", "blind_submission_invalid"),
+        ("alias_swap", "blind_package_mismatch"),
+        ("reviewer_edit", "blind_package_mismatch"),
+        ("other_checkpoint", "blind_package_mismatch"),
+    ],
+)
+def test_blind_import_rejects_incomplete_or_unbound_review(
+    issued_review, tmp_path, change, error
+):
+    pending, output, submitted, private = issued_review
+    if change != "blank":
+        _fill_review(submitted)
+    if change == "missing":
+        del submitted["judgments"]["C000"]["T3"]["B"]
+    elif change == "other_package":
+        submitted["package_sha256"] = "0" * 64
+    elif change == "alias_swap":
+        arms = private["aliases"]["C000"]
+        arms["A"], arms["B"] = arms["B"], arms["A"]
+        _write(output / "private.json", private)
+    elif change == "reviewer_edit":
+        package = read_json(output / "reviewer.json")
+        package["conversations"]["C000"]["turns"]["T2"]["answers"]["A"]["text"] = (
+            "changed"
+        )
+        _write(output / "reviewer.json", package)
+    elif change == "other_checkpoint":
+        pending["conversation_review_binding"]["step"] = 22
+    root = tmp_path / "experiments"
+    with pytest.raises(ValueError, match=error):
+        register_blind_review(root, pending, output, submitted)
+    assert not root.exists()

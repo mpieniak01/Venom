@@ -18,6 +18,8 @@ from venom_core.services.training_experiments.checkpoint_evaluation import (
 from venom_core.services.training_experiments.conversation_review import (
     _validate_panel,
     payload_sha,
+    prepare_checkpoint_review,
+    register_review_request,
 )
 from venom_core.services.training_experiments.profiles import (
     digest,
@@ -112,6 +114,7 @@ def prepare_blind_package(
         raise ValueError("conversation_review_dataset_binding_invalid")
     cases = read_jsonl(dataset)
     index = _case_index(cases, panel)
+    cases_by_id = {case["record_id"]: case for case in cases}
     parent, parent_seal, parent_manifest = _verified_arm(
         parent_generation, cases, binding["p13_identity"], dataset_hash
     )
@@ -164,8 +167,18 @@ def prepare_blind_package(
                     or not answer["text"].strip()
                 ):
                     raise ValueError("conversation_review_generation_incomplete")
-                views[alias] = answer
-            turns[turn] = {"criteria": spec["turns"][turn], "answers": views}
+                views[alias] = {
+                    "text": answer["text"],
+                    "input_messages": answer["input_messages"],
+                }
+            turns[turn] = {
+                "criteria": spec["turns"][turn],
+                "criterion_descriptions": {
+                    criterion["id"]: criterion["description"]
+                    for criterion in cases_by_id[record_id]["criteria"]
+                },
+                "answers": views,
+            }
         reviewer[conversation] = {"group": spec["group"], "turns": turns}
     package = {
         "panel_sha256": payload_sha(panel),
@@ -178,6 +191,7 @@ def prepare_blind_package(
         "package_sha256": stable_hash(package),
         "aliases": mapping,
     }
+    private["manifest_sha256"] = stable_hash(private)
     return package, private
 
 
@@ -196,5 +210,119 @@ def publish_blind_package(target: Path, package: dict, private: dict) -> Path:
             bundle.mkdir(mode=0o700)
             atomic_json(bundle / "reviewer.json", package)
             atomic_json(bundle / "private.json", private)
+            atomic_json(
+                bundle / "judgments-template.json", _judgments_template(package)
+            )
             os.replace(bundle, target)
     return target
+
+
+def _judgments_template(package: dict) -> dict:
+    return {
+        "package_sha256": stable_hash(package),
+        "reviewer_id": "",
+        "reviewer_note": "",
+        "judgments": {
+            conversation: {
+                turn: {
+                    alias: {
+                        "criteria": dict.fromkeys(row["criteria"]),
+                        "critical": None,
+                    }
+                    for alias in row["answers"]
+                }
+                for turn, row in spec["turns"].items()
+            }
+            for conversation, spec in package["conversations"].items()
+        },
+    }
+
+
+def register_blind_review(
+    root: Path, pending: dict, package_dir: Path, submitted: object
+) -> dict:
+    """Unblind complete judgments for exactly the package issued for this checkpoint."""
+    package = read_json(package_dir / "reviewer.json")
+    private = read_json(package_dir / "private.json")
+    _verify_blind_package(pending, package, private)
+    if (
+        not isinstance(submitted, dict)
+        or set(submitted)
+        != {"package_sha256", "reviewer_id", "reviewer_note", "judgments"}
+        or submitted["package_sha256"] != private["package_sha256"]
+    ):
+        raise ValueError("conversation_review_blind_submission_invalid")
+
+    panel = {
+        conversation: {
+            "group": spec["group"],
+            "turns": {turn: row["criteria"] for turn, row in spec["turns"].items()},
+        }
+        for conversation, spec in package["conversations"].items()
+    }
+    request = prepare_checkpoint_review(pending, panel)
+    request["reviewer_id"] = submitted["reviewer_id"]
+    request["reviewer_note"] = submitted["reviewer_note"]
+    judgments = submitted["judgments"]
+    aliases = private["aliases"]
+    _require_keys(judgments, panel)
+    _require_keys(aliases, panel)
+    for conversation, spec in panel.items():
+        _unblind_conversation(request, conversation, spec, judgments, aliases)
+    return register_review_request(
+        root,
+        request,
+        blind_review_sha256=stable_hash(
+            {
+                "package": private["package_sha256"],
+                "private": private,
+                "submission": submitted,
+            }
+        ),
+    )
+
+
+def _verify_blind_package(pending: dict, package: dict, private: dict) -> None:
+    fields = {
+        "review_id",
+        "binding_sha256",
+        "package_sha256",
+        "aliases",
+        "manifest_sha256",
+    }
+    if not isinstance(private, dict) or private.keys() != fields:
+        raise ValueError("conversation_review_blind_manifest_invalid")
+    binding = pending["conversation_review_binding"]
+    manifest = {
+        key: value for key, value in private.items() if key != "manifest_sha256"
+    }
+    if (
+        private["manifest_sha256"] != stable_hash(manifest)
+        or private["package_sha256"] != stable_hash(package)
+        or private["review_id"] != pending["conversation_review_id"]
+        or private["binding_sha256"] != stable_hash(binding)
+        or package["panel_sha256"] != binding["panel_sha256"]
+        or package["dataset_sha256"]
+        != binding["development_identity"]["dataset_sha256"]
+    ):
+        raise ValueError("conversation_review_blind_package_mismatch")
+
+
+def _require_keys(value: object, expected: dict | set) -> None:
+    if not isinstance(value, dict) or value.keys() != set(expected):
+        raise ValueError("conversation_review_blind_coverage_invalid")
+
+
+def _unblind_conversation(
+    request: dict, conversation: str, spec: dict, judgments: dict, aliases: dict
+) -> None:
+    alias_map = aliases[conversation]
+    turns = judgments[conversation]
+    _require_keys(alias_map, {"A", "B"})
+    if sorted(alias_map.values()) != ["candidate", "p13"]:
+        raise ValueError("conversation_review_blind_alias_invalid")
+    _require_keys(turns, spec["turns"])
+    for turn, verdicts in turns.items():
+        _require_keys(verdicts, alias_map)
+        for alias, arm in alias_map.items():
+            request[arm][conversation][turn] = verdicts[alias]

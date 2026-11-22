@@ -47,6 +47,10 @@ def main(argv: list[str] | None = None) -> None:
     prepare.add_argument("panel", type=Path)
     review = commands.add_parser("register-review")
     review.add_argument("request", type=Path)
+    blind = commands.add_parser("register-blind-review")
+    blind.add_argument("pending", type=Path)
+    blind.add_argument("package", type=Path)
+    blind.add_argument("judgments", type=Path)
     commands.add_parser("list")
     commands.add_parser("show").add_argument("record_id")
     analyze = commands.add_parser("analyze")
@@ -78,6 +82,17 @@ def main(argv: list[str] | None = None) -> None:
             )
         elif args.command == "register-review":
             result = register_review_request(experiments.root, read_json(args.request))
+        elif args.command == "register-blind-review":
+            from venom_core.services.training_experiments.conversation_blind import (
+                register_blind_review,
+            )
+
+            result = register_blind_review(
+                experiments.root,
+                read_json(args.pending),
+                args.package,
+                read_json(args.judgments),
+            )
         elif args.command == "list":
             result = list_records(experiments)
         elif args.command == "show":

@@ -28,6 +28,7 @@ from . import optuna_backend, quality_guard, quality_native
 from .adapters import verify_adapter_entry
 from .campaign_schema import CampaignSpec
 from .checkpoint_evaluation import validate_steps
+from .profiles import digest, stable_hash
 from .retention import (
     ExperimentArtifacts,
     Retention,
@@ -52,6 +53,8 @@ class CampaignExperiments(ExperimentArtifacts, Protocol):
     def profiles(self) -> list[dict]: ...
 
     def free_storage_bytes(self, profile_id: str) -> int: ...
+
+    def run_dir(self, run_id: str) -> Path: ...
 
     def status(self, run_id: str) -> dict: ...
 
@@ -737,6 +740,8 @@ def _quality_error(exc: Exception) -> str:
     code = str(exc)
     if re.fullmatch(r"campaign_quality_[a-z0-9_]+", code):
         return code
+    if re.fullmatch(r"conversation_review_[a-z0-9_]+", code):
+        return f"campaign_quality_{code}"
     return "campaign_quality_evidence_unavailable"
 
 
@@ -840,6 +845,31 @@ class CampaignService:
         return state
 
     def _review_selection(self, state: dict) -> None:
+        if state["plan"].get("conversation_review") is not None:
+            from .conversation_review import checkpoint_review_id
+
+            config = state["plan"]["conversation_review"]
+            pending = [
+                (trial, row)
+                for trial in state["trials"]
+                if trial["status"] == "succeeded"
+                for row in trial.get("checkpoint_evaluations", ())
+                if row.get("conversation_review_status") == "pending"
+                and (
+                    self.directory(state["campaign_id"])
+                    / "conversation-reviews"
+                    / checkpoint_review_id(
+                        config["receipt_id_prefix"], trial["run_id"], row["step"]
+                    )
+                    / "receipt.json"
+                ).is_file()
+            ]
+            for trial, _row in pending:
+                self._record_checkpoint_results(
+                    state, trial, state["plan"].get("quality_policy")
+                )
+            if pending:
+                _rank(state)
         requires_verification = (
             state["plan"].get("quality_policy") or "checkpoint_steps" in state["plan"]
         )
@@ -857,7 +887,17 @@ class CampaignService:
             state["selected_run_id"] = None
             if "selected_checkpoint_step" in state:
                 state["selected_checkpoint_step"] = None
-            state["quality_policy_error"] = _quality_error(exc)
+            if state["plan"].get("conversation_review") is not None:
+                state.update(
+                    status="blocked",
+                    phase="complete",
+                    qualification_status="incomplete",
+                    quality_policy_error="campaign_quality_conversation_review_changed",
+                    error="campaign_quality_conversation_review_changed",
+                    worker=None,
+                )
+            else:
+                state["quality_policy_error"] = _quality_error(exc)
 
     def _review_repeat_confirmation(self, state: dict) -> None:
         confirmation = state.get("repeat_confirmation", {})
@@ -1495,7 +1535,116 @@ class CampaignService:
             item["qualified"] = (
                 _passes_selection(item, selection) and guard["status"] == "passed"
             )
+        review_config = state["plan"].get("conversation_review")
+        if review_config is not None:
+            from .conversation_review import (
+                MissingConversationReview,
+                checkpoint_review_id,
+                verify_review,
+            )
+
+            try:
+                receipt, binding = self._verify_conversation_checkpoint_review(
+                    state,
+                    run_id,
+                    step,
+                    checksum,
+                    record,
+                    review_config,
+                    verify_review,
+                    checkpoint_review_id,
+                )
+                item["conversation_review_binding"] = binding
+            except MissingConversationReview as exc:
+                item["qualified"] = False
+                item["conversation_review_status"] = "pending"
+                item["conversation_review_reason"] = "receipt_missing"
+                item["conversation_review_id"] = exc.review_id
+                item["conversation_review_binding"] = exc.binding
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                item["qualified"] = False
+                item["conversation_review_status"] = "blocked"
+                item["conversation_review_reason"] = _quality_error(exc)
+            else:
+                item["conversation_review_status"] = receipt["status"].lower()
+                item["conversation_review_reason"] = (
+                    None if receipt["status"] == "PASS" else "score_stop"
+                )
+                item["conversation_review_sha256"] = stable_hash(receipt)
+                item["qualified"] = item["qualified"] and receipt["status"] == "PASS"
         return item
+
+    def _verify_conversation_checkpoint_review(
+        self,
+        state: dict,
+        run_id: str,
+        step: int,
+        result_sha256: str,
+        record: dict,
+        config: dict,
+        verify_review_fn: Callable,
+        review_id_fn: Callable,
+    ) -> tuple[dict, dict]:
+        plan = state["plan"]
+        parent_id = plan["quality_policy"]["parent_reference_record_id"]
+        parent = quality_native.get_record(self.experiments, parent_id)
+        initial = plan["variants"][0].get("initial_adapter")
+        if not isinstance(initial, dict):
+            raise ValueError("conversation_review_parent_adapter_missing")
+        checkpoint_dir = (
+            self.experiments.run_dir(run_id) / "training" / f"checkpoint-{step}"
+        )
+        config_path = checkpoint_dir / "adapter_config.json"
+        candidate_identity = {
+            "model": record["identity"]["model"],
+            "weights_sha256": record["candidate_sha256"],
+            "config_sha256": digest(config_path),
+            "snapshot_sha256": record["identity"]["base_sha256"],
+        }
+        p13_identity = {
+            name: initial[name]
+            for name in ("model", "weights_sha256", "config_sha256", "snapshot_sha256")
+        }
+        if (
+            parent["split"] != "dev"
+            or parent["candidate_sha256"] != p13_identity["weights_sha256"]
+            or parent["identity"]["model"] != p13_identity["model"]
+            or parent["identity"]["base_sha256"] != p13_identity["snapshot_sha256"]
+            or parent["identity"]["dataset_sha256"]
+            != record["identity"]["dataset_sha256"]
+            or parent["identity"]["protocol_sha256"]
+            != record["identity"]["protocol_sha256"]
+        ):
+            raise ValueError("conversation_review_parent_reference_mismatch")
+        binding = {
+            "campaign_id": plan["campaign_id"],
+            "plan_sha256": plan["plan_sha256"],
+            "profile_identity": plan["profile_identity"],
+            "run_id": run_id,
+            "step": step,
+            "checkpoint_result_sha256": result_sha256,
+            "p13_record_id": parent_id,
+            "p13_record_sha256": parent["source"]["sha256"],
+            "p13_identity": p13_identity,
+            "candidate_identity": candidate_identity,
+            "panel_sha256": config["panel_sha256"],
+            "development_identity": record["identity"],
+        }
+        review_id = review_id_fn(config["receipt_id_prefix"], run_id, step)
+        try:
+            receipt = verify_review_fn(
+                self.directory(state["campaign_id"]),
+                review_id,
+                binding,
+                require_pass=False,
+            )
+        except FileNotFoundError as exc:
+            from .conversation_review import MissingConversationReview
+
+            raise MissingConversationReview(review_id, binding) from exc
+        if receipt["panel_sha256"] != config["panel_sha256"]:
+            raise ValueError("conversation_review_panel_hash_mismatch")
+        return receipt, binding
 
     def _record_checkpoint_results(
         self, state: dict, trial: dict, policy: dict | None
@@ -1811,9 +1960,35 @@ class CampaignService:
         directory = self.directory(campaign_id)
         state = self._state(directory)
         if state.get("phase") == "qualification":
+            if state["plan"].get("conversation_review") is not None:
+                with file_lock(directory / ".state.lock"):
+                    state = self._state(directory)
+                    self._review_selection(state)
+                    if state.get("phase") != "qualification":
+                        self._save(directory, state)
+                        return state
             from .local_campaign_final import advance
 
             return advance(self, campaign_id)
+        if (
+            state.get("phase") == "trials"
+            and state.get("status") == "awaiting_review"
+            and state["plan"].get("conversation_review") is not None
+        ):
+            with file_lock(directory / ".state.lock"):
+                state = self._state(directory)
+                self._review_selection(state)
+                state["status"] = state.get("training_status", "succeeded")
+                if state["plan"].get("final_qualification"):
+                    from .local_campaign_final import transition
+
+                    transition(state, service=self)
+                else:
+                    state["status"] = "succeeded"
+                if state["status"] not in _ACTIVE:
+                    state["worker"] = None
+                self._save(directory, state)
+                return state
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
             if state["status"] not in _ACTIVE:
@@ -1840,7 +2015,7 @@ class CampaignService:
             if state["plan"].get("final_qualification"):
                 from .local_campaign_final import transition
 
-                transition(state)
+                transition(state, service=self)
             if state["status"] not in _ACTIVE:
                 state["worker"] = None
             self._save(directory, state)

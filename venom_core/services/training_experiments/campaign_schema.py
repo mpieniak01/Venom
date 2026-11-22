@@ -110,6 +110,17 @@ class CampaignQualityPolicy(BaseModel):
         return self
 
 
+class CampaignConversationReview(BaseModel):
+    """Opt-in 0A development conversation receipt gate for each checkpoint."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    panel_sha256: Digest
+    receipt_id_prefix: str = Field(
+        min_length=1, max_length=20, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    )
+
+
 class CampaignFinalQualification(BaseModel):
     """Select an operator-registered private holdout and reserve its session budget."""
 
@@ -117,6 +128,16 @@ class CampaignFinalQualification(BaseModel):
 
     inputs_id: CampaignId
     reserve_seconds: int = Field(ge=30, le=86400)
+    conversation_review_required: bool = False
+    conversation_review_id: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+    )
+
+    @model_validator(mode="after")
+    def validate_conversation_review(self) -> "CampaignFinalQualification":
+        if self.conversation_review_required and self.conversation_review_id is None:
+            raise ValueError("campaign_conversation_review_id_required")
+        return self
 
 
 CheckpointStep = Annotated[int, Field(ge=1, le=10000)]
@@ -137,6 +158,7 @@ class CampaignSpec(BaseModel):
     retention: Literal["keep_all", "discard_rejected"] = "keep_all"
     review_mode: Literal["manual", "automatic"] = "manual"
     quality_policy: CampaignQualityPolicy | None = None
+    conversation_review: CampaignConversationReview | None = None
     extension: CampaignExtension | None = None
     final_qualification: CampaignFinalQualification | None = None
     checkpoint_steps: list[CheckpointStep] | None = Field(
@@ -163,6 +185,7 @@ class CampaignSpec(BaseModel):
         ):
             raise ValueError("campaign_checkpoint_steps_invalid")
         self._validate_final_qualification()
+        self._validate_conversation_review()
         self._validate_extension()
         self._validate_repeat_recipe()
         self._validate_parent_protection()
@@ -195,6 +218,21 @@ class CampaignSpec(BaseModel):
             > self.budget.max_seconds - self.final_qualification.reserve_seconds
         ):
             raise ValueError("campaign_final_qualification_invalid")
+
+    def _validate_conversation_review(self) -> None:
+        if self.conversation_review is None:
+            return
+        if (
+            self.strategy != "fixed"
+            or self.review_mode != "automatic"
+            or self.checkpoint_steps is None
+            or self.quality_policy is None
+            or self.quality_policy.parent_reference_record_id is None
+            or self.quality_policy.protect_parent_full_pass is not True
+            or self.retention != "keep_all"
+            or self.final_qualification is None
+        ):
+            raise ValueError("campaign_conversation_review_invalid")
 
     def _validate_repeat_recipe(self) -> None:
         if (

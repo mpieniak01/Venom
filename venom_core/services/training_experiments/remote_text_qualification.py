@@ -18,7 +18,7 @@ from pathlib import Path
 from socket import create_connection
 from typing import Annotated, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from scripts.academy.omni_pl_chat_adapter import verify_initial_adapter
 from scripts.academy.omni_pl_chat_data import validate_splits
@@ -98,6 +98,16 @@ class QualificationInputs(BaseModel):
     snapshot: Path
     training_venv: Path
     max_seconds: Annotated[int, Field(strict=True, ge=30, le=86400)]
+    conversation_review_required: bool = False
+    conversation_review_id: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+    )
+
+    @model_validator(mode="after")
+    def validate_conversation_review(self) -> "QualificationInputs":
+        if self.conversation_review_required and self.conversation_review_id is None:
+            raise ValueError("remote_text_conversation_review_id_required")
+        return self
 
 
 def _binding(
@@ -623,6 +633,7 @@ def _measure(
     selection: dict,
     *,
     seconds: float = 0.0,
+    conversation_review: dict | None = None,
     check: Callable[[], float] | None = None,
 ) -> dict:
     has_parent = binding.get("parent") is not None
@@ -641,6 +652,14 @@ def _measure(
         "holdout_identity": identity,
         "generation_seal_sha256": digest(generation / "generation-seal.json"),
     }
+    if conversation_review is not None:
+        if (
+            conversation_review.get("binding", {}).get("qualification") != binding
+            or conversation_review.get("status") != "PASS"
+        ):
+            raise ValueError("remote_text_conversation_review_binding_invalid")
+        result["conversation_review_id"] = conversation_review["review_id"]
+        result["conversation_review_sha256"] = stable_hash(conversation_review)
     if has_parent:
         result["adapter_config_sha256"] = adapter["config_sha256"]
     legacy = calibration["judge"] == "exact-v1"
@@ -831,6 +850,30 @@ def read_qualification(
     )
     _verify_parent(binding, academy_root)
     result = _read_result(directory, binding)
+    if result is not None and result.get("conversation_review_id") is not None:
+        from .conversation_review import verify_final_review
+
+        try:
+            receipt = verify_final_review(
+                evidence_root,
+                result["conversation_review_id"],
+                binding,
+                candidate_config_sha256=result["adapter_config_sha256"],
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            return {
+                **result,
+                "status": "incomplete_calibration",
+                "qualified": None,
+                "qualification_reason": "remote_text_conversation_review_invalid",
+            }
+        if stable_hash(receipt) != result.get("conversation_review_sha256"):
+            return {
+                **result,
+                "status": "incomplete_calibration",
+                "qualified": None,
+                "qualification_reason": "remote_text_conversation_review_changed",
+            }
     if (
         result is not None
         and result["qualified"] is not None
@@ -889,6 +932,9 @@ def _qualify_locked(
     check: Callable[[], float] | None = None,
 ) -> dict:
     with file_lock(directory / ".lock"):
+        review_receipt = None
+        if spec.conversation_review_required and spec.conversation_review_id is None:
+            raise ValueError("remote_text_conversation_review_required")
         intent = directory / "intent.json"
         if intent.exists() and read_json(intent) != binding:
             raise ValueError("remote_text_final_already_bound")
@@ -927,6 +973,35 @@ def _qualify_locked(
                 expected_archive_sha256=binding["archive_sha256"],
             )
             adapter = _adapter_identity(checkpoint, binding, manifest)
+            if spec.conversation_review_id is not None:
+                from .conversation_review import verify_review
+
+                parent_entry = (binding.get("parent") or {}).get("entry")
+                if parent_entry is None:
+                    raise ValueError("remote_text_conversation_review_parent_required")
+                p13_identity = {
+                    name: parent_entry[name]
+                    for name in (
+                        "model",
+                        "weights_sha256",
+                        "config_sha256",
+                        "snapshot_sha256",
+                    )
+                }
+                candidate_identity = {
+                    "model": adapter["model"],
+                    "weights_sha256": adapter["weights_sha256"],
+                    "config_sha256": adapter["config_sha256"],
+                    "snapshot_sha256": adapter["snapshot_sha256"],
+                }
+                review_binding = {
+                    "qualification": binding,
+                    "p13_identity": p13_identity,
+                    "candidate_identity": candidate_identity,
+                }
+                review_receipt = verify_review(
+                    evidence_root, spec.conversation_review_id, review_binding
+                )
             parent = _stage_parent(binding, manifest, academy_root, workspace)
             if result is None:
                 result = _run_final(
@@ -940,6 +1015,7 @@ def _qualify_locked(
                     remote["plan"]["selection"],
                     evaluator,
                     parent=parent,
+                    conversation_review=review_receipt,
                     check=check,
                 )
             if check is not None:
@@ -966,6 +1042,7 @@ def _run_final(
     evaluator: Callable[[list[str], Path, int, str, str], None],
     *,
     parent: Path | None = None,
+    conversation_review: dict | None = None,
     check: Callable[[], float] | None = None,
 ) -> dict:
     started = time.monotonic()
@@ -1024,7 +1101,8 @@ def _run_final(
         binding,
         selection,
         seconds=remaining(),
-        **({"check": check} if check is not None else {}),
+        conversation_review=conversation_review,
+        check=check,
     )
     remaining()
     # The case definitions, outputs and judgments stay on the independent host.

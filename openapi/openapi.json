@@ -15162,6 +15162,32 @@
         ],
         "title": "CampaignBudget"
       },
+      "CampaignConversationReview": {
+        "properties": {
+          "panel_sha256": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Panel Sha256"
+          },
+          "receipt_id_prefix": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+            "title": "Receipt Id Prefix"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "panel_sha256",
+          "receipt_id_prefix"
+        ],
+        "title": "CampaignConversationReview",
+        "description": "Opt-in 0A development conversation receipt gate for each checkpoint."
+      },
       "CampaignExtension": {
         "properties": {
           "initial_trials": {
@@ -15203,6 +15229,23 @@
             "maximum": 86400.0,
             "minimum": 30.0,
             "title": "Reserve Seconds"
+          },
+          "conversation_review_required": {
+            "type": "boolean",
+            "title": "Conversation Review Required",
+            "default": false
+          },
+          "conversation_review_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Review Id"
           }
         },
         "additionalProperties": false,
@@ -15453,6 +15496,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/CampaignQualityPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "conversation_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignConversationReview"
               },
               {
                 "type": "null"

@@ -306,6 +306,7 @@ def _source_card_context(
             + absent,
             verified_reply=_verified_number_card_reply(source, content),
         )
+    return None
 
 
 def _cancelled_registration_context(
@@ -324,6 +325,7 @@ def _cancelled_registration_context(
             "Zaproszenie ma jasno mówić, że nie trzeba się zapisywać." + admission,
             free_admission=free_admission,
         )
+    return None
 
 
 def _conversation_fact_context(
@@ -337,6 +339,7 @@ def _conversation_fact_context(
         context = resolver(visible, preceding_users)
         if context is not None:
             return context
+    return None
 
 
 def _is_fee_state_request(visible: str) -> bool:

@@ -937,6 +937,7 @@ def _qualify_locked(
             directory, evidence_root, academy_root, binding
         )
         if completed:
+            assert result is not None
             return result
         if check is not None:
             check()

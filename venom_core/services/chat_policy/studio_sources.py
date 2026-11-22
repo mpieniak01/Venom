@@ -60,11 +60,15 @@ def plan_studio_source(
     """Resolve source reuse and external lookup intent without executing a read."""
     previous_users = [turn.content for turn in history if turn.role == "user"]
     previous = previous_users[-1] if previous_users else ""
-    query = grounding_follow_up(lookup_text_outside_quoted_task(message), previous)
+    query: str | None = grounding_follow_up(
+        lookup_text_outside_quoted_task(message), previous
+    )
     prior_evidence = (
         _previous_evidence(history_records) if local_qualification else None
     )
-    explicit_rss = local_qualification and is_rss_read_request(query)
+    explicit_rss = (
+        local_qualification and query is not None and is_rss_read_request(query)
+    )
     scope_reply, prior_context = _previous_source_context(
         message, prior_evidence, local_qualification, explicit_rss
     )
@@ -118,5 +122,7 @@ def _lookup_query(
     ):
         return None
     if local_qualification and source_revision_hint(message):
+        return None
+    if query is None:
         return None
     return public_lookup_query(query) if local_qualification else query

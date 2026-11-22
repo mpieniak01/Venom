@@ -2888,3 +2888,34 @@ def test_review_refresh_updates_only_requested_checkpoint_rows():
         passed,
         {"step": 26, "status": "succeeded", "result_sha256": "new-26"},
     ]
+
+
+@pytest.mark.parametrize("final_qualification", [False, True])
+def test_review_change_keeps_campaign_blocked(final_qualification, tmp_path):
+    service = object.__new__(CampaignService)
+    state = {
+        "status": "awaiting_review",
+        "training_status": "succeeded",
+        "phase": "trials",
+        "error": None,
+        "plan": {
+            "conversation_review": {},
+            "final_qualification": {"enabled": True} if final_qualification else None,
+        },
+    }
+    service._state = lambda _directory: state
+    service._review_selection = lambda current: current.update(
+        status="blocked",
+        phase="complete",
+        qualification_status="incomplete",
+        quality_policy_error="campaign_quality_conversation_review_changed",
+        error="campaign_quality_conversation_review_changed",
+        worker=None,
+    )
+    service._save = lambda _directory, current: current
+
+    result = service._advance_conversation_review(tmp_path)
+
+    assert result["status"] == "blocked"
+    assert result["phase"] == "complete"
+    assert result["qualification_status"] == "incomplete"

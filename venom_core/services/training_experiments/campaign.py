@@ -2053,13 +2053,17 @@ class CampaignService:
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
             self._review_selection(state)
-            state["status"] = state.get("training_status", "succeeded")
-            if state["plan"].get("final_qualification"):
-                from .local_campaign_final import transition
+            review_changed = (
+                state.get("error") == "campaign_quality_conversation_review_changed"
+            )
+            if not review_changed:
+                state["status"] = state.get("training_status", "succeeded")
+                if state["plan"].get("final_qualification"):
+                    from .local_campaign_final import transition
 
-                transition(state, service=self)
-            else:
-                state["status"] = "succeeded"
+                    transition(state, service=self)
+                else:
+                    state["status"] = "succeeded"
             if state["status"] not in _ACTIVE:
                 state["worker"] = None
             self._save(directory, state)

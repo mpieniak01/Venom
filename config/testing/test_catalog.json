@@ -861,6 +861,20 @@
       "rationale": "Verify remote Academy evidence identity, transfer fault recovery, and honest development ranking."
     },
     {
+      "path": "tests/test_academy_conversation_blind.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify 0A blinded review package integrity, paired provenance and publication."
+    },
+    {
       "path": "tests/test_academy_conversation_review.py",
       "domain": "academy",
       "test_type": "unit",

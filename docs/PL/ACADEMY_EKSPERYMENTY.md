@@ -380,6 +380,17 @@ python -m scripts.academy.quality --root "$experiment_root" prepare-checkpoint-r
 
 Polecenie sprawdza status, identyfikatory modeli i hash panelu względem wiązania kampanii. Wypełnij wszystkie pola kryteriów i `critical` wartościami `true` lub `false` oraz dane recenzenta. Początkowe wartości `null` nie są oceną i rejestracja ich nie przyjmie. Użyj osobnych odpowiedzi modeli z tej samej próby, zachowując historię każdej rozmowy.
 
+Aby przygotować ślepą paczkę z generacji natywnej, użyj dokładnego obiektu oczekującego checkpointu ze statusu kampanii oraz zapieczętowanych generacji rodzica i checkpointu. Plik datasetu JSONL musi mieć SHA-256 zgodny z `development_identity.dataset_sha256` w wiązaniu. Dla każdej tury rekord musi zawierać `review_group` zgodne z grupą panelu oraz `dialogue.id` i `dialogue.turn_index` odpowiadające rozmowie i pozycji w posortowanych identyfikatorach tur panelu. Identyfikatory kryteriów rekordu muszą odpowiadać kryteriom tury. Dataset musi pokrywać cały panel 0A. Pieczęć potwierdza integralność zapisanej generacji, a pochodzenie wykonania opiera się na zaufaniu do natywnego wykonawcy.
+
+```bash
+python -m scripts.academy.conversation_blind \
+  --pending pending.json --panel panel.json --dataset dev.jsonl \
+  --parent /sciezka/do/generacji-p13 --candidate /sciezka/do/generacji-checkpointu \
+  --output /prywatny/katalog/ocena-01
+```
+
+Polecenie atomowo tworzy nowy katalog o uprawnieniach 0700. Recenzentowi przekazuj wyłącznie `reviewer.json`, który zawiera pełne wejście i odpowiedzi obu ramion pod aliasami. `private.json` zawiera przypisanie aliasów i musi pozostać prywatny. Ponowienie do istniejącego katalogu kończy się błędem; gotowy pakiet można ponownie wykorzystać. Wyniki recenzenta trzeba przepisać do szablonu `request.json` z uwzględnieniem prywatnego przypisania aliasów. Historyczne generacje na innym zbiorze nie spełniają tego kontraktu.
+
 Zarejestruj pakiet z katalogu Academy:
 
 ```bash

@@ -2959,3 +2959,66 @@ def test_review_change_keeps_campaign_blocked(final_qualification, tmp_path):
     assert result["status"] == "blocked"
     assert result["phase"] == "complete"
     assert result["qualification_status"] == "incomplete"
+
+
+@pytest.mark.parametrize("decision", ["PASS", "STOP"])
+def test_checkpoint_review_template_advances_campaign_after_registration(
+    tmp_path, monkeypatch, decision
+):
+    from tests.test_academy_conversation_review import _checkpoint_campaign
+    from venom_core.services.training_experiments.campaign import _rank
+    from venom_core.services.training_experiments.conversation_review import (
+        prepare_checkpoint_review,
+        register_review_request,
+    )
+    from venom_core.services.training_experiments.local_campaign_final import transition
+
+    service, plan, run_id, panel, p13, candidate, _, _ = _checkpoint_campaign(
+        tmp_path, monkeypatch
+    )
+    state = {
+        "campaign_id": plan["campaign_id"],
+        "plan": plan,
+        "phase": "trials",
+        "status": "succeeded",
+        "training_status": "succeeded",
+        "started_at": None,
+        "elapsed_seconds": 0,
+        "worker": None,
+        "final_qualification": {"inputs_id": "final", "reserve_seconds": 30},
+        "trials": [{"run_id": run_id, "status": "succeeded"}],
+    }
+    pending = service._assess_checkpoint(state, run_id, 13, None)
+    pending["quality_guard"] = {"status": "passed"}
+    state["trials"][0]["checkpoint_evaluations"] = [pending]
+    _rank(state)
+    transition(state)
+    assert state["status"] == "awaiting_review"
+
+    directory = service.directory(plan["campaign_id"])
+    directory.mkdir(parents=True, exist_ok=True)
+    service._save(directory, state)
+    request = prepare_checkpoint_review(pending, panel)
+    request.update(reviewer_id="operator", reviewer_note="Full conversation review")
+    with pytest.raises(ValueError, match="conversation_review_.*_verdict_invalid"):
+        register_review_request(tmp_path, request)
+    assert service.advance(plan["campaign_id"])["status"] == "awaiting_review"
+
+    if decision == "STOP":
+        candidate["C000"]["T0"]["critical"] = True
+    request.update(p13=p13, candidate=candidate)
+    receipt = register_review_request(tmp_path, request)
+    assert receipt["status"] == decision
+    assert register_review_request(tmp_path, request) == receipt
+
+    resumed = service.advance(plan["campaign_id"])
+    item = resumed["trials"][0]["checkpoint_evaluations"][0]
+    assert item["conversation_review_status"] == decision.lower()
+    if decision == "PASS":
+        assert item["qualified"] is True
+        assert resumed["selected_run_id"] == run_id
+        assert resumed["phase"] == "qualification"
+    else:
+        assert item["qualified"] is False
+        assert resumed["selected_run_id"] is None
+        assert resumed["qualification_status"] == "failed_quality"

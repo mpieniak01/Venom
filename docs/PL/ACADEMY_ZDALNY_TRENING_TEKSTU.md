@@ -39,6 +39,26 @@ Dla stałej listy prób możesz ustawić liczbę prób przed decyzją. Pozostał
 
 W limicie czasu, kwoty, aktualizacji, tokenów i miejsca uwzględnij od razu obie części. Na przykład osiem prób może składać się z pierwszych czterech i kolejnych czterech po przekroczeniu progu. Ustal budżet całego najmu wraz z przygotowaniem i synchronizacją. Host podejmuje decyzję po pierwszym bloku prób. Ten moment może wypaść przed orientacyjną godziną lub później. Twardy termin utrwala się przy starcie i pozostaje górną granicą. Ocena końcowa przyrostu względem wspólnego rodzica nadal jest osobnym krokiem.
 
+### Bramki rozmów 0A dla Omni
+
+W zdalnym planie API ustaw `campaign.conversation_review.final_mode` na `remote`, podaj hash zamrożonego panelu DEV i oba hashe FINAL. Profil musi rejestrować checkpointy automatycznie, zachować wszystkie sprawdzane adaptery i wskazywać tego samego rodzica P13 w każdej próbie. Zarejestruj referencję P13 dla identycznego profilu, danych i protokołu generacji.
+
+Host VM przechodzi do `awaiting_review` przed decyzją o dogrywce oraz po zakończeniu prób, jeśli są checkpointy oczekujące na ocenę. Na hoście treningowym odczytaj oczekujące pary run i krok ze stanu kampanii. Polecenie poniżej przygotowuje dla jednej pary zaślepione odpowiedzi i formularz z zapieczętowanych generacji P13 i kandydata.
+
+```bash
+python -m scripts.academy.campaigns --root /workspace/academy/experiments \
+  prepare-remote-review CAMPAIGN_ID RUN_ID STEP PANEL_JSON P13_GENERATION_DIR
+```
+
+Przekaż oceniającemu wskazane przez polecenie `reviewer.json` i `judgments-template.json`. Mapowanie ramion pozostaje na hoście treningowym. Wczytaj kompletny werdykt przed terminem prób pod ten sam identyfikator i krok.
+
+```bash
+python -m scripts.academy.campaigns --root /workspace/academy/experiments \
+  submit-remote-review CAMPAIGN_ID RUN_ID STEP JUDGMENTS_JSON
+```
+
+Kontroler wznowi decyzję po zebraniu brakujących ocen. Przerwanie lub upływ budżetu w trakcie oczekiwania uruchamia finalizację bez awansu. Czas na ocenę DEV wchodzi do budżetu najmu. Po zwolnieniu VM kwalifikator na hoście oceny wymaga `conversation_review_required: true` oraz `conversation_review_id` wskazującego zarejestrowany werdykt FINAL. Wiąże go z wybranym krokiem, wagami, przypiętymi wejściami oraz hashem werdyktu DEV. FINAL 0A i jego kalibracja pozostają na zaufanym hoście oceny.
+
 ### GPU dla obecnej receptury czatu
 
 Do wyszukiwania ofert LFM3-Omni-2B BF16 LoRA dla tekstu zacznij od jednej karty NVIDIA i `min_gpu_ram_mb: 12000` w profilu Vast `inspect` z `vm_required: true`. Dwie udane próby na RTX 3060 12 GB przy mikrobatchu 1, limicie 1280 tokenów i rank 4 osiągnęły szczyt rezerwacji PyTorch 5486 MiB. To pomiar trainera. Przy wydłużeniu rzeczywistych sekwencji, zmianie modelu lub równoległości ponownie zmierz pełne zużycie GPU łącznie z oceną. Porównuj przewidywany koszt ukończonej kampanii wraz z dyskiem i transferem. [Pola wyszukiwania ofert Vast](https://docs.vast.ai/api-reference/search/search-offers)

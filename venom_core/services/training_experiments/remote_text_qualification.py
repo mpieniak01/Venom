@@ -110,6 +110,21 @@ class QualificationInputs(BaseModel):
         return self
 
 
+def _requires_remote_conversation_review(remote: dict, source: str) -> bool:
+    review = remote["plan"].get("conversation_review") or {}
+    return source == "remote" and review.get("final_mode") == "remote"
+
+
+def _development_review_hash(trial: dict, step: int) -> str:
+    review = next(
+        (row for row in trial.get("checkpoint_evaluations", ()) if row["step"] == step),
+        {},
+    )
+    if review.get("conversation_review_status") != "pass":
+        raise ValueError("remote_text_dev_conversation_review_required")
+    return _sha(review.get("conversation_review_sha256"))
+
+
 def _binding(
     remote: dict,
     receipts: Mapping[str, dict],
@@ -134,6 +149,15 @@ def _binding(
     candidate = next((row for row in items if row["step"] == step), None)
     if candidate is None or candidate["adapter_available"] is not True:
         raise ValueError("remote_text_final_candidate_missing")
+    development_review = (
+        {
+            "development_conversation_review_sha256": _development_review_hash(
+                trial, step
+            )
+        }
+        if _requires_remote_conversation_review(remote, source)
+        else {}
+    )
     parent = _planned_parent(remote["plan"], run_id)
     return {
         "campaign_id": receipt["campaign_id"],
@@ -146,6 +170,7 @@ def _binding(
         "checkpoint_sha256": candidate["sha256"],
         "development_identity": candidate["identity"],
         "development_protocol": stable_hash(remote["plan"]["selection"]),
+        **development_review,
         "final_test_sha256": _sha(test_sha),
         "final_calibration_sha256": _sha(calibration_sha),
         **({"parent": parent} if parent is not None else {}),
@@ -850,6 +875,18 @@ def read_qualification(
     )
     _verify_parent(binding, academy_root)
     result = _read_result(directory, binding)
+    if (
+        result is not None
+        and result.get("qualified") is not None
+        and _requires_remote_conversation_review(remote, source)
+        and not result.get("conversation_review_id")
+    ):
+        return {
+            **result,
+            "status": "incomplete_calibration",
+            "qualified": None,
+            "qualification_reason": "remote_text_conversation_review_required",
+        }
     if result is not None and result.get("conversation_review_id") is not None:
         from .conversation_review import verify_final_review
 
@@ -897,6 +934,11 @@ def qualify(
     check: Callable[[], float] | None = None,
 ) -> dict:
     ensure_data_mutation_allowed("academy_remote_text_qualification")
+    if (
+        _requires_remote_conversation_review(remote, source)
+        and not spec.conversation_review_required
+    ):
+        raise ValueError("remote_text_conversation_review_required")
     if (
         source == "local"
         and remote["plan"].get("final_qualification")
@@ -1263,6 +1305,8 @@ def _controller_state(academy_root: Path, campaign_id: str) -> tuple[Path, dict]
         remote["campaign_id"] != campaign_id
         or remote["plan"]["plan_sha256"] != plan["remote_plan_sha256"]
         or remote["plan"]["profile_identity"] != plan["profile_identity"]
+        or remote["plan"].get("conversation_review")
+        != plan["request"].get("campaign", {}).get("conversation_review")
     ):
         raise ValueError("remote_text_final_controller_binding_invalid")
     return directory, state

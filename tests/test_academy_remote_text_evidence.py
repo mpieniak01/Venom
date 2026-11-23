@@ -618,6 +618,51 @@ def test_final_holdout_gates_archive_and_catalog(tmp_path, scenario):
             )
 
 
+def test_remote_0a_requires_final_and_binds_development_review(tmp_path):
+    spec = _holdout_paths(tmp_path)
+    host = setup_host(tmp_path, train_sha=digest(spec.train))
+    state = host.state
+    evidence = tmp_path / "evidence"
+    # The existing evidence receipt binds this exact run, plan and checkpoint.
+    receipts = {RUN: sync_run(host, state, RUN, evidence, LIMIT)}
+    state["plan"]["conversation_review"] = {"final_mode": "remote"}
+    selected = receipts[RUN]["checkpoints"][0]
+    state["selected_checkpoint_step"] = selected["step"]
+    pins = {
+        "final_test_sha256": digest(spec.final_test),
+        "final_calibration_sha256": digest(spec.calibration),
+    }
+    academy = tmp_path / "academy"
+    with pytest.raises(ValueError, match="remote_text_conversation_review_required"):
+        qualify(evidence, state, receipts, academy, spec, **pins)
+    spec = QualificationInputs.model_validate(
+        {
+            **spec.model_dump(),
+            "conversation_review_required": True,
+            "conversation_review_id": "final-01",
+        }
+    )
+    trial = state["trials"][0]
+    trial["checkpoint_evaluations"] = [
+        {
+            "step": selected["step"],
+            "conversation_review_status": "stop",
+            "conversation_review_sha256": "d" * 64,
+        }
+    ]
+    with pytest.raises(
+        ValueError, match="remote_text_dev_conversation_review_required"
+    ):
+        qualify(evidence, state, receipts, academy, spec, **pins)
+    trial["checkpoint_evaluations"][0]["conversation_review_status"] = "pass"
+    binding = remote_text_qualification._binding(
+        state, receipts, pins["final_test_sha256"], pins["final_calibration_sha256"]
+    )
+    assert binding["development_conversation_review_sha256"] == "d" * 64
+    assert binding["step"] == selected["step"]
+    assert not (academy / "adapters").exists()
+
+
 def test_final_rejects_new_m0_critical_case_at_the_same_count(tmp_path):
     spec = _holdout_paths(tmp_path, size=3)
     host = setup_host(tmp_path, train_sha=digest(spec.train))

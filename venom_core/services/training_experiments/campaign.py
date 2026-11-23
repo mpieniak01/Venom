@@ -353,6 +353,11 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
         "profile_identity": identity,
         "variants": variants,
     }
+    if (
+        spec.conversation_review is not None
+        and spec.conversation_review.final_mode == "local"
+    ):
+        payload["conversation_review"].pop("final_mode")
     if not spec.selection.protect_parent_full_pass:
         payload["selection"].pop("protect_parent_full_pass")
     if extension is not None:
@@ -1116,6 +1121,9 @@ class CampaignService:
                     if state.get("cutoff_at") != cutoff_at:
                         raise ValueError("campaign_execution_cutoff_changed")
                     return state
+                review = state["plan"].get("conversation_review") or {}
+                if review.get("final_mode") == "remote" and cutoff_at is None:
+                    raise ValueError("campaign_remote_review_cutoff_required")
                 if cutoff_at is not None:
                     if not math.isfinite(cutoff_at) or cutoff_at <= self._clock():
                         raise ValueError("campaign_execution_cutoff_expired")
@@ -1174,6 +1182,8 @@ class CampaignService:
         state["termination"] = "timed_out" if expired else None
         if expired:
             state["status"] = "stopping"
+        elif self._remote_conversation_review(state) and "training_status" in state:
+            state["status"] = "awaiting_review"
 
     def _verify_activation_inputs(self, plan: dict, *, first_start: bool) -> None:
         warm_variants = [
@@ -2075,7 +2085,42 @@ class CampaignService:
         return advance(self, campaign_id)
 
     @staticmethod
+    def _remote_conversation_review(state: dict) -> bool:
+        review = state["plan"].get("conversation_review") or {}
+        return (
+            review.get("final_mode") == "remote" and state.get("cutoff_at") is not None
+        )
+
+    @staticmethod
+    def _pending_conversation_review(state: dict) -> bool:
+        return any(
+            row.get("conversation_review_status") == "pending"
+            for trial in state["trials"]
+            for row in trial.get("checkpoint_evaluations", ())
+        )
+
+    def _pause_remote_conversation_review(self, state: dict) -> bool:
+        if not self._remote_conversation_review(state):
+            return False
+        extension = state["plan"].get("extension") or {}
+        trial_index = state["trial_index"]
+        review_boundary = state["status"] == "succeeded" or (
+            state["status"] == "running"
+            and trial_index == extension.get("initial_trials")
+            and "extension_decision" not in state
+        )
+        if not review_boundary or not self._pending_conversation_review(state):
+            return False
+        state["training_status"] = state["status"]
+        state["status"] = "awaiting_review"
+        return True
+
+    @staticmethod
     def _awaiting_conversation_review(state: dict) -> bool:
+        if CampaignService._remote_conversation_review(state):
+            return state["status"] == "awaiting_review" or (
+                state["status"] == "stopping" and "training_status" in state
+            )
         return (
             state.get("phase") == "trials"
             and state.get("status") == "awaiting_review"
@@ -2089,7 +2134,23 @@ class CampaignService:
             review_changed = (
                 state.get("error") == "campaign_quality_conversation_review_changed"
             )
-            if not review_changed:
+            if self._remote_conversation_review(state) and not review_changed:
+                self._elapsed(state)
+                if (
+                    state["status"] == "stopping"
+                    or self._campaign_seconds_left(state) <= 0
+                ):
+                    terminal = state.get("termination") or "timed_out"
+                    state.update(
+                        status=terminal,
+                        termination=terminal,
+                        selected_run_id=None,
+                        selected_checkpoint_step=None,
+                    )
+                elif not self._pending_conversation_review(state):
+                    state["status"] = state.pop("training_status")
+                    _confirm_repeat(state)
+            elif not review_changed:
                 state["status"] = state.get("training_status", "succeeded")
                 if state["plan"].get("final_qualification"):
                     from .local_campaign_final import transition
@@ -2109,7 +2170,9 @@ class CampaignService:
                 return state
             self._elapsed(state)
             try:
-                self._advance(directory, state)
+                if not self._pause_remote_conversation_review(state):
+                    self._advance(directory, state)
+                    self._pause_remote_conversation_review(state)
             except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
                 state["status"] = "blocked"
                 code = str(exc)

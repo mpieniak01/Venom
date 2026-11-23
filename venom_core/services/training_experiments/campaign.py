@@ -353,6 +353,11 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
         "profile_identity": identity,
         "variants": variants,
     }
+    if (
+        spec.conversation_review is not None
+        and spec.conversation_review.final_mode == "local"
+    ):
+        payload["conversation_review"].pop("final_mode")
     if not spec.selection.protect_parent_full_pass:
         payload["selection"].pop("protect_parent_full_pass")
     if extension is not None:
@@ -417,7 +422,8 @@ def _parent_metrics(item: dict, guard: dict) -> None:
 
 def _passes_selection(row: dict, selection: dict) -> bool:
     if (
-        row.get("critical_delta") is None
+        row.get("unverifiable_answers", 0) != 0
+        or row.get("critical_delta") is None
         or row["usable_delta"] < selection["min_usable_delta"]
         or row["critical_delta"] > selection["max_critical_delta"]
     ):
@@ -588,6 +594,8 @@ def development_complete(state: dict) -> bool:
         if any(
             row.get("status") != "succeeded"
             or not row.get("result_sha256")
+            or row.get("unverifiable_answers", 0) != 0
+            or row.get("conversation_review_status") == "blocked"
             or guarded
             and row.get("quality_guard", {}).get("status") not in {"passed", "rejected"}
             for row in rows
@@ -753,10 +761,16 @@ def _deltas(report: dict) -> dict:
             for key in ("usable", "critical")
         ):
             raise ValueError("campaign_evaluation_invalid")
-    return {
+    unverifiable = report.get("unverifiable_answers", 0)
+    if type(unverifiable) is not int or not 0 <= unverifiable <= 2 * n:
+        raise ValueError("campaign_evaluation_invalid")
+    deltas = {
         f"{key}_delta": (totals[1][key] - totals[0][key]) / n
         for key in ("usable", "critical")
     }
+    if unverifiable:
+        deltas["unverifiable_answers"] = unverifiable
+    return deltas
 
 
 def _reassessing_quality(state: dict) -> bool:
@@ -895,7 +909,9 @@ class CampaignService:
 
     def _refresh_pending_conversation_reviews(self, state: dict) -> None:
         config = state["plan"].get("conversation_review")
-        if config is None:
+        if config is None or state.get("phase") == "complete":
+            return
+        if state.get("termination") and "training_status" in state:
             return
         from .conversation_review import checkpoint_review_id
 
@@ -914,15 +930,17 @@ class CampaignService:
                 / "receipt.json"
             ).is_file()
         ]
-        pending_by_trial: dict[str, set[int]] = {}
+        pending_by_trial: dict[str, tuple[dict, set[int]]] = {}
         for trial, row in pending:
-            pending_by_trial.setdefault(trial["run_id"], set()).add(row["step"])
-        for trial, _row in pending:
+            if trial["run_id"] not in pending_by_trial:
+                pending_by_trial[trial["run_id"]] = (trial, set())
+            pending_by_trial[trial["run_id"]][1].add(row["step"])
+        for trial, steps in pending_by_trial.values():
             self._record_checkpoint_results(
                 state,
                 trial,
                 state["plan"].get("quality_policy"),
-                steps=pending_by_trial[trial["run_id"]],
+                steps=steps,
             )
         if pending:
             _rank(state)
@@ -1114,6 +1132,9 @@ class CampaignService:
                     if state.get("cutoff_at") != cutoff_at:
                         raise ValueError("campaign_execution_cutoff_changed")
                     return state
+                review = state["plan"].get("conversation_review") or {}
+                if review.get("final_mode") == "remote" and cutoff_at is None:
+                    raise ValueError("campaign_remote_review_cutoff_required")
                 if cutoff_at is not None:
                     if not math.isfinite(cutoff_at) or cutoff_at <= self._clock():
                         raise ValueError("campaign_execution_cutoff_expired")
@@ -1172,6 +1193,10 @@ class CampaignService:
         state["termination"] = "timed_out" if expired else None
         if expired:
             state["status"] = "stopping"
+        elif state.get("training_status") in {"running", "succeeded"} and plan.get(
+            "conversation_review"
+        ):
+            state["status"] = "awaiting_review"
 
     def _verify_activation_inputs(self, plan: dict, *, first_start: bool) -> None:
         warm_variants = [
@@ -2022,6 +2047,7 @@ class CampaignService:
         guard = trial.get("quality_guard", {})
         if (
             "result_sha256" in trial
+            and trial.get("unverifiable_answers", 0) == 0
             and guard.get("status") != "blocked"
             and trial.get("critical_delta") is not None
         ):
@@ -2073,28 +2099,81 @@ class CampaignService:
         return advance(self, campaign_id)
 
     @staticmethod
-    def _awaiting_conversation_review(state: dict) -> bool:
+    def _remote_conversation_review(state: dict) -> bool:
+        review = state["plan"].get("conversation_review") or {}
         return (
-            state.get("phase") == "trials"
-            and state.get("status") == "awaiting_review"
-            and state["plan"].get("conversation_review") is not None
+            review.get("final_mode") == "remote" and state.get("cutoff_at") is not None
         )
+
+    @staticmethod
+    def _pending_conversation_review(state: dict) -> bool:
+        return any(
+            row.get("conversation_review_status") == "pending"
+            for trial in state["trials"]
+            for row in trial.get("checkpoint_evaluations", ())
+        )
+
+    def _pause_conversation_review(self, state: dict) -> bool:
+        if not state["plan"].get("conversation_review"):
+            return False
+        extension = state["plan"].get("extension") or {}
+        review_boundary = state["status"] == "succeeded" or (
+            state["status"] == "running"
+            and state["trial_index"] == extension.get("initial_trials")
+            and "extension_decision" not in state
+        )
+        if not review_boundary or not self._pending_conversation_review(state):
+            return False
+        state["training_status"] = state["status"]
+        state["status"] = "awaiting_review"
+        if state.get("phase") == "trials":
+            state["qualification_status"] = "pending_conversation_review"
+        return True
+
+    def _awaiting_conversation_review(self, state: dict) -> bool:
+        if state.get("phase") != "trials" and not self._remote_conversation_review(
+            state
+        ):
+            return False
+        return state["plan"].get("conversation_review") is not None and (
+            state["status"] == "awaiting_review"
+            or (state["status"] == "stopping" and "training_status" in state)
+        )
+
+    @staticmethod
+    def _end_conversation_review(state: dict) -> None:
+        terminal = state.get("termination") or "timed_out"
+        state.update(
+            status=terminal,
+            training_status=terminal,
+            termination=terminal,
+            selected_run_id=None,
+            selected_checkpoint_step=None,
+        )
+        if state["plan"].get("final_qualification"):
+            from .local_campaign_final import incomplete
+
+            reason = (
+                "campaign_development_review_timed_out"
+                if terminal == "timed_out"
+                else state.get("error") or f"campaign_{terminal}"
+            )
+            incomplete(state, reason)
 
     def _advance_conversation_review(self, directory: Path) -> dict:
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
             self._review_selection(state)
-            review_changed = (
-                state.get("error") == "campaign_quality_conversation_review_changed"
-            )
-            if not review_changed:
-                state["status"] = state.get("training_status", "succeeded")
-                if state["plan"].get("final_qualification"):
-                    from .local_campaign_final import transition
-
-                    transition(state, service=self)
-                else:
-                    state["status"] = "succeeded"
+            if state.get("error") != "campaign_quality_conversation_review_changed":
+                self._elapsed(state)
+                if (
+                    state["status"] == "stopping"
+                    or self._campaign_seconds_left(state) <= 0
+                ):
+                    self._end_conversation_review(state)
+                elif not self._pending_conversation_review(state):
+                    state["status"] = state.pop("training_status")
+                    self._after_trial_advance(state)
             if state["status"] not in _ACTIVE:
                 state["worker"] = None
             self._save(directory, state)
@@ -2107,7 +2186,9 @@ class CampaignService:
                 return state
             self._elapsed(state)
             try:
-                self._advance(directory, state)
+                if not self._pause_conversation_review(state):
+                    self._advance(directory, state)
+                    self._pause_conversation_review(state)
             except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
                 state["status"] = "blocked"
                 code = str(exc)
@@ -2123,15 +2204,20 @@ class CampaignService:
                     )
                     else "campaign_stage_failed"
                 )
-            _confirm_repeat(state)
-            if state["plan"].get("final_qualification"):
-                from .local_campaign_final import transition
-
-                transition(state, service=self)
+            if not self._awaiting_conversation_review(state):
+                self._after_trial_advance(state)
             if state["status"] not in _ACTIVE:
                 state["worker"] = None
             self._save(directory, state)
             return state
+
+    def _after_trial_advance(self, state: dict) -> None:
+        _confirm_repeat(state)
+        if state["plan"].get("final_qualification"):
+            from .local_campaign_final import transition
+
+            state["qualification_status"] = "pending"
+            transition(state, service=self)
 
     @staticmethod
     def _record_retention(state: dict, receipt: dict) -> None:

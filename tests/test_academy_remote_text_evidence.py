@@ -618,6 +618,51 @@ def test_final_holdout_gates_archive_and_catalog(tmp_path, scenario):
             )
 
 
+def test_remote_0a_requires_final_and_binds_development_review(tmp_path):
+    spec = _holdout_paths(tmp_path)
+    host = setup_host(tmp_path, train_sha=digest(spec.train))
+    state = host.state
+    evidence = tmp_path / "evidence"
+    # The existing evidence receipt binds this exact run, plan and checkpoint.
+    receipts = {RUN: sync_run(host, state, RUN, evidence, LIMIT)}
+    state["plan"]["conversation_review"] = {"final_mode": "remote"}
+    selected = receipts[RUN]["checkpoints"][0]
+    state["selected_checkpoint_step"] = selected["step"]
+    pins = {
+        "final_test_sha256": digest(spec.final_test),
+        "final_calibration_sha256": digest(spec.calibration),
+    }
+    academy = tmp_path / "academy"
+    with pytest.raises(ValueError, match="remote_text_conversation_review_required"):
+        qualify(evidence, state, receipts, academy, spec, **pins)
+    spec = QualificationInputs.model_validate(
+        {
+            **spec.model_dump(),
+            "conversation_review_required": True,
+            "conversation_review_id": "final-01",
+        }
+    )
+    trial = state["trials"][0]
+    trial["checkpoint_evaluations"] = [
+        {
+            "step": selected["step"],
+            "conversation_review_status": "stop",
+            "conversation_review_sha256": "d" * 64,
+        }
+    ]
+    with pytest.raises(
+        ValueError, match="remote_text_dev_conversation_review_required"
+    ):
+        qualify(evidence, state, receipts, academy, spec, **pins)
+    trial["checkpoint_evaluations"][0]["conversation_review_status"] = "pass"
+    binding = remote_text_qualification._binding(
+        state, receipts, pins["final_test_sha256"], pins["final_calibration_sha256"]
+    )
+    assert binding["development_conversation_review_sha256"] == "d" * 64
+    assert binding["step"] == selected["step"]
+    assert not (academy / "adapters").exists()
+
+
 def test_final_rejects_new_m0_critical_case_at_the_same_count(tmp_path):
     spec = _holdout_paths(tmp_path, size=3)
     host = setup_host(tmp_path, train_sha=digest(spec.train))
@@ -701,6 +746,86 @@ def _continued_campaign(tmp_path, *, eligible_manifest=True):
         "final_calibration_sha256": digest(spec.calibration),
     }
     return spec, academy, parent, host, pins
+
+
+def test_local_0a_requires_final_review_and_exposes_the_selected_binding(
+    tmp_path, monkeypatch, capsys
+):
+    from scripts.academy import campaigns
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec, academy, parent, host, pins = _continued_campaign(tmp_path)
+    state = host.state
+    evidence = tmp_path / "evidence"
+    receipts = {RUN: sync_run(host, state, RUN, evidence, LIMIT)}
+    candidate = receipts[RUN]["checkpoints"][0]
+    state["plan"]["conversation_review"] = {"panel_sha256": "d" * 64}
+    state["plan"]["final_qualification"] = {
+        "conversation_review_required": True,
+        "conversation_review_id": "final-01",
+    }
+    state["selected_checkpoint_step"] = candidate["step"]
+    with pytest.raises(ValueError, match="remote_text_conversation_review_required"):
+        qualify(evidence, state, receipts, academy, spec, source="local", **pins)
+    p13_identity = {
+        name: parent[name]
+        for name in ("model", "weights_sha256", "config_sha256", "snapshot_sha256")
+    }
+    candidate_identity = {**p13_identity, "weights_sha256": candidate["sha256"]}
+    state["trials"][0]["checkpoint_evaluations"] = [
+        {
+            "step": candidate["step"],
+            "conversation_review_binding": {
+                "p13_identity": p13_identity,
+                "candidate_identity": candidate_identity,
+            },
+        }
+    ]
+    service = Mock()
+    service.status.return_value = {**state, "phase": "qualification"}
+    service.experiments.root = academy
+    collect = Mock(return_value=(evidence, state, receipts, pins))
+    monkeypatch.setattr(local_campaign_final, "_check", lambda *_: 30)
+    monkeypatch.setattr(local_campaign_final, "collect_local", collect)
+    monkeypatch.setattr(campaigns, "CampaignService", lambda _: service)
+
+    campaigns.main(["--root", str(academy), "final-review-binding", CAMPAIGN])
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["review_id"] == "final-01"
+    binding = output["binding"]
+    assert binding["qualification"]["run_id"] == RUN
+    assert binding["qualification"]["step"] == candidate["step"]
+    assert binding["qualification"]["final_test_sha256"] == pins["final_test_sha256"]
+    assert binding["p13_identity"] == p13_identity
+    assert binding["candidate_identity"] == candidate_identity
+    collect.assert_called_once_with(academy, CAMPAIGN, timeout=30)
+
+
+def test_local_0a_masks_an_old_qualification_without_a_final_review(tmp_path):
+    spec = _holdout_paths(tmp_path)
+    host = setup_host(tmp_path, train_sha=digest(spec.train))
+    evidence = tmp_path / "evidence"
+    receipts = {RUN: sync_run(host, host.state, RUN, evidence, LIMIT)}
+    pins = {
+        "final_test_sha256": digest(spec.final_test),
+        "final_calibration_sha256": digest(spec.calibration),
+    }
+    original = qualify(
+        evidence,
+        host.state,
+        receipts,
+        tmp_path / "academy",
+        spec,
+        source="local",
+        evaluator=_evaluate_fixture,
+        **pins,
+    )
+    assert original["qualified"] is not None
+    host.state["plan"]["conversation_review"] = {"panel_sha256": "d" * 64}
+    masked = read_qualification(evidence, host.state, receipts, source="local", **pins)
+    assert masked["qualified"] is None
+    assert masked["qualification_reason"] == "remote_text_conversation_review_required"
 
 
 @pytest.fixture

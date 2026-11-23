@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -204,6 +205,7 @@ def register_review(
     candidate_identity: dict[str, str],
     reviewer_id: str,
     reviewer_note: str,
+    blind_review_sha256: str | None = None,
 ) -> dict:
     """Register a human-reported review once; records are immutable after creation."""
     _validate_registration(
@@ -233,12 +235,21 @@ def register_review(
         "judgments_sha256": _payload_sha(data),
         **report,
     }
+    if blind_review_sha256 is not None:
+        _validate_blind_review_hash(blind_review_sha256)
+        receipt["blind_review_sha256"] = blind_review_sha256
     directory = operator_path(root / "conversation-reviews")
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     target = operator_path(directory / review_id)
     with file_lock(directory / ".conversation-review.lock"):
         if target.exists():
-            raise ValueError("conversation_review_immutable_conflict")
+            try:
+                existing = verify_review(root, review_id, binding, require_pass=False)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise ValueError("conversation_review_immutable_conflict") from exc
+            if existing != receipt:
+                raise ValueError("conversation_review_immutable_conflict")
+            return existing
         with tempfile.TemporaryDirectory(
             prefix=f".{review_id}-", dir=directory
         ) as staging:
@@ -250,7 +261,58 @@ def register_review(
     return receipt
 
 
-def register_review_request(root: Path, request: object) -> dict:
+def prepare_checkpoint_review(pending: object, panel: object) -> dict:
+    """Build a blank operator request from an awaiting checkpoint and its panel."""
+    if (
+        not isinstance(pending, dict)
+        or pending.get("conversation_review_status") != "pending"
+    ):
+        raise ValueError("conversation_review_pending_checkpoint_required")
+    review_id = pending.get("conversation_review_id")
+    binding = pending.get("conversation_review_binding")
+    if not isinstance(review_id, str) or not _ID.fullmatch(review_id):
+        raise ValueError("conversation_review_id_invalid")
+    if not isinstance(binding, dict):
+        raise ValueError("conversation_review_binding_required")
+    _campaign_id(binding.get("campaign_id"))
+    if not isinstance(panel, dict):
+        raise ValueError("conversation_review_panel_invalid")
+    _validate_panel("dev", panel)
+    if binding.get("panel_sha256") != _payload_sha(panel):
+        raise ValueError("conversation_review_panel_binding_invalid")
+    p13_identity = binding.get("p13_identity")
+    candidate_identity = binding.get("candidate_identity")
+    for identity in (p13_identity, candidate_identity):
+        if not isinstance(identity, dict):
+            raise ValueError("conversation_review_model_identity_invalid")
+        _validate_model_identity(identity)
+    blank = {
+        conversation: {
+            turn: {
+                "criteria": dict.fromkeys(criteria),
+                "critical": None,
+            }
+            for turn, criteria in spec["turns"].items()
+        }
+        for conversation, spec in panel.items()
+    }
+    return {
+        "review_id": review_id,
+        "mode": "dev",
+        "panel": panel,
+        "p13": copy.deepcopy(blank),
+        "candidate": copy.deepcopy(blank),
+        "binding": binding,
+        "p13_identity": p13_identity,
+        "candidate_identity": candidate_identity,
+        "reviewer_id": "",
+        "reviewer_note": "",
+    }
+
+
+def register_review_request(
+    root: Path, request: object, *, blind_review_sha256: str | None = None
+) -> dict:
     """Register a complete operator request read from the Academy CLI JSON file."""
     fields = {
         "review_id",
@@ -282,6 +344,7 @@ def register_review_request(root: Path, request: object) -> dict:
         candidate_identity=request["candidate_identity"],
         reviewer_id=request["reviewer_id"],
         reviewer_note=request["reviewer_note"],
+        blind_review_sha256=blind_review_sha256,
     )
 
 
@@ -358,6 +421,8 @@ def verify_review(
         raise ValueError("conversation_review_payload_invalid") from exc
     _validate_receipt_shape(receipt, data)
     assert isinstance(receipt, dict) and isinstance(data, dict)
+    if "blind_review_sha256" in receipt:
+        _validate_blind_review_hash(receipt["blind_review_sha256"])
     _validate_receipt_binding(receipt, review_id, binding)
     _validate_judgments_shape(data)
     _validate_review_hashes(receipt, data, binding)
@@ -367,6 +432,11 @@ def verify_review(
     if require_pass and receipt["status"] != "PASS":
         raise ValueError("conversation_review_thresholds_failed")
     return receipt
+
+
+def _validate_blind_review_hash(value: object) -> None:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise ValueError("conversation_review_blind_hash_invalid")
 
 
 def _validate_receipt_shape(receipt: object, data: object) -> None:

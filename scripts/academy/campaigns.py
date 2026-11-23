@@ -25,6 +25,17 @@ def main(argv: list[str] | None = None) -> None:
     register.add_argument("inputs_id")
     register.add_argument("inputs", type=Path)
     sub.add_parser("plan").add_argument("manifest", type=Path)
+    sub.add_parser("final-review-binding").add_argument("campaign_id")
+    for name in ("prepare-remote-review", "submit-remote-review"):
+        review = sub.add_parser(name)
+        review.add_argument("campaign_id")
+        review.add_argument("run_id")
+        review.add_argument("step", type=int)
+        if name == "prepare-remote-review":
+            review.add_argument("panel", type=Path)
+            review.add_argument("parent_generation", type=Path)
+        else:
+            review.add_argument("judgments", type=Path)
     for action in (
         "status",
         "stop",
@@ -54,6 +65,30 @@ def main(argv: list[str] | None = None) -> None:
                 if args.command == "final-inputs"
                 else register_inputs(args.root, args.inputs_id, read_json(args.inputs))
             )
+        elif args.command in {"prepare-remote-review", "submit-remote-review"}:
+            from venom_core.services.training_experiments import (
+                remote_conversation_review,
+            )
+
+            if args.command == "prepare-remote-review":
+                result = remote_conversation_review.prepare(
+                    service,
+                    args.campaign_id,
+                    args.run_id,
+                    args.step,
+                    args.panel,
+                    args.parent_generation,
+                )
+            else:
+                result = remote_conversation_review.submit(
+                    service, args.campaign_id, args.run_id, args.step, args.judgments
+                )
+        elif args.command == "final-review-binding":
+            from venom_core.services.training_experiments.local_campaign_final import (
+                final_review_binding,
+            )
+
+            result = final_review_binding(service, args.campaign_id)
         elif args.command == "plan":
             result = service.plan(CampaignSpec.model_validate(read_json(args.manifest)))
         else:

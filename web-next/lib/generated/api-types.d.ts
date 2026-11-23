@@ -6783,6 +6783,12 @@ export interface components {
         CampaignConversationReview: {
             /** Panel Sha256 */
             panel_sha256: string;
+            /**
+             * Final Mode
+             * @default local
+             * @enum {string}
+             */
+            final_mode: "local" | "remote";
             /** Receipt Id Prefix */
             receipt_id_prefix: string;
         };

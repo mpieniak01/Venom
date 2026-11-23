@@ -191,14 +191,14 @@ Przy `discard_rejected` retencja chroni cały przebieg, w którym znajduje się 
 
 ### Automatyczny odbiór checkpointów względem rodzica
 
-Dla profilu dev z kalibracją `exact-v1` można zarejestrować referencję rodzica z ukończonej, zapieczętowanej generacji M0 i adaptera. Użyj tego samego profilu co w kampanii, w tym tej samej kalibracji, dev, bazy i środowiska inferencji. Katalog generacji w poniższym przykładzie zawiera wynik ewaluatora dla ramion `base` oraz `checkpoint-145`.
+Dla profilu dev z kalibracją `exact-v1` lub zakwalifikowanym scorerem semantycznym można zarejestrować referencję rodzica z ukończonej, zapieczętowanej generacji M0 i adaptera. Użyj tego samego profilu co w kampanii, w tym tej samej kalibracji, dev, bazy i środowiska inferencji. Katalog generacji w poniższym przykładzie zawiera wynik ewaluatora dla ramion `base` oraz `checkpoint-145`.
 
 ```bash
 python -m scripts.academy.quality --root "$experiment_root" register-parent \
   "$profile_id" omni-p13-145 145 "$parent_generation" p13-dev
 ```
 
-Rejestracja sprawdza tożsamość i sumy kontrolne zarejestrowanego adaptera, zapieczętowane odpowiedzi, własną historię obu ramion oraz zgodność protokołu. Oblicza werdykty kalibracją profilu. Powtórne wykonanie na tych samych wejściach zwraca ten sam rekord. Zmiana danych wymaga nowej tożsamości referencji. W manifeście kampanii powiąż rekord z wariantami startującymi od tego samego `initial_adapter_id`.
+Rejestracja sprawdza tożsamość i sumy kontrolne zarejestrowanego adaptera, zapieczętowane odpowiedzi, własną historię obu ramion oraz zgodność protokołu. Dla `exact-v1` oblicza werdykty z kalibracji. Dla scorera semantycznego przekaż `--judgments /ścieżka/judgments.json` z zapisanymi odpowiedziami sędziego. Rejestracja odtwarza każde żądanie dla dokładnego przypadku, aliasu i tekstu, weryfikuje jego potwierdzenie i odrzuca niepełne lub nierozstrzygnięte oceny. Robi to bez ponownego wywoływania modelu. Powtórne wykonanie na tych samych wejściach zwraca ten sam rekord. Zmiana danych wymaga nowej tożsamości referencji. W manifeście kampanii powiąż rekord z wariantami startującymi od tego samego `initial_adapter_id`.
 
 ```json
 {
@@ -221,7 +221,9 @@ Rejestracja sprawdza tożsamość i sumy kontrolne zarejestrowanego adaptera, za
   },
   "final_qualification": {
     "inputs_id": "fresh-final",
-    "reserve_seconds": 900
+    "reserve_seconds": 900,
+    "conversation_review_required": true,
+    "conversation_review_id": "final-0a"
   }
 }
 ```
@@ -231,12 +233,22 @@ kanonicznego JSON panelu: klucze sortowane, UTF-8, bez spacji separatorów.
 Przed kwalifikacją checkpointu wymagany jest osobny immutable receipt dla każdej
 pary run/krok. Receipt wiąże hash raportu checkpointu, wagi i konfigurację obu
 adapterów, snapshot, referencję P13, panel i wynik scorera 96 pełnych rozmów.
-Brak receipt pozostawia kampanię w `awaiting_review`; po ręcznej rejestracji
-wykonawca ponawia assessment. Mismatch blokuje awans, a wynik `STOP` odrzuca
-checkpoint. Przykładowy hash z samymi zerami jest placeholderem; w planie podaj
+Przed decyzją o dogrywce i przed wyborem finalisty kampania czeka w
+`awaiting_review` na brakujące werdykty. Po rejestracji kontroler sprawdza
+dowody i wznawia decyzję. Wynik `STOP` odrzuca checkpoint. Zatrzymanie albo
+wyczerpanie czasu na DEV w trakcie oczekiwania kończy lokalną kwalifikację jako
+niekompletną. Czas na DEV obejmuje ocenę i zachowuje rezerwę dla FINAL. Przykładowy hash z samymi zerami jest placeholderem; w planie podaj
 rzeczywisty hash panelu.
 
-`campaigns plan` zamraża identyfikator i hash referencji. Przy automatycznej ocenie każdy checkpoint trafia do rankingu po porównaniu z rodzicem. Utrata użytecznego wyniku lub pełnego zaliczenia P13 blokuje wybór nawet przy poprawie średniej. Remis nie spełnia wymagania przyrostu. Jeśli plan przewiduje powtórzenie receptury i żaden krok nie przejdzie bramki, kolejny seed zostaje pominięty. Raport zachowuje deltę względem M0, deltę względem rodzica i identyfikatory utraconych przypadków. Kalibracja `exact-v1` ocenia zadeklarowane odpowiedzi i ich format. Otwarty dialog i kwalifikacja do wydania mają osobny protokół i niezależny finał.
+Lokalny plan 0A wymaga też werdyktu dla 48 niezależnych rozmów FINAL. Po
+wybraniu finalisty polecenie `python -m scripts.academy.campaigns final-review-binding CAMPAIGN_ID`
+zwraca identyfikator werdyktu i powiązanie z dokładnym checkpointem. Użyj ich
+w zgłoszeniu `quality register-review` z trybem `final`, panelem i kompletem
+ocen. Pola `p13_identity` i `candidate_identity` zgłoszenia muszą zgadzać się
+z wartościami z `binding`. Kontroler czeka na werdykt w ramach rezerwy FINAL.
+Oczekiwanie nie zużywa ponowień kwalifikacji.
+
+`campaigns plan` zamraża identyfikator i hash referencji. Przy automatycznej ocenie każdy checkpoint trafia do rankingu po porównaniu z rodzicem. Utrata użytecznego wyniku lub pełnego zaliczenia P13 blokuje wybór nawet przy poprawie średniej. Remis nie spełnia wymagania przyrostu. Nierozstrzygnięta ocena semantyczna blokuje wybór i oznacza niekompletny odbiór DEV. Jeśli plan przewiduje powtórzenie receptury i żaden krok nie przejdzie bramki, kolejny seed zostaje pominięty. Raport zachowuje deltę względem M0, deltę względem rodzica i identyfikatory utraconych przypadków. Kalibracja `exact-v1` ocenia zadeklarowane odpowiedzi i ich format. Otwarty dialog i kwalifikacja do wydania mają osobny protokół i niezależny finał.
 
 ## Kampania Optuna
 
@@ -372,10 +384,69 @@ Raport pokazuje liczbę rekordów, liczbę tokenów nadzoru oraz pokrycie umiej�
 
 Gdy kampania czeka na ocenę checkpointu, `status` zwraca `conversation_review_id` i dokładny `conversation_review_binding` dla każdej brakującej oceny. Zapisz do pliku JSON żądanie z polami `review_id`, `mode`, `panel`, `p13`, `candidate`, `binding`, `p13_identity`, `candidate_identity`, `reviewer_id` i `reviewer_note`. `panel` zawiera definicje rozmów i kryteriów; `p13` oraz `candidate` zawierają ręczne werdykty dla każdej tury w tym samym układzie. Tożsamości modeli muszą odpowiadać polom z bindingu. Dla oceny końcowej `mode` ma wartość `final`; dla checkpointu `dev`.
 
-Zarejestruj pakiet z katalogu Academy:
+Przygotuj szablon dla checkpointu ze zwróconego przez kampanię obiektu oczekującej oceny oraz kanonicznego panelu:
+
+```bash
+python -m scripts.academy.quality --root "$experiment_root" prepare-checkpoint-review pending.json panel.json > request.json
+```
+
+Polecenie sprawdza status, identyfikatory modeli i hash panelu względem wiązania kampanii. Wypełnij wszystkie pola kryteriów i `critical` wartościami `true` lub `false` oraz dane recenzenta. Początkowe wartości `null` nie są oceną i rejestracja ich nie przyjmie. Użyj osobnych odpowiedzi modeli z tej samej próby, zachowując historię każdej rozmowy.
+
+Aby przygotować ślepą paczkę z generacji natywnej, użyj dokładnego obiektu oczekującego checkpointu ze statusu kampanii oraz zapieczętowanych generacji rodzica i checkpointu. Plik datasetu JSONL musi mieć SHA-256 zgodny z `development_identity.dataset_sha256` w wiązaniu. Dla każdej tury rekord musi zawierać `review_group` zgodne z grupą panelu oraz `dialogue.id` i `dialogue.turn_index` odpowiadające rozmowie i pozycji w posortowanych identyfikatorach tur panelu. Identyfikatory kryteriów rekordu muszą odpowiadać kryteriom tury. Dataset musi pokrywać cały panel 0A. Pieczęć potwierdza integralność zapisanej generacji, a pochodzenie wykonania opiera się na zaufaniu do natywnego wykonawcy.
+
+```bash
+python -m scripts.academy.conversation_blind \
+  --pending pending.json --panel panel.json --dataset dev.jsonl \
+  --parent /sciezka/do/generacji-p13 --candidate /sciezka/do/generacji-checkpointu \
+  --output /prywatny/katalog/ocena-01
+```
+
+Polecenie atomowo tworzy nowy katalog o uprawnieniach 0700. Przekaż recenzentowi `reviewer.json` z pytaniami, opisami kryteriów i odpowiedziami pod aliasami oraz `judgments-template.json` z formularzem. `private.json` zawiera przypisanie aliasów i ma zostać u operatora. Zachowaj wydaną paczkę do ponowienia. Jeżeli istniejąca paczka pochodzi sprzed dodania formularza, przygotuj nową w odrębnym katalogu na tych samych zapieczętowanych generacjach.
+
+Recenzent zapisuje wypełniony formularz jako `judgments.json`. Podaje identyfikator, notatkę, oceny wszystkich kryteriów i flagę `critical` każdego aliasu w każdej turze. Pole `package_sha256` pozostaje takie jak w formularzu. Gdy wpłynie komplet ocen, operator rejestruje go jednym poleceniem:
+
+```bash
+python -m scripts.academy.quality --root "$experiment_root" register-blind-review \
+  pending.json /prywatny/katalog/ocena-01 judgments.json
+```
+
+Import sprawdza zgodność paczki, mapy aliasów, formularza, panelu i wiązania checkpointu. Weryfikacja sum wykrywa zmianę lokalnych plików przy zachowaniu zaufania do miejsca ich przechowywania. Scorer zapisuje PASS albo STOP z hashem dowodów. Identyczny import można ponowić na tym samym zapisie `pending.json`. Kampania uwzględnia potwierdzenie przy następnym odczycie lub przejściu. Historyczna generacja na innym zbiorze wymaga osobnego protokołu.
+
+Jeżeli używasz ręcznie wypełnionego `request.json`, zarejestruj go poleceniem:
 
 ```bash
 python -m scripts.academy.quality --root "$experiment_root" register-review "$request_json"
 ```
 
-Polecenie ponownie liczy progi 0A, zapisuje niezmienny `receipt.json` i `judgments.json` atomowo oraz wypisuje wynik. Następne `status`/`advance` kampanii odczyta potwierdzenie i ponownie oceni wyłącznie oczekujące checkpointy. Nie edytuj ręcznie zapisanych plików.
+Polecenie ponownie liczy progi 0A, zapisuje niezmienny `receipt.json` i `judgments.json` atomowo oraz wypisuje wynik. Następne `status`/`advance` kampanii odczyta potwierdzenie i ponownie oceni wyłącznie oczekujące checkpointy. Ponowne zarejestrowanie identycznego pakietu zwraca pierwotny wynik po sprawdzeniu jego integralności. Zmiana danych, recenzenta lub uszkodzenie zapisanych plików powoduje konflikt. Nie edytuj ręcznie zapisanych plików.
+
+### Diagnostyczna generacja 96 rozmów
+
+Do ponownego pomiaru użyj świeżego panelu DEV z 96 rozmowami po cztery tury. Uruchom generację na hoście Academy ze wspólną konfiguracją dzierżaw GPU i wskaż katalog wyników na trwałym dysku.
+
+```bash
+python -m scripts.academy.conversation_generate \
+  --panel panel.json --dataset dev.jsonl --snapshot "$snapshot" \
+  --venv "$training_venv" --parent "$p13" --parent-step 145 \
+  --candidate "$checkpoint" --candidate-step 21 \
+  --output "$out" --max-seconds 7200
+```
+
+Generacja używa izolowanego wykonawcy Academy i własnej historii każdej rozmowy. Dla odrębnego hosta bez aktywnego API można dodać `--dedicated-runtime`. Ta opcja nadal wymaga wspólnej dzierżawy GPU. Zadbaj o te same ustawienia `RUNTIME_ADMISSION_ENABLED`, `MEMORY_ROOT` i port API co host. Po przerwaniu powtórz polecenie z tym samym katalogiem i wejściami. Wykonawca odzyska zapisane tury, a limit czasu obowiązuje dla pojedynczego wywołania. Ukończony przebieg przy ponowieniu weryfikuje pieczęcie bez generacji.
+
+`generation-acceptance.json` zawiera tożsamości, skróty wejść i pieczęci oraz osobne liczniki dla M0, P13 i kandydata. Liczniki pokazują pokrycie, liczbę niepustych odpowiedzi i sposób zakończenia (`stop`, `length`, `error`). Status `complete` oznacza sprawdzone pokrycie generacji. Werdykt jakościowy powstaje po ocenie.
+
+Przygotuj pakiet dla recenzenta i przelicz wypełniony formularz.
+
+```bash
+python -m scripts.academy.conversation_diagnostic cutoff-ceiling "$out" panel.json dev.jsonl
+python -m scripts.academy.conversation_diagnostic prepare "$out" panel.json dev.jsonl "$package"
+python -m scripts.academy.conversation_diagnostic score "$out" "$package" judgments.json
+```
+
+`cutoff-ceiling` sprawdza zapieczętowaną generację przed oceną treści. Gdy
+ucięcia uniemożliwiają osiągnięcie progu całego panelu lub którejś grupy,
+zwraca diagnostyczny `STOP`. Pozostałe wyniki wymagają oceny treści i mają
+status `REVIEW`. Polecenie zapisuje wynik na standardowym wyjściu.
+
+Recenzent otrzymuje `reviewer.json` i `judgments-template.json`. Operator zachowuje prywatną mapę aliasów. Scorer wymaga kompletu ocen i odrzuca zaliczenie odpowiedzi uciętej przez limit długości. Wynik `diagnostic_only` jest wypisywany jako osobny dowód i nie tworzy potwierdzenia dla kampanii. Kampania kwalifikuje checkpoint własną ścieżką wiązania i rejestracji.

@@ -195,6 +195,8 @@ Te dokumenty zawierają szczegóły techniczne. Ten dokument jest operacyjnym pu
 
 W Chat 2.0 historia wątku jest zapisywana w Studio i Full. W Normal zaznacz **Użyj notatek**, aby odczytać notatki dla bieżącego pytania. Opcja domyślnie jest wyłączona. **Zapisz jako notatkę** indeksuje wybraną ukończoną odpowiedź w Direct lub Normal.
 
+W Direct, zapisując salę i godzinę wydarzenia, podaj jego nazwę w cudzysłowie. W kolejnych wiadomościach możesz użyć tej nazwy, aby zaproponować, zatwierdzić lub odrzucić zmianę. Aby odczytać aktualne ustalenia i oczekujące propozycje, napisz w tym samym wątku np. `Dla „Ceramika”: Podaj aktualne ustalenia.`.
+
 W rozmowie głosowej Studio i w trybie Direct w panelu Głos w Full selektor trybu odpowiedzi Omni udostępnia eksperymentalne opcje **Natywny tekst i mowa** oraz **Natywna mowa**. Wymagają one lokalnego Ollama z aktywnym LFM3-Omni-2B i przypiętego zestawu plików modelu bez dowiązań, wskazanego przez `OMNI_NATIVE_SNAPSHOT` na hoście Linux z CUDA. Oba tryby przyjmują polskie nagranie do 30 sekund i opcjonalny obraz. Aby po błędzie wrócić do standardowej ścieżki, wybierz **Dotychczasowy tor głosowy**. Venom zachowuje wybrany tryb po błędzie tury.
 
 ### Toolsy czatu i konfiguracja runtime

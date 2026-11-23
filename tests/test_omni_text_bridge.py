@@ -1383,3 +1383,519 @@ def test_fee_binding_requires_one_unambiguous_declared_amount():
         "Akceptuję opłatę 20 zł. Czy opłata 30 zł jest tylko propozycją?"
     )
     assert accepted_with_explicit_amount.binding == "20"
+
+
+def test_pending_fee_survives_rejection_of_a_previous_proposal():
+    history = [
+        "Obowiązuje opłata 20 zł.",
+        "Proponuję opłatę 27 zł. To tylko propozycja. Jaka opłata obowiązuje?",
+        "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?",
+    ]
+    next_proposal = (
+        "Proponuję opłatę 32 zł. To tylko propozycja. Jaka opłata obowiązuje?"
+    )
+    pending = correction_context(next_proposal, history)
+    assert pending is not None
+    assert pending.verified_reply == (
+        "Obowiązuje 20 zł. Kwota 32 zł jest propozycją do zatwierdzenia."
+    )
+    accepted = correction_context(
+        "Zatwierdzam opłatę 32 zł. Jaka opłata obowiązuje?", [*history, next_proposal]
+    )
+    assert accepted is not None
+    assert accepted.verified_reply == "Obowiązuje 32 zł."
+
+
+def test_event_proposals_separate_room_time_and_named_events():
+    history = [
+        "Przyjmij jako ustalone dla „Próba Tria”: sala Brzoza, 16:35, prowadzi Iza.",
+        "Przyjmij jako ustalone dla „Druga Próba”: sala Akacja, 10:00, prowadzi Ania.",
+    ]
+    proposal = "Przy „Próba Tria” proponuję salę"  # No structured update.
+    assert correction_context(proposal, history) is None
+    proposal = "Przy „Próba Tria” rozważamy zmianę: sala Łubin, 17:15. To propozycja. Co nadal obowiązuje?"
+    pending = correction_context(proposal, history)
+    assert pending is not None
+    assert pending.verified_reply == (
+        "Miejsce to Brzoza, godzina 16:35, prowadzi Iza. "
+        "Propozycja do zatwierdzenia to miejsce Łubin, godzina 17:15."
+    )
+    reject = "Przy „Próba Tria”: odrzucam propozycję godziny. Co nadal obowiązuje?"
+    rejected = correction_context(reject, [*history, proposal])
+    assert rejected is not None
+    assert rejected.verified_reply == (
+        "Miejsce to Brzoza, godzina 16:35, prowadzi Iza. "
+        "Propozycja do zatwierdzenia to miejsce Łubin."
+    )
+    accepted = correction_context(
+        "Decyzja dla „Próba Tria”: akceptuję propozycję. Podaj aktualne ustalenia.",
+        [*history, proposal, reject],
+    )
+    assert accepted is not None
+    assert accepted.verified_reply == "Miejsce to Łubin, godzina 16:35, prowadzi Iza."
+    shifted = correction_context(
+        "Decyzja dla „Próba Tria”: akceptuję godzinę 18:00. Podaj aktualne ustalenia.",
+        history,
+    )
+    assert shifted is not None
+    assert shifted.verified_reply == "Miejsce to Brzoza, godzina 18:00, prowadzi Iza."
+
+
+def test_event_lookup_preserves_valid_proposals_and_rejects_equivalent_times():
+    history = [
+        "Ustalenia dla „Ceramika”: sala Jodła, 10:45.",
+        "Przy „Ceramika”: Propozycja: sala Łubin, 9:00, wstęp wolny, trzeba przynieść fartuch.",
+        "Przy „Ceramika”: Propozycja: sala. Co nadal obowiązuje?",
+        "Przy „Ceramika”: Pomysł przesunięcia startu na 09:00 nie został zatwierdzony.",
+    ]
+    lookup = "Dla „Ceramika”: Podaj aktualne ustalenia."
+    result = correction_context(lookup, history)
+    assert result is not None
+    assert result.verified_reply == (
+        "Miejsce to Jodła, godzina 10:45. "
+        "Propozycja do zatwierdzenia to miejsce Łubin, wstęp jest wolny, trzeba przynieść fartuch."
+    )
+    accepted = correction_context(
+        "Decyzja dla „Ceramika”: akceptuję propozycję. Podaj aktualne ustalenia.",
+        history,
+    )
+    assert accepted is not None
+    assert accepted.verified_reply == (
+        "Miejsce to Łubin, godzina 10:45. Wstęp jest wolny i trzeba przynieść fartuch."
+    )
+
+
+def test_event_note_reports_all_new_attributes():
+    result = correction_context(
+        "Doszedł drugi komunikat do „Ceramika”: sala Jodła, wstęp wolny, trzeba przynieść fartuch. "
+        "Wypisz tylko nowe informacje.",
+        ["Ustalenia dla „Ceramika”: sala Jodła, 10:45."],
+    )
+    assert result is not None
+    assert result.verified_reply == "Wstęp jest wolny, trzeba przynieść fartuch."
+
+
+def test_event_note_summary_replaces_location_and_keeps_other_facts():
+    initial = "Zapisz sobie na tę rozmowę notatkę „Ceramika”: warsztat jest o 10:45 w pracowni Jodła; wstęp wolny."
+    added = "Doszedł drugi komunikat do „Ceramika”: trzeba przynieść własny fartuch. Wypisz w jednym zdaniu tylko nowe informacje."
+    correction = "Korekta do „Ceramika”: spotkanie przeniesiono do pracowni Topaz, godzina bez zmian. Rozróżnij zmianę od tego, co już było."
+    new_only = correction_context(added, [initial])
+    assert new_only is not None
+    assert new_only.verified_reply == "Trzeba przynieść własny fartuch."
+    corrected = correction_context(correction, [initial, added])
+    assert corrected is not None
+    assert (
+        corrected.verified_reply
+        == "Nowe miejsce to Topaz. Godzina 10:45 pozostaje bez zmian."
+    )
+    summary = correction_context(
+        "Przygotuj teraz dwuzdaniową informację na podstawie obu notatek „Ceramika” po korekcie.",
+        [initial, added, correction],
+    )
+    assert summary is not None
+    assert summary.verified_reply == (
+        "Miejsce to Topaz, godzina 10:45. Wstęp jest wolny i trzeba przynieść własny fartuch."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("initial", "goal", "correction", "expected"),
+    (
+        (
+            "Trasa A ma 1,4 km, B 850 m. Ile razem? Wytłumacz z jednostkami.",
+            "W sprawie „długość dwóch tras”: A ile brakuje do 2,5 km?",
+            "Doprecyzujmy „długość dwóch tras”: B zmierzono faktycznie na 920 m. Przelicz brak.",
+            [
+                ("2250", "2,25 km", None, None),
+                ("250", "250 m", "2250", "2500"),
+                ("180", "2320 m", "2320", "2500"),
+                ("180", "2,32 km", "2320", "2500"),
+            ],
+        ),
+        (
+            "Odcinek X mierzy 0,65 km, a odcinek Y ma 300 m. Ile łącznie?",
+            "Ile jeszcze brakuje do 1,2 km?",
+            "Korekta: Y wynosi teraz 31500 cm. Przelicz brak.",
+            [
+                ("950", "950 m", None, None),
+                ("250", "250 m", "950", "1200"),
+                ("235", "965 m", "965", "1200"),
+                ("235", "0,965 km", "965", "1200"),
+            ],
+        ),
+    ),
+)
+async def test_native_natural_calculator_preserves_operands_and_receipt(
+    native, monkeypatch, initial, goal, correction, expected
+):
+    from venom_core.config import SETTINGS
+    from venom_core.services.chat_history import persist_direct_response
+
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    _, calls = native
+    await bridge.switch("p13")
+
+    class Store:
+        def append_turn_once(self, *args):
+            self.assistant = args[2][1]
+
+    store = Store()
+    history = []
+    prompts = [
+        initial,
+        goal,
+        correction,
+        "Zakończmy „długość dwóch tras”. Jedno zdanie do notatki z wynikiem i brakiem.",
+    ]
+    for index, (prompt, check) in enumerate(zip(prompts, expected, strict=True)):
+        value, expected_text, total, target = check
+        request = SimpleChatRequest(
+            content=prompt, history=history, max_tokens=192, session_id="distances"
+        )
+        response = persist_direct_response(
+            await bridge.response(request), request, store
+        )
+        packets = [part async for part in response.body_iterator]
+        row = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+        assert row["response_source"] == "calculator"
+        receipt = row["tool_result"]
+        assert receipt == store.assistant["tool_result"]
+        assert receipt["status"] == "succeeded"
+        assert receipt["value"] == value
+        assert receipt["unit"] == "m"
+        assert receipt["recomputed"] is (index >= 2)
+        assert receipt.get("total") == total
+        assert receipt.get("target") == target
+        assert expected_text in store.assistant["content"]
+        if index == len(prompts) - 1:
+            assert f"{value} m" in store.assistant["content"]
+        history.extend(
+            [
+                HistoryMessage(role="user", content=prompt),
+                HistoryMessage(role="assistant", content=store.assistant["content"]),
+            ]
+        )
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_native_natural_calculator_repeats_from_user_operands(native):
+    _, calls = native
+    await bridge.switch("p13")
+    request = SimpleChatRequest(
+        content="Powtórz wynik.",
+        history=[
+            HistoryMessage(
+                role="user",
+                content="Odcinek A ma 100 m i odcinek B ma 200 m. Ile razem?",
+            ),
+            HistoryMessage(role="assistant", content="Razem 500 m."),
+            HistoryMessage(role="user", content="Ile brakuje do 400 m?"),
+            HistoryMessage(role="assistant", content="Brakuje 20 m."),
+        ],
+    )
+    response = await bridge.response(request)
+    packets = [packet async for packet in response.body_iterator]
+    finished = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+    receipt = finished["tool_result"]
+    assert finished["response_source"] == "calculator"
+    assert receipt["recomputed"] is True
+    assert receipt["value"] == "100"
+    assert "100 m" in "".join(packets)
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_native_natural_calculator_clarifies_without_running_tool(native):
+    _, calls = native
+    await bridge.switch("p13")
+    response = await bridge.response(
+        SimpleChatRequest(
+            content="Korekta: Y ma 330 m albo 340 m. Przelicz brak.",
+            history=[
+                HistoryMessage(
+                    role="user",
+                    content="Odcinek X mierzy 0,65 km, a odcinek Y ma 300 m. Ile łącznie?",
+                ),
+                HistoryMessage(role="assistant", content="Razem 950 m."),
+                HistoryMessage(role="user", content="Ile brakuje do 1,2 km?"),
+                HistoryMessage(role="assistant", content="Brakuje 250 m."),
+            ],
+        )
+    )
+    packets = [packet async for packet in response.body_iterator]
+    finished = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+    assert "Podaj dokładne długości" in "".join(packets)
+    assert finished["response_source"] == "calculator_clarification"
+    assert "tool_result" not in finished
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("question", "history", "result"),
+    (
+        (
+            "Ile brakuje do 2 km?",
+            ["Odcinek A ma 800 m i B to 700 m.", "Kiedy jedzie pociąg?"],
+            None,
+        ),
+        (
+            "Przetłumacz zdanie „Odcinek A ma 800 m i B to 700 m. Ile łącznie?”",
+            [],
+            None,
+        ),
+        (
+            "Odcinek A ma 800 m. Ile łącznie?",
+            [],
+            "clarification",
+        ),
+        (
+            "Mam 3 kg jabłek i 4 kg gruszek. Ile to razem?",
+            ["Odcinek A ma 100 m i odcinek B ma 200 m. Ile to razem?"],
+            None,
+        ),
+        (
+            "Podaj łączną długość i ile brakuje.",
+            ["Odcinek A ma 800 m i B to 700 m."],
+            "clarification",
+        ),
+        (
+            "Podaj łączną długość i ile brakuje.",
+            [
+                "Odcinek A ma 800 m i B to 700 m.",
+                "Ile brakuje do 2 km?",
+                "Korekta: B ma 800 m albo 900 m.",
+            ],
+            "clarification",
+        ),
+        (
+            "Ile brakuje do 1 km?",
+            ["Odcinek A ma 800 m i B to 700 m."],
+            "Powyżej celu o 500 m.",
+        ),
+        (
+            "Odcinek A ma 999999999999 km i B to 700 m. Ile łącznie?",
+            [],
+            "Nie udało się obliczyć wyniku. Sprawdź długości odcinków.",
+        ),
+        (
+            "Ile łącznie i ile brakuje do 2 km?",
+            ["Odcinek A ma 800 m i B to 700 m."],
+            "Razem 1,5 km, do 2 km brakuje 500 m.",
+        ),
+        (
+            "Ile brakuje do 999999999999 km?",
+            ["Odcinek A ma 800 m i B to 700 m."],
+            "Nie udało się obliczyć wyniku. Sprawdź długości odcinków.",
+        ),
+    ),
+)
+def test_natural_calculator_requires_unambiguous_user_operands(
+    question, history, result
+):
+    from venom_core.services.chat_policy.direct_calculator import plan_calculator
+    from venom_core.services.chat_policy.direct_distance import (
+        DistanceCalculation,
+        DistanceClarification,
+        execute_distance,
+    )
+
+    plan = plan_calculator(
+        question, [{"role": "user", "content": message} for message in history]
+    )
+    if result is None:
+        assert plan is None
+    elif result == "clarification":
+        assert isinstance(plan, DistanceClarification)
+    else:
+        assert isinstance(plan, DistanceCalculation)
+        assert execute_distance(plan)["text"] == result
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        (
+            "Korekta: odcinek A ma 810 m i B to 710 m. Przelicz brak.",
+            "Brakuje 480 m, razem 1520 m.",
+        ),
+        (
+            "Korekta: odcinek A ma 810 m i B to 710 m. Ile brakuje do 3 km?",
+            "Brakuje 1480 m, razem 1520 m.",
+        ),
+        ("Odcinek A ma 810 m i B to 710 m. Ile brakuje?", "clarification"),
+        ("Korekta: odcinek X ma 810 m i Y to 710 m. Przelicz brak.", "clarification"),
+    ],
+)
+def test_distance_correction_preserves_goal_only_for_same_segments(question, expected):
+    from venom_core.services.chat_policy.direct_calculator import plan_calculator
+    from venom_core.services.chat_policy.direct_distance import (
+        DistanceCalculation,
+        DistanceClarification,
+        execute_distance,
+    )
+
+    plan = plan_calculator(
+        question,
+        [
+            {"role": "user", "content": "Odcinek A ma 800 m i B to 700 m."},
+            {"role": "user", "content": "Ile brakuje do 2 km?"},
+        ],
+    )
+    if expected == "clarification":
+        assert isinstance(plan, DistanceClarification)
+    else:
+        assert isinstance(plan, DistanceCalculation)
+        assert execute_distance(plan)["text"] == expected
+
+
+@pytest.mark.parametrize(
+    ("declaration", "expected"),
+    [
+        ("Ustalam opłatę 15 zł.", "Obowiązuje 15 zł."),
+        ("Obowiązuje opłata 18 zł za osobę.", "Obowiązuje 18 zł za osobę."),
+    ],
+)
+def test_explicit_fee_declaration_is_binding(declaration, expected):
+    result = correction_context(declaration, [])
+    assert result is not None
+    assert result.verified_reply == expected
+    assert correction_context(declaration.rstrip(".") + "?", []) is None
+
+
+def test_explicit_fee_rejection_confirms_only_a_known_pending_amount():
+    history = ["Ustalam opłatę 15 zł.", "Proponuję opłatę 21 zł."]
+    rejection = "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?"
+    confirmed = correction_context(rejection, history)
+    assert confirmed is not None
+    assert confirmed.verified_reply == "Obowiązuje 15 zł. Propozycja została odrzucona."
+    assert correction_context(f"Przetłumacz „{rejection}”", history) is None
+    assert correction_context(rejection.replace("opłaty.", "opłaty?"), history) is None
+    assert correction_context(rejection, history[:1]) is None
+    qualified = correction_context(
+        rejection, ["Ustalam opłatę 15 zł za osobę.", history[1]]
+    )
+    assert qualified is not None
+    assert qualified.verified_reply is None
+
+
+def test_questioned_fee_proposal_does_not_enable_rejection():
+    result = correction_context(
+        "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?",
+        ["Ustalam opłatę 15 zł.", "Proponuję opłatę 21 zł?"],
+    )
+    assert result is None or result.verified_reply is None
+
+
+def test_fee_decision_checks_punctuation_in_its_own_clause():
+    from venom_core.services.chat_policy.direct_correction import _FeeState
+
+    state = _FeeState(field="opłat")
+    state.read("Proponuję opłatę 21.50 zł. Jaka opłata obowiązuje?")
+    state.read("Dziękuję. Odrzucam propozycję zmiany opłaty?")
+    assert state.proposed == "21.50"
+    state.read("Dziękuję. Akceptuję opłatę 20.50 zł.")
+    assert state.binding == "20.50"
+    state.read("Proponuję opłatę 25 zł. Dziękuję.")
+    state.read("Dziękuję. Akceptuję opłatę 22 zł?")
+    assert state.binding == "20.50"
+    assert state.proposed == "25"
+    state.read(
+        "Odrzucam propozycję zmiany opłaty za bilet nr 3. Jaka opłata obowiązuje?"
+    )
+    assert state.proposed is None
+    assert state.binding == "20.50"
+
+
+@pytest.mark.parametrize("unit", ["", " za osobę"])
+def test_pending_fee_only_returns_known_personal_rate(unit):
+    initial = f"Ustalam opłatę 15 zł{unit}."
+    history = [
+        initial,
+        "Proponuję opłatę 21 zł.",
+        "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?",
+    ]
+    proposal = "Proponuję opłatę 25 zł. To tylko propozycja. "
+    general = correction_context(proposal + "Jaka opłata obowiązuje?", history)
+    assert general is not None
+    expected = f"Obowiązuje 15 zł{unit}. Kwota 25 zł jest propozycją do zatwierdzenia."
+    assert general.verified_reply == expected
+    personal = correction_context(
+        proposal + "Ile wynosi teraz opłata za wstęp dla jednej osoby?", history
+    )
+    if unit:
+        assert personal is not None
+        assert personal.verified_reply == expected
+    else:
+        assert personal is None
+
+
+@pytest.mark.parametrize(
+    ("decision", "binding"),
+    [
+        (["Akceptuję opłatę 100 zł za całą grupę."], "100"),
+        (["Proponuję opłatę 100 zł za całą grupę.", "Akceptuję opłatę."], "100"),
+        (["Proponuję opłatę 100 zł za całą grupę.", "Akceptuję opłatę 100 zł."], "100"),
+        (
+            [
+                "Proponuję opłatę 100.00 zł za całą grupę.",
+                "Akceptuję opłatę 100,00 zł.",
+            ],
+            "100,00",
+        ),
+        (
+            ["Proponuję opłatę 1 000 zł za całą grupę.", "Akceptuję opłatę 1000 zł."],
+            "1000",
+        ),
+    ],
+)
+def test_group_fee_acceptance_replaces_personal_scope(decision, binding):
+    history = ["Ustalam opłatę 15 zł za osobę.", *decision]
+    proposal = "Proponuję opłatę 120 zł za całą grupę. To tylko propozycja. "
+    general = correction_context(proposal + "Jaka opłata obowiązuje?", history)
+    assert general is not None
+    assert general.verified_reply == (
+        f"Obowiązuje {binding} zł za całą grupę. "
+        "Kwota 120 zł za całą grupę jest propozycją do zatwierdzenia."
+    )
+    personal = correction_context(
+        proposal + "Ile wynosi teraz opłata za wstęp dla jednej osoby?", history
+    )
+    assert personal is None
+
+
+def test_rejected_group_fee_proposal_preserves_binding_scope():
+    result = correction_context(
+        "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?",
+        [
+            "Ustalam opłatę 100 zł za całą grupę.",
+            "Proponuję opłatę 120 zł za całą grupę.",
+        ],
+    )
+    assert result is not None
+    assert result.verified_reply == (
+        "Obowiązuje 100 zł za całą grupę. Propozycja została odrzucona."
+    )
+
+
+def test_ambiguous_fee_changes_clear_prior_scope():
+    from venom_core.services.chat_policy.direct_correction import _FeeState
+
+    state = _FeeState()
+    state.read("Ustalam opłatę 15 zł za osobę.")
+    state.read("Proponuję opłatę 120 zł za całą grupę.")
+    state.read("Akceptuję opłatę 100 zł za całą grupę i kaucję 50 zł.")
+    assert state.binding_scope == ""
+    assert state.proposed_scope == ""
+    state.read("Akceptuję opłatę 100 zł.")
+    assert state.binding == "100"
+    assert state.binding_scope == ""
+
+
+def test_initial_fee_is_read_only_from_declaration_clause():
+    result = correction_context(
+        "Proponuję opłatę 25 zł. Jaka opłata obowiązuje?",
+        ["Ustalam opłatę. Czy ma wynosić 15 zł?"],
+    )
+    assert result is None

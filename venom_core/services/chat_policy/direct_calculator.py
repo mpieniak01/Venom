@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+from venom_core.services.chat_policy.direct_distance import (
+    DistanceCalculation,
+    DistanceClarification,
+    plan_distance,
+)
 
 _PREFIX = re.compile(
     r"(?:oblicz|policz|użyj kalkulatora)(?:[ \t]*:[ \t]*|[ \t]+|(?=[.!]?$))",
@@ -94,16 +100,22 @@ def _split_inline_unit(expression: str) -> tuple[str, str]:
 
 def plan_calculator(
     content: str, history: Sequence[dict[str, str]]
-) -> CalculatorRequest | None:
-    """Repeat only an immediately preceding explicit calculation."""
+) -> CalculatorRequest | DistanceCalculation | DistanceClarification | None:
+    """Plan an explicit command or a supported calculation from the conversation."""
     if _REPEAT.fullmatch(content.strip()) is None:
-        return _command(content)
+        return _command(content) or plan_distance(content, history)
     if len(history) < 2 or [row["role"] for row in history[-2:]] != [
         "user",
         "assistant",
     ]:
         return None
-    previous = _command(history[-2]["content"])
-    if previous is None or not previous.expression:
-        return None
-    return CalculatorRequest(previous.expression, previous.unit, repeat=True)
+    previous_turn = history[-2]["content"]
+    previous = _command(previous_turn)
+    if previous is not None:
+        return replace(previous, repeat=True) if previous.expression else None
+    distance = plan_distance(previous_turn, history[:-2])
+    return (
+        replace(distance, repeat=True)
+        if isinstance(distance, DistanceCalculation)
+        else None
+    )

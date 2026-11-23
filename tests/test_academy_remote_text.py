@@ -320,3 +320,132 @@ def test_remote_plan_does_not_send_private_local_final_configuration(setup):
         service.plan(RemoteTextSpec.model_validate(payload))
     rental.validate.assert_not_called()
     host.plan.assert_not_called()
+
+
+def _review_spec(spec, *, with_final_pins=True):
+    payload = spec.model_dump()
+    if with_final_pins:
+        payload.update(final_test_sha256=PLAN, final_calibration_sha256=PROFILE)
+    payload["campaign"].update(
+        variants=[{"initial_adapter_id": "omni-p13-145"}],
+        checkpoint_steps=[1],
+        conversation_review={
+            "panel_sha256": PROFILE,
+            "receipt_id_prefix": "qa-night",
+            "final_mode": "remote",
+        },
+        quality_policy={
+            "reference_record_ids": ["baseline"],
+            "parent_reference_record_id": "baseline",
+            "protect_parent_full_pass": True,
+        },
+    )
+    return RemoteTextSpec.model_validate(payload)
+
+
+def _review_remote(spec, status):
+    remote = _remote(status)
+    remote["plan"]["conversation_review"] = (
+        spec.campaign.conversation_review.model_dump()
+    )
+    return remote
+
+
+def test_remote_conversation_review_requires_final_pins_without_rental(setup):
+    service, spec, _, rental, host = setup
+    spec = _review_spec(spec, with_final_pins=False)
+    with pytest.raises(
+        ValueError, match="campaign_remote_conversation_review_final_pins_required"
+    ):
+        service.plan(spec)
+    rental.validate.assert_not_called()
+    host.plan.assert_not_called()
+
+
+def test_remote_conversation_review_survives_restart_and_waits_for_host_verdict(setup):
+    service, spec, clock, rental, host = setup
+    spec = _review_spec(spec)
+    queued = _launch(service, spec)
+    pending = {
+        **_review_remote(spec, "awaiting_review"),
+        "pending_conversation_reviews": [{"review_id": "qa-night"}],
+    }
+    host.start.return_value = pending
+    first = service.tick("night")
+    assert first["status"] == "running"
+    assert first["remote"] == pending
+
+    restored = RemoteTextService(service.local, rental, service.host, clock=clock)
+    host.status.side_effect = [
+        TransportError("remote_ssh_timeout", retryable=True),
+        pending,
+        _review_remote(spec, "succeeded"),
+        _review_remote(spec, "succeeded"),
+    ]
+    unavailable = restored.tick("night")
+    assert unavailable["status"] == "running"
+    assert unavailable["remote"] == pending
+    assert unavailable["error"] == "campaign_remote_poll_unavailable"
+    clock.return_value = 1410.0
+    waiting = restored.tick("night")
+    assert waiting["status"] == "running"
+    assert waiting["remote"] == pending
+    assert waiting["search_cutoff_at"] == queued["search_cutoff_at"]
+    assert waiting["deadline_at"] == queued["deadline_at"]
+    assert waiting["recovery_attempts"] == 0
+    assert waiting["result"]["best_qualified"] is None
+    assert host.plan.call_args.args[0]["conversation_review"]["final_mode"] == "remote"
+    assert waiting["plan"]["request"]["final_test_sha256"] == PLAN
+    host.start.assert_called_once()
+    host.resume.assert_not_called()
+    host.stop.assert_not_called()
+    rental.cleanup.assert_not_called()
+
+    assert restored.tick("night")["status"] == "completed"
+    rental.cleanup.assert_called_once()
+    rental.cost.assert_called_once_with(RENTAL, campaign_id="night")
+
+
+@pytest.mark.parametrize("termination", ["stop", "cutoff"])
+def test_remote_conversation_review_still_finalizes_without_verdict(setup, termination):
+    service, spec, clock, rental, host = setup
+    spec = _review_spec(spec)
+    queued = _launch(service, spec)
+    host.start.return_value = host.status.return_value = _review_remote(
+        spec, "awaiting_review"
+    )
+    host.stop.return_value = _review_remote(spec, "stopped")
+    assert service.tick("night")["status"] == "running"
+    if termination == "stop":
+        assert service.stop("night")["stop_requested"]
+    else:
+        clock.return_value = queued["search_cutoff_at"]
+    completed = service.tick("night")
+    assert completed["status"] == "completed"
+    assert completed["remote"]["status"] == "stopped"
+    assert completed["result"]["best_qualified"] is None
+    host.start.assert_called_once()
+    host.resume.assert_not_called()
+    host.stop.assert_called_once_with("night")
+    rental.cleanup.assert_called_once_with(RENTAL, campaign_id="night")
+
+
+def test_ordinary_remote_campaign_still_finalizes_at_awaiting_review(setup):
+    service, spec, _, rental, host = setup
+    _launch(service, spec)
+    host.start.return_value = host.status.return_value = _remote("awaiting_review")
+    assert service.tick("night")["status"] == "completed"
+    host.stop.assert_called_once_with("night")
+    rental.cleanup.assert_called_once_with(RENTAL, campaign_id="night")
+
+
+def test_remote_conversation_review_rejects_host_without_bound_gate(setup):
+    service, spec, _, rental, host = setup
+    _launch(service, _review_spec(spec))
+    host.start.return_value = host.status.return_value = _remote("succeeded")
+    result = service.tick("night")
+    assert result["status"] == "completed"
+    assert result["error"] == "campaign_remote_final_evidence_invalid"
+    assert result["remote"] is None
+    assert result["result"]["best_qualified"] is None
+    rental.cleanup.assert_called_once()

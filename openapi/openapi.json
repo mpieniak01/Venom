@@ -15171,6 +15171,15 @@
             "pattern": "^[a-f0-9]{64}$",
             "title": "Panel Sha256"
           },
+          "final_mode": {
+            "type": "string",
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Final Mode",
+            "default": "local"
+          },
           "receipt_id_prefix": {
             "type": "string",
             "maxLength": 20,

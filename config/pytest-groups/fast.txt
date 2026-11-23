@@ -35,6 +35,7 @@ tests/test_academy_api_dataset_edge_cases.py
 tests/test_academy_api_dataset_routes.py
 tests/test_academy_api_edges_contract.py
 tests/test_academy_campaign_capabilities.py
+tests/test_academy_conversation_blind.py
 tests/test_academy_conversation_review.py
 tests/test_academy_conversion_contracts.py
 tests/test_academy_conversion_light_coverage.py

@@ -8,6 +8,8 @@ from types import SimpleNamespace
 import pytest
 
 from venom_core.services.training_experiments.conversation_review import (
+    payload_sha,
+    prepare_checkpoint_review,
     register_review,
     register_review_request,
     score,
@@ -341,13 +343,23 @@ def test_campaign_spec_explicitly_enables_0a_review_without_changing_defaults():
             "max_critical_delta": 0,
             "protect_parent_full_pass": True,
         },
-        final_qualification={"inputs_id": "final", "reserve_seconds": 30},
+        final_qualification={
+            "inputs_id": "final",
+            "reserve_seconds": 30,
+            "conversation_review_required": True,
+            "conversation_review_id": "final-01",
+        },
         conversation_review={
             "panel_sha256": "0" * 64,
             "receipt_id_prefix": "review-0a",
         },
     )
     assert reviewed.conversation_review.receipt_id_prefix == "review-0a"
+    data = reviewed.model_dump(mode="json")
+    data["final_qualification"]["conversation_review_required"] = False
+    spec_type = type(reviewed)
+    with pytest.raises(ValueError, match="campaign_final_conversation_review_required"):
+        spec_type.model_validate(data)
 
 
 def _checkpoint_campaign(tmp_path, monkeypatch):
@@ -453,7 +465,13 @@ def _checkpoint_campaign(tmp_path, monkeypatch):
             "protect_parent_full_pass": False,
         },
         "quality_policy": {"parent_reference_record_id": "history:p13"},
-        "final_qualification": {"inputs_id": "final", "reserve_seconds": 30},
+        "budget": {"max_seconds": 600},
+        "final_qualification": {
+            "inputs_id": "final",
+            "reserve_seconds": 30,
+            "conversation_review_required": True,
+            "conversation_review_id": "final-01",
+        },
         "conversation_review": {
             "panel_sha256": panel_hash,
             "receipt_id_prefix": "review-0a",
@@ -480,6 +498,41 @@ def _checkpoint_campaign(tmp_path, monkeypatch):
         p13_identity,
         candidate_identity,
     )
+
+
+def test_unresolved_dev_checkpoint_cannot_advance_despite_broad_pass(
+    tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments.campaign import (
+        _rank,
+        development_complete,
+    )
+    from venom_core.services.training_experiments.local_campaign_final import transition
+
+    service, plan, run_id, *_ = _checkpoint_campaign(tmp_path, monkeypatch)
+    report, checksum = service.experiments.checkpoint_report(run_id, 13)
+    report["unverifiable_answers"] = 1
+    monkeypatch.setattr(
+        service,
+        "_verify_conversation_checkpoint_review",
+        lambda *_: ({"status": "PASS"}, {}),
+    )
+    trial = {"run_id": run_id, "status": "succeeded", "result_sha256": checksum}
+    state = {"plan": plan, "trials": [trial], "status": "succeeded", "phase": "trials"}
+    trial["checkpoint_evaluations"] = [
+        service._assess_checkpoint(state, run_id, 13, None)
+    ]
+    item = trial["checkpoint_evaluations"][0]
+    assert item["usable_delta"] > 0
+    assert item["conversation_review_status"] == "pass"
+    assert item["unverifiable_answers"] == 1
+    assert not item["qualified"]
+    assert not development_complete(state)
+    _rank(state)
+    transition(state)
+    assert state["selected_checkpoint_step"] is None
+    assert state["qualification_status"] == "incomplete"
+    assert state["qualification"]["reason"] == "campaign_development_incomplete"
 
 
 @pytest.mark.parametrize("tamper", ["replace", "remove"])
@@ -712,3 +765,70 @@ def test_review_registration_never_publishes_partial_directory(tmp_path, monkeyp
             reviewer_note="atomicity check",
         )
     assert not (target / "review-0a-02").exists()
+
+
+def test_prepare_pending_checkpoint_creates_incomplete_independent_verdicts(tmp_path):
+    panel, _, _ = _evidence()
+    identity = {
+        "model": "P13",
+        "weights_sha256": "w",
+        "config_sha256": "c",
+        "snapshot_sha256": "s",
+    }
+    binding = {
+        "campaign_id": "campaign-01",
+        "panel_sha256": payload_sha(panel),
+        "p13_identity": identity,
+        "candidate_identity": identity,
+    }
+    pending = {
+        "conversation_review_status": "pending",
+        "conversation_review_id": "review-01",
+        "conversation_review_binding": binding,
+    }
+    request = prepare_checkpoint_review(pending, panel)
+    assert request["p13"]["C000"]["T0"]["critical"] is None
+    request["p13"]["C000"]["T0"]["critical"] = True
+    assert request["candidate"]["C000"]["T0"]["critical"] is None
+    with pytest.raises(ValueError, match="reviewer_required"):
+        register_review_request(tmp_path, request)
+    with pytest.raises(ValueError, match="panel_binding_invalid"):
+        prepare_checkpoint_review(
+            pending,
+            {
+                **panel,
+                "C000": {
+                    **panel["C000"],
+                    "turns": {**panel["C000"]["turns"], "T0": ["different"]},
+                },
+            },
+        )
+    with pytest.raises(ValueError, match="pending_checkpoint_required"):
+        prepare_checkpoint_review(
+            {**pending, "conversation_review_status": "pass"}, panel
+        )
+
+
+def test_identical_registration_is_idempotent_and_tamper_fails(tmp_path):
+    binding, receipt = _register(tmp_path)
+    panel, p13, candidate = _evidence()
+    args = dict(
+        mode="dev",
+        panel=panel,
+        p13=p13,
+        candidate=candidate,
+        binding=binding,
+        p13_identity=binding["p13_identity"],
+        candidate_identity=binding["candidate_identity"],
+        reviewer_id="operator-7",
+        reviewer_note="Przegląd 96 pełnych rozmów.",
+    )
+    assert register_review(tmp_path, "review-0a-01", **args) == receipt
+    with pytest.raises(ValueError, match="immutable_conflict"):
+        register_review(tmp_path, "review-0a-01", **{**args, "reviewer_note": "zmiana"})
+    path = tmp_path / "conversation-reviews" / "review-0a-01" / "judgments.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["candidate"]["C000"]["T0"]["critical"] = True
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="immutable_conflict"):
+        register_review(tmp_path, "review-0a-01", **args)

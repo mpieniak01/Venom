@@ -116,6 +116,7 @@ class CampaignConversationReview(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     panel_sha256: Digest
+    final_mode: Literal["local", "remote"] = "local"
     receipt_id_prefix: str = Field(
         min_length=1, max_length=20, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
     )
@@ -230,9 +231,15 @@ class CampaignSpec(BaseModel):
             or self.quality_policy.parent_reference_record_id is None
             or self.quality_policy.protect_parent_full_pass is not True
             or self.retention != "keep_all"
-            or self.final_qualification is None
+            or (self.conversation_review.final_mode == "local")
+            != (self.final_qualification is not None)
         ):
             raise ValueError("campaign_conversation_review_invalid")
+        if (
+            self.final_qualification is not None
+            and not self.final_qualification.conversation_review_required
+        ):
+            raise ValueError("campaign_final_conversation_review_required")
 
     def _validate_repeat_recipe(self) -> None:
         if (

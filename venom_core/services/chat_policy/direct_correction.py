@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 
+from venom_core.services.chat_policy.direct_event_state import event_state_reply
 from venom_core.services.chat_policy.qualified_chat_quote import (
     single_quoted_operand,
     without_quotes,
@@ -34,9 +36,13 @@ _ACCEPT = re.compile(
 )
 _FEE_NOMINATIVE = r"(?:składka|kaucja|opłata|cena)"
 _FEE_ACCUSATIVE = r"(?:składkę|kaucję|opłatę|cenę)"
+_ONE_PERSON_TEXT = "dla jednej osoby"
+_PER_PERSON_SUFFIX = " za osobę"
+_PER_PERSON = r"(?:za (?:jedną )?osobę|na (?:jedną )?osobę|od osoby)"
+_GROUP = r"(?:za (?:całą grupę|grupę|wszystkich)|dla (?:całej grupy|grupy|wszystkich))"
 _PENDING_PROPOSAL = re.compile(
     rf"(?:proponuję|ktoś zaproponował|ktoś proponuje)\s+{_FEE_ACCUSATIVE}\s+"
-    rf"{_AMOUNT.pattern}(?:[.!]\s*|$)",
+    rf"{_AMOUNT.pattern}(?:\s+(?:{_PER_PERSON}|{_GROUP}))?(?:[.!]\s*|$)",
     re.I,
 )
 _PENDING_MARKER = re.compile(
@@ -46,11 +52,20 @@ _CURRENT_FEE_QUERY = re.compile(
     rf"(?:jaką {_FEE_ACCUSATIVE} mam wpisać do aktualnych ustaleń"
     rf"|jaka {_FEE_NOMINATIVE} (?:obowiązuje|jest aktualna)"
     rf"|ile (?:obecnie wynosi|wynosi obecnie) {_FEE_NOMINATIVE}"
-    rf"|ile wynosi teraz {_FEE_NOMINATIVE} za wstęp dla jednej osoby)\s*\?",
+    rf"|ile wynosi teraz {_FEE_NOMINATIVE} za wstęp {_ONE_PERSON_TEXT})\s*\?",
     re.I,
 )
 _FEE_ENTRY = r"(?:wejście|wstęp|bilet)"
-_PER_PERSON = r"(?:za (?:jedną )?osobę|na (?:jedną )?osobę|od osoby)"
+_REJECTED_FEE_QUESTION = re.compile(
+    r"odrzucam (?:propozycję (?:zmiany )?|zmianę )(?:składki|kaucji|opłaty|ceny)"
+    r"[.!]\s+(?P<question>[^.!?]+\?)",
+    re.I,
+)
+_FEE_ESTABLISHMENT = re.compile(
+    rf"(?:ustalam {_FEE_ACCUSATIVE}|obowiązuje {_FEE_NOMINATIVE})"
+    rf"\s+{_AMOUNT.pattern}(?:\s+(?P<unit>{_PER_PERSON}))?\s*[.!]?",
+    re.I,
+)
 _ACCEPTED_FEE_QUESTION = re.compile(
     rf"(?:zatwierdzam|akceptuję|przyjmuję)\s+(?P<field>{_FEE_ACCUSATIVE})"
     rf"(?:\s+za (?P<subject>{_FEE_ENTRY}))?\s+(?:w wysokości\s+)?"
@@ -65,6 +80,7 @@ _ENTRY_FEE_QUESTION = re.compile(
 )
 _ENTRY_SUBJECT = re.compile(rf"\b{_FEE_ENTRY}\b", re.I)
 _PER_PERSON_UNIT = re.compile(rf"\s+{_PER_PERSON}\b", re.I)
+_GROUP_UNIT = re.compile(rf"\s+{_GROUP}\b", re.I)
 _FEE_UNCERTAINTY = re.compile(r"\b(?:nie|może|prawdopodobnie)\b", re.I)
 _SOURCE = re.compile(r"\b(?:ulotk|kartk|kartc|karc|kartę)\w*\b", re.I)
 _SOURCE_QUERY = re.compile(
@@ -162,7 +178,28 @@ def _question_in_clause(text: str, start: int) -> bool:
 
 def _clause_terminator(text: str, start: int) -> re.Match[str] | None:
     """Find sentence punctuation while allowing decimal points in amounts."""
-    return re.search(r"(?<!\d)\.(?!\d)|[!?]", text[start:])
+    return re.search(r"(?<!\d)\.|\.(?!\d)|[!?]", text[start:])
+
+
+def _statement_body(text: str, start: int) -> str | None:
+    terminator = _clause_terminator(text, start)
+    if terminator is None:
+        return text[start:]
+    if terminator.group() == "?":
+        return None
+    return text[start : start + terminator.start()]
+
+
+def _fee_value(amount: str) -> Decimal:
+    return Decimal("".join(amount.split()).replace(",", "."))
+
+
+def _fee_scope(clause: str, amount_end: int) -> str:
+    if _PER_PERSON_UNIT.match(clause, amount_end):
+        return _PER_PERSON_SUFFIX
+    if _GROUP_UNIT.match(clause, amount_end):
+        return " za całą grupę"
+    return ""
 
 
 @dataclass
@@ -171,6 +208,8 @@ class _FeeState:
     binding: str | None = None
     proposed: str | None = None
     decision: bool = False
+    binding_scope: str = ""
+    proposed_scope: str = ""
 
     def read(self, text: str) -> None:
         if not self._read_field(text):
@@ -187,17 +226,24 @@ class _FeeState:
         fields = {match.lower() for match in _FEE.findall(text)} - {"kwot"}
         if len(fields) > 1:
             self.field = self.binding = self.proposed = None
+            self.binding_scope = self.proposed_scope = ""
             self.decision = False
             return False
         field = next(iter(fields), self.field)
         if self.field is not None and field != self.field:
             self.binding = self.proposed = None
+            self.binding_scope = self.proposed_scope = ""
             self.decision = False
         self.field = field
         return True
 
     def _read_rejection(self, text: str) -> bool:
-        if _REJECT.search(text) and self.proposed is not None:
+        rejection = _REJECT.search(text)
+        if (
+            rejection is not None
+            and self.proposed is not None
+            and not _question_in_clause(text, rejection.end())
+        ):
             self.proposed = None
             self.decision = True
             return True
@@ -205,40 +251,58 @@ class _FeeState:
 
     def _read_acceptance(self, text: str) -> bool:
         acceptance = _ACCEPT.search(text)
-        if acceptance is None or _question_in_clause(text, acceptance.start()):
+        if acceptance is None:
             return False
-        clause = text[acceptance.start() :]
-        terminator = _clause_terminator(text, acceptance.start())
-        if terminator is not None:
-            clause = text[acceptance.start() : acceptance.start() + terminator.end()]
-        amounts = _AMOUNT.findall(clause)
+        clause = _statement_body(text, acceptance.end())
+        if clause is None:
+            return False
+        amounts = list(_AMOUNT.finditer(clause))
         if len(amounts) == 1:
-            accepted = amounts[0]
-        elif not amounts:
-            accepted = self.proposed
+            amount = amounts[0]
+            self.binding = amount[1]
+            proposal_scope = ""
+            if self.proposed is not None and _fee_value(self.proposed) == _fee_value(
+                self.binding
+            ):
+                proposal_scope = self.proposed_scope
+            self.binding_scope = (
+                _fee_scope(clause, amount.end()) or proposal_scope or self.binding_scope
+            )
+        elif not amounts and self.proposed is not None:
+            self.binding = self.proposed
+            self.binding_scope = self.proposed_scope or self.binding_scope
         else:
-            accepted = None
-        if accepted is not None:
-            self.binding, self.proposed, self.decision = accepted, None, True
+            return True
+        self.proposed, self.decision = None, True
         return True
 
     def _read_proposal(self, text: str) -> bool:
-        amounts = _AMOUNT.findall(text)
-        if _PROPOSAL.search(text) and len(amounts) == 1:
-            self.proposed, self.decision = amounts[0], False
-            return True
-        return False
+        proposal = _PROPOSAL.search(text)
+        if proposal is None:
+            return False
+        clause = _statement_body(text, proposal.end())
+        if clause is None:
+            return False
+        amounts = list(_AMOUNT.finditer(clause))
+        if len(amounts) != 1:
+            return False
+        amount = amounts[0]
+        self.proposed_scope = _fee_scope(clause, amount.end())
+        self.proposed, self.decision = amount[1], False
+        return True
 
     def _read_initial_binding(self, text: str) -> None:
         initial = _INITIAL.search(text)
-        amounts = _AMOUNT.findall(text)
-        if (
-            self.field is not None
-            and len(amounts) == 1
-            and initial is not None
-            and not _question_in_clause(text, initial.start())
-        ):
-            self.binding, self.proposed, self.decision = amounts[0], None, False
+        if self.field is None or initial is None:
+            return
+        clause = _statement_body(text, initial.end())
+        if clause is None:
+            return
+        amounts = list(_AMOUNT.finditer(clause))
+        if len(amounts) == 1:
+            amount = amounts[0]
+            self.binding_scope = _fee_scope(clause, amount.end())
+            self.binding, self.proposed, self.decision = amount[1], None, False
 
 
 def _verified_number_card_reply(source: str, content: str) -> str | None:
@@ -326,6 +390,9 @@ def correction_context(
         context = _conversation_fact_context(visible, preceding_users)
         if context is not None:
             return context
+    event = event_state_reply(content, preceding_users[-6:])
+    if event is not None:
+        return CorrectionContext("event_state", event, verified_reply=event)
     if not _is_fee_state_request(visible):
         return None
     state = _fee_state_from_history(visible, previous)
@@ -387,9 +454,15 @@ def _cancelled_registration_context(
 def _conversation_fact_context(
     visible: str, preceding_users: Sequence[str]
 ) -> CorrectionContext | None:
+    established = _FEE_ESTABLISHMENT.fullmatch(visible.strip())
+    if established:
+        unit = _PER_PERSON_SUFFIX if established["unit"] else ""
+        reply = f"Obowiązuje {established[1]} zł{unit}."
+        return CorrectionContext("binding_fee", reply, verified_reply=reply)
     for resolver in (
         _reservation_from_conversation,
         _accepted_fee_context,
+        _rejected_fee_context,
         _pending_fee_context,
     ):
         context = resolver(visible, preceding_users)
@@ -477,7 +550,7 @@ def _accepted_fee_context(
         question, category, per_person, subject, known_subjects
     ):
         return None
-    unit = " za osobę" if per_person else ""
+    unit = _PER_PERSON_SUFFIX if per_person else ""
     reply = f"Obowiązuje {amount[1]} zł{unit}."
     return CorrectionContext("binding_fee", reply, verified_reply=reply)
 
@@ -515,7 +588,58 @@ def _accepted_fee_question_matches(
         return False
     if requested[1].casefold() != category:
         return False
-    return "dla jednej osoby" not in question.casefold() or per_person
+    return _ONE_PERSON_TEXT not in question.casefold() or per_person
+
+
+def _fee_before_proposal(history: Sequence[str]) -> _FeeState:
+    state = _FeeState()
+    for message in history:
+        visible = without_quotes(message).strip()
+        if _EDIT.match(visible) or _FEE_UNCERTAINTY.search(visible):
+            state = _FeeState()
+            continue
+        if (
+            _INITIAL.match(visible)
+            or _ACCEPT.search(visible)
+            or _REJECT.search(visible)
+            or _PROPOSAL.match(visible)
+        ):
+            state.read(visible)
+        else:
+            # A topic change breaks a replay of consecutive fee messages.
+            state = _FeeState()
+    return state
+
+
+def _rejected_fee_context(
+    content: str, preceding_users: Sequence[str]
+) -> CorrectionContext | None:
+    decision = _REJECTED_FEE_QUESTION.fullmatch(content.strip())
+    if decision is None or not _CURRENT_FEE_QUERY.fullmatch(decision["question"]):
+        return None
+    rejected = _FEE.search(content)
+    requested = _FEE.search(decision["question"])
+    if (
+        rejected is None
+        or requested is None
+        or rejected[1].casefold() != requested[1].casefold()
+    ):
+        return None
+    recent = preceding_users[-6:]
+    state = _fee_before_proposal(recent)
+    if (
+        state.binding is None
+        or state.proposed is None
+        or state.field != requested[1].casefold()
+    ):
+        return None
+    # Leave qualified prices to the context that includes their full wording.
+    if _ONE_PERSON_TEXT in decision["question"].casefold() or any(
+        _PER_PERSON_UNIT.search(message) for message in recent
+    ):
+        return None
+    reply = f"Obowiązuje {state.binding} zł{state.binding_scope}. Propozycja została odrzucona."
+    return CorrectionContext("binding_fee", reply, verified_reply=reply)
 
 
 def _pending_fee_context(
@@ -524,36 +648,40 @@ def _pending_fee_context(
     proposal, question = _proposal_question(content.strip())
     if not preceding_users or _CURRENT_FEE_QUERY.fullmatch(question) is None:
         return None
-    confirmation = preceding_users[-1]
-    if not proposal and len(preceding_users) >= 2:
-        proposal, previous_question = _proposal_question(confirmation.strip())
+    history = preceding_users[-6:]
+    if not proposal:
+        proposal, previous_question = _proposal_question(history[-1].strip())
         if (
             previous_question
             and _CURRENT_FEE_QUERY.fullmatch(previous_question) is None
         ):
             return None
-        confirmation = preceding_users[-2]
+        history = history[:-1]
     if not proposal:
         return None
 
-    confirmation = without_quotes(confirmation)
-    if _FEE_UNCERTAINTY.search(confirmation):
-        return None
     requested = _FEE.search(question)
     proposed = _FEE.search(proposal)
-    if not requested or not proposed or requested[1].lower() != proposed[1].lower():
+    if (
+        not requested
+        or not proposed
+        or requested[1].casefold() != proposed[1].casefold()
+    ):
         return None
-    state = _FeeState()
-    state.read(confirmation)
-    if state.binding is None or state.field != requested[1].lower():
+    state = _fee_before_proposal(history)
+    if state.binding is None or state.field != requested[1].casefold():
         return None
-    state.read(proposal)
-    if state.proposed is None:
+    if (
+        _ONE_PERSON_TEXT in question.casefold()
+        and state.binding_scope != _PER_PERSON_SUFFIX
+    ):
+        return None
+    if not state._read_proposal(proposal):
         return None
 
     reply = (
-        f"Obowiązuje {state.binding} zł. "
-        f"Kwota {state.proposed} zł jest propozycją do zatwierdzenia."
+        f"Obowiązuje {state.binding} zł{state.binding_scope}. "
+        f"Kwota {state.proposed} zł{state.proposed_scope} jest propozycją do zatwierdzenia."
     )
     return CorrectionContext("pending_fee", reply, verified_reply=reply)
 

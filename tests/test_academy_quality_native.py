@@ -236,6 +236,116 @@ def test_register_parent_fails_closed(parent_reference, problem, error):
     assert not (service.root / "quality/p13-dev.json").exists()
 
 
+@pytest.mark.parametrize(
+    ("problem", "error"),
+    [
+        ("none", None),
+        ("missing", "campaign_parent_semantic_judgments_required"),
+        ("duplicate", "campaign_parent_semantic_judgments_invalid"),
+        ("changed_grade", "experiment_checkpoint_baseline_receipt_changed"),
+        ("uncertain", "campaign_parent_semantic_judgments_incomplete"),
+    ],
+)
+def test_register_parent_verifies_saved_semantic_receipts(
+    parent_reference, monkeypatch, problem, error
+):
+    from venom_core.services.training_experiments import local_semantic_judge as judge
+    from venom_core.services.training_experiments import semantic_judge_dispatch
+    from venom_core.services.training_experiments.evidence import review_data
+
+    service, generation, generated = parent_reference
+    root = service.root
+    calibration = {
+        "schema_version": 1,
+        "judge": judge.JUDGE,
+        "reviewer": "fixture",
+        "dev_sha256": digest(root / "dev.jsonl"),
+        "judge_qualification": {
+            "protocol_sha256": "a" * 64,
+            "result_sha256": "b" * 64,
+        },
+        "cases": {
+            "a": {
+                "claims": {
+                    "price": {
+                        "kind": "value",
+                        "field_aliases": ["cena"],
+                        "value_aliases": ["37 zł"],
+                    }
+                }
+            }
+        },
+    }
+    cal_sha = write(root / "profiles/pilot.calibration.json", calibration)
+    profile_path = root / "profiles/pilot.json"
+    profile = json.loads(profile_path.read_text())
+    write(profile_path, {**profile, "calibration_sha256": cal_sha})
+    expected = evaluation_identity(generated, cal_sha, calibration=calibration)
+    monkeypatch.setattr(
+        quality_native, "frozen_evaluation_identity", lambda *_: expected
+    )
+    pin = judge.Qualification.model_construct(model="fixture")
+    monkeypatch.setattr(semantic_judge_dispatch, "qualification", lambda _: pin)
+
+    def respond(_client, request, _remaining):
+        verdict = (
+            "unclear"
+            if problem == "uncertain"
+            else (
+                "supported"
+                if "37 zł" in json.loads(request["messages"][1]["content"])["candidate"]
+                else "contradicted"
+            )
+        )
+        return {
+            "model": pin.model,
+            "done": True,
+            "done_reason": "stop",
+            "message": {
+                "content": json.dumps(
+                    {
+                        "atoms": {"price": verdict},
+                        "unsupported": "yes" if verdict == "contradicted" else "no",
+                        "injection": False,
+                        "polish_ok": True,
+                        "natural_ok": True,
+                        "reason": "Saved fixture verdict",
+                    }
+                ),
+            },
+        }
+
+    monkeypatch.setattr(judge, "invoke_request", respond)
+    grades = [
+        {
+            "record_id": row["case"]["record_id"],
+            "label": label,
+            **judge._review_answer(
+                None, pin, calibration["cases"]["a"], row["case"], answer, lambda: 1
+            ),
+        }
+        for row in review_data(generation, root / "dev.jsonl")["answers"]
+        for label, answer in row["answers"].items()
+    ]
+    path = root / "saved-judgments.json"
+    if problem == "duplicate":
+        grades.append(grades[0])
+    elif problem == "changed_grade":
+        grades[0]["critical_error"] = not grades[0]["critical_error"]
+    write(path, grades)
+    args = (service, "pilot", "omni-p13-145", generation, 145, "p13-semantic")
+    kwargs = {"judgments_path": None if problem == "missing" else path}
+    if error:
+        with pytest.raises(ValueError, match=error):
+            quality_native.register_parent_reference(*args, **kwargs)
+        assert not (root / "quality/p13-semantic.json").exists()
+    else:
+        registered = quality_native.register_parent_reference(*args, **kwargs)
+        assert registered == quality_native.register_parent_reference(*args, **kwargs)
+        assert registered["cases"]["a"]["base"]["critical"]
+        assert registered["cases"]["a"]["candidate"]["passed"]
+
+
 def test_sealed_result_preserves_paired_critical_evidence(sealed_run):
     service, generation = sealed_run
     row = get_record(service, "test-native")

@@ -96,6 +96,12 @@ def _remote_spec(spec: RemoteTextSpec) -> CampaignSpec:
     campaign = spec.campaign
     if campaign.final_qualification is not None:
         raise ValueError("campaign_remote_local_qualification_unsupported")
+    review = campaign.conversation_review
+    if review is not None:
+        if review.final_mode != "remote":
+            raise ValueError("campaign_remote_conversation_review_mode_invalid")
+        if spec.final_test_sha256 is None or spec.final_calibration_sha256 is None:
+            raise ValueError("campaign_remote_conversation_review_final_pins_required")
     if campaign.review_mode != "automatic":
         raise ValueError("campaign_remote_automatic_review_required")
     if campaign.retention != "keep_all":
@@ -104,6 +110,14 @@ def _remote_spec(spec: RemoteTextSpec) -> CampaignSpec:
     if parents and any(parent != parents[0] for parent in parents):
         raise ValueError("campaign_remote_mixed_parents")
     return campaign
+
+
+def _same_conversation_review(request: dict, remote: dict) -> bool:
+    expected = request["campaign"].get("conversation_review")
+    plan = remote.get("plan")
+    return expected is None or (
+        isinstance(plan, dict) and plan.get("conversation_review") == expected
+    )
 
 
 class RemoteTextService:
@@ -141,6 +155,8 @@ class RemoteTextService:
         if not final_test or state["remote"] is None:
             return
         try:
+            if not _same_conversation_review(request, state["remote"]):
+                raise ValueError("campaign_remote_host_identity_mismatch")
             decision = read_qualification(
                 directory / "evidence",
                 state["remote"],
@@ -353,6 +369,7 @@ class RemoteTextService:
             or remote.get("plan", {}).get("plan_sha256")
             != state["plan"]["remote_plan_sha256"]
             or remote.get("cutoff_at") != state["search_cutoff_at"]
+            or not _same_conversation_review(state["plan"]["request"], remote)
             or not isinstance(remote.get("status"), str)
             or not isinstance(remote.get("trials"), list)
         ):
@@ -384,7 +401,11 @@ class RemoteTextService:
             remote = host.resume(campaign_id)
         self._observe(state, remote)
         self._sync(host, directory, state, spec)
-        if remote["status"] in _TERMINAL | {"awaiting_review", "interrupted"}:
+        host_status = remote["status"]
+        if host_status in _TERMINAL | {"interrupted"} or (
+            host_status == "awaiting_review"
+            and spec.campaign.conversation_review is None
+        ):
             state["status"] = "finalizing"
 
     def _finalize(self, directory: Path, state: dict, spec: RemoteTextSpec) -> None:

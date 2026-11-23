@@ -1832,6 +1832,37 @@ def test_local_final_busy_gpu_does_not_charge_retry_but_keeps_deadline(
     assert result["qualification"]["reason"] == "campaign_final_deadline_exhausted"
 
 
+@pytest.mark.parametrize("stopped", [False, True])
+def test_local_final_restores_sealed_result_after_campaign_closes(
+    controller, monkeypatch, stopped
+):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    service, experiments, clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    state = service.advance("series")
+    state["plan"]["final_qualification"]["conversation_review_required"] = True
+    state["qualification_attempts"] = 1
+    state["retries"] = state["plan"]["budget"]["max_retries"]
+    if stopped:
+        state.update(status="stopping", termination="stopped")
+    else:
+        clock.now = state["deadline_at"] + 1
+    service._save(service.directory("series"), state)
+
+    sealed = {"status": "passed", "qualified": None}
+    monkeypatch.setattr(local_campaign_final, "read_result", lambda *_: sealed)
+    result = service.advance("series")
+    assert result["phase"] == "complete"
+    assert result["qualification_status"] == "passed"
+    assert result["qualification"] == sealed
+    assert result["qualification_attempts"] == 1
+
+
 def test_local_pending_recovers_interrupted_session_without_renewing_deadline(
     controller, monkeypatch
 ):
@@ -2758,6 +2789,68 @@ def test_retention_keeps_repeat_source_until_confirmation(controller):
     assert source.exists()
 
 
+@pytest.mark.parametrize("event", ["receipt", "expired", "stopped"])
+def test_local_final_waits_without_spending_retries(controller, monkeypatch, event):
+    from unittest.mock import Mock
+
+    from venom_core.services.training_experiments import local_campaign_final
+
+    service, experiments, clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    state = service.advance("series")
+    config = state["plan"]["final_qualification"]
+    review_id = "final-" + "a" * 58
+    config.update(conversation_review_required=True, conversation_review_id=review_id)
+    directory = service.directory("series")
+    service._save(directory, state)
+    evaluator = Mock(return_value={"status": "failed_quality", "qualified": None})
+    monkeypatch.setattr(local_campaign_final, "_execute", evaluator)
+
+    for _ in range(2):
+        waiting = service.advance("series")
+        assert waiting["status"] == "qualifying"
+        assert waiting["qualification_status"] == "pending_conversation_review"
+        assert waiting["qualification_attempts"] == waiting["retries"] == 0
+    evaluator.assert_not_called()
+
+    if event == "receipt":
+        receipt = (
+            experiments.root
+            / "local-text-qualification"
+            / "series"
+            / "evidence"
+            / "conversation-reviews"
+            / review_id
+            / "receipt.json"
+        )
+        receipt.parent.mkdir(parents=True)
+        receipt.write_text("{}", encoding="utf-8")
+    elif event == "expired":
+        clock.now = state["deadline_at"]
+    else:
+        service.stop("series")
+
+    final = service.advance("series")
+    assert final["phase"] == "complete"
+    if event == "receipt":
+        evaluator.assert_called_once()
+        assert final["qualification_attempts"] == 1
+        assert final["qualification_status"] == "failed_quality"
+    else:
+        evaluator.assert_not_called()
+        assert final["qualification_attempts"] == 0
+        assert final["qualification_status"] == "incomplete"
+        assert final["qualification"]["reason"] == (
+            "campaign_final_deadline_exhausted"
+            if event == "expired"
+            else "campaign_final_stopped"
+        )
+
+
 def test_local_final_consumes_shared_retry_budget(controller, monkeypatch):
     from venom_core.services.training_experiments import local_campaign_final
 
@@ -2890,6 +2983,46 @@ def test_review_refresh_updates_only_requested_checkpoint_rows():
     ]
 
 
+def test_review_refresh_assesses_pending_steps_once_per_trial(tmp_path, monkeypatch):
+    from venom_core.services.training_experiments import campaign
+    from venom_core.services.training_experiments.conversation_review import (
+        checkpoint_review_id,
+    )
+
+    service = object.__new__(CampaignService)
+    service.directory = lambda _campaign_id: tmp_path
+    calls = []
+    service._record_checkpoint_results = (
+        lambda _state, trial, _policy, *, steps: calls.append((trial["run_id"], steps))
+    )
+    monkeypatch.setattr(campaign, "_rank", lambda _state: None)
+    trial = {
+        "run_id": "run",
+        "status": "succeeded",
+        "checkpoint_evaluations": [
+            {"step": step, "conversation_review_status": "pending"} for step in (13, 26)
+        ],
+    }
+    state = {
+        "campaign_id": "series",
+        "plan": {"conversation_review": {"receipt_id_prefix": "review"}},
+        "trials": [trial],
+    }
+    for step in (13, 26):
+        receipt = (
+            tmp_path
+            / "conversation-reviews"
+            / checkpoint_review_id("review", "run", step)
+            / "receipt.json"
+        )
+        receipt.parent.mkdir(parents=True)
+        receipt.write_text("{}", encoding="utf-8")
+
+    service._refresh_pending_conversation_reviews(state)
+
+    assert calls == [("run", {13, 26})]
+
+
 @pytest.mark.parametrize("final_qualification", [False, True])
 def test_review_change_keeps_campaign_blocked(final_qualification, tmp_path):
     service = object.__new__(CampaignService)
@@ -2919,3 +3052,66 @@ def test_review_change_keeps_campaign_blocked(final_qualification, tmp_path):
     assert result["status"] == "blocked"
     assert result["phase"] == "complete"
     assert result["qualification_status"] == "incomplete"
+
+
+@pytest.mark.parametrize("decision", ["PASS", "STOP"])
+def test_checkpoint_review_template_advances_campaign_after_registration(
+    tmp_path, monkeypatch, decision
+):
+    from tests.test_academy_conversation_review import _checkpoint_campaign
+    from venom_core.services.training_experiments.campaign import _rank
+    from venom_core.services.training_experiments.conversation_review import (
+        prepare_checkpoint_review,
+        register_review_request,
+    )
+    from venom_core.services.training_experiments.local_campaign_final import transition
+
+    service, plan, run_id, panel, p13, candidate, _, _ = _checkpoint_campaign(
+        tmp_path, monkeypatch
+    )
+    state = {
+        "campaign_id": plan["campaign_id"],
+        "plan": plan,
+        "phase": "trials",
+        "status": "succeeded",
+        "training_status": "succeeded",
+        "started_at": None,
+        "elapsed_seconds": 0,
+        "worker": None,
+        "final_qualification": {"inputs_id": "final", "reserve_seconds": 30},
+        "trials": [{"run_id": run_id, "status": "succeeded"}],
+    }
+    pending = service._assess_checkpoint(state, run_id, 13, None)
+    pending["quality_guard"] = {"status": "passed"}
+    state["trials"][0]["checkpoint_evaluations"] = [pending]
+    _rank(state)
+    transition(state)
+    assert state["status"] == "awaiting_review"
+
+    directory = service.directory(plan["campaign_id"])
+    directory.mkdir(parents=True, exist_ok=True)
+    service._save(directory, state)
+    request = prepare_checkpoint_review(pending, panel)
+    request.update(reviewer_id="operator", reviewer_note="Full conversation review")
+    with pytest.raises(ValueError, match="conversation_review_.*_verdict_invalid"):
+        register_review_request(tmp_path, request)
+    assert service.advance(plan["campaign_id"])["status"] == "awaiting_review"
+
+    if decision == "STOP":
+        candidate["C000"]["T0"]["critical"] = True
+    request.update(p13=p13, candidate=candidate)
+    receipt = register_review_request(tmp_path, request)
+    assert receipt["status"] == decision
+    assert register_review_request(tmp_path, request) == receipt
+
+    resumed = service.advance(plan["campaign_id"])
+    item = resumed["trials"][0]["checkpoint_evaluations"][0]
+    assert item["conversation_review_status"] == decision.lower()
+    if decision == "PASS":
+        assert item["qualified"] is True
+        assert resumed["selected_run_id"] == run_id
+        assert resumed["phase"] == "qualification"
+    else:
+        assert item["qualified"] is False
+        assert resumed["selected_run_id"] is None
+        assert resumed["qualification_status"] == "failed_quality"

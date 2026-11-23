@@ -1666,4 +1666,5 @@ def test_explicit_fee_rejection_confirms_only_a_known_pending_amount():
     qualified = correction_context(
         rejection, ["Ustalam opłatę 15 zł za osobę.", history[1]]
     )
-    assert qualified is not None and qualified.verified_reply is None
+    assert qualified is not None
+    assert qualified.verified_reply is None

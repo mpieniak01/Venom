@@ -26,14 +26,18 @@ _INITIAL_HEADERS = {
 }
 _ROOM = r"[A-ZĄĆĘŁŃÓŚŹŻ][\w-]{0,39}(?:[ \t]+[A-ZĄĆĘŁŃÓŚŹŻ][\w-]{0,39}){0,3}"
 _TIME = r"(?:[01]?\d|2[0-3]):[0-5]\d"
-_ROOM_FIELD = re.compile(rf"(?i:(?:sala|pracownia)(?:\s*:\s*|\s+))(?P<value>{_ROOM})")
+_ROOM_FIELD = re.compile(
+    rf"(?i:(?:sala|pracownia)(?:(?>\s*):\s*|\s+))(?P<value>{_ROOM})"
+)
 _ROOM_MOVE = re.compile(
     rf"(?i:(?:zmienić salę na|(?:sala|pracownia)\s+na|"
     rf"(?:spotkanie|warsztat) przeniesiono do (?:sali|pracowni)))\s+(?P<value>{_ROOM})"
 )
-_TIME_FIELD = re.compile(rf"(?:(?:godzin[ęa]|start)\s*:?\s*)?(?P<value>{_TIME})", re.I)
+_TIME_FIELD = re.compile(
+    rf"(?:(?:godzin[ęa]|start)\s*(?::\s*)?)?(?P<value>{_TIME})", re.I
+)
 _HOST_FIELD = re.compile(
-    rf"(?i:(?:prowadzi|prowadząca|prowadzący)\s*:?\s*)(?P<value>{_ROOM})"
+    rf"(?i:(?:prowadzi|prowadząca|prowadzący)\s*(?::\s*)?)(?P<value>{_ROOM})"
 )
 _NOTE_EVENT = re.compile(
     rf"(?i:(?:spotkanie|warsztat|zajęcia) (?:jest|są) o) (?P<time>{_TIME}) "
@@ -116,17 +120,23 @@ def _fields(clause: str) -> dict[str, str]:
                 fields[name] = match["value"]
                 break
         else:
-            if _FREE_ENTRY.fullmatch(part):
-                fields["admission"] = "wstęp jest wolny"
-            elif (event := _NOTE_EVENT.fullmatch(part)) is not None:
-                if "room" in fields or "time" in fields:
-                    return {}
-                fields.update(room=event["room"], time=event["time"])
-            elif (bring := _BRING.fullmatch(part)) is not None:
-                fields["bring"] = f"trzeba przynieść {bring['item']}"
-            elif not (fields and part.casefold() == "godzina bez zmian"):
+            if not _additional_field(part, fields):
                 return {}
     return fields
+
+
+def _additional_field(part: str, fields: dict[str, str]) -> bool:
+    if _FREE_ENTRY.fullmatch(part):
+        fields["admission"] = "wstęp jest wolny"
+    elif (event := _NOTE_EVENT.fullmatch(part)) is not None:
+        if "room" in fields or "time" in fields:
+            return False
+        fields.update(room=event["room"], time=event["time"])
+    elif (bring := _BRING.fullmatch(part)) is not None:
+        fields["bring"] = f"trzeba przynieść {bring['item']}"
+    elif not (fields and part.casefold() == "godzina bez zmian"):
+        return False
+    return True
 
 
 def _accepted_fields(state: _Event, clause: str | None) -> dict[str, str]:

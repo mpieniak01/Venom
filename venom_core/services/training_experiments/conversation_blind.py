@@ -28,6 +28,10 @@ from venom_core.services.training_experiments.profiles import (
     stable_hash,
 )
 
+_GENERATION_SEAL = "generation-seal.json"
+_REVIEWER = "reviewer.json"
+_PRIVATE = "private.json"
+
 
 def _find_adapter(manifest: dict, identity: dict) -> str:
     expected = {
@@ -134,7 +138,7 @@ def prepare_blind_package(
     result = read_json(result_file)
     if (
         result.get("generation_sha256")
-        != digest(candidate_generation / "generation-seal.json")
+        != digest(candidate_generation / _GENERATION_SEAL)
         or result.get("run_id") != binding["run_id"]
         or result.get("checkpoint", {}).get("step") != binding["step"]
         or result.get("checkpoint", {}).get("sha256")
@@ -239,8 +243,8 @@ def publish_blind_package(target: Path, package: dict, private: dict) -> Path:
         ) as staging:
             bundle = Path(staging) / "bundle"
             bundle.mkdir(mode=0o700)
-            atomic_json(bundle / "reviewer.json", package)
-            atomic_json(bundle / "private.json", private)
+            atomic_json(bundle / _REVIEWER, package)
+            atomic_json(bundle / _PRIVATE, private)
             atomic_json(
                 bundle / "judgments-template.json", _judgments_template(package)
             )
@@ -273,8 +277,8 @@ def register_blind_review(
     root: Path, pending: dict, package_dir: Path, submitted: object
 ) -> dict:
     """Unblind complete judgments for exactly the package issued for this checkpoint."""
-    package = read_json(package_dir / "reviewer.json")
-    private = read_json(package_dir / "private.json")
+    package = read_json(package_dir / _REVIEWER)
+    private = read_json(package_dir / _PRIVATE)
     _verify_blind_package(pending, package, private)
     panel, arms = _decode_judgments(package, private, submitted)
     assert isinstance(submitted, dict)
@@ -403,7 +407,7 @@ def _diagnostic_arm(
     run: Path, entry: dict, cases: list[dict], dataset_hash: str
 ) -> dict:
     folder = _diagnostic_folder(run, entry)
-    seal_path = folder / "generation-seal.json"
+    seal_path = folder / _GENERATION_SEAL
     expected = entry["generation_seal_sha256"]
     if digest(seal_path) != expected:
         raise ValueError("conversation_review_diagnostic_seal_mismatch")
@@ -503,8 +507,8 @@ def diagnostic_cutoff_ceiling(run: Path, panel: dict, dataset: Path) -> dict:
 def score_diagnostic_review(run: Path, package_dir: Path, submitted: object) -> dict:
     """Score a completed blind diagnostic without publishing a campaign receipt."""
     manifest = _diagnostic_manifest(run)
-    package = read_json(package_dir / "reviewer.json")
-    private = read_json(package_dir / "private.json")
+    package = read_json(package_dir / _REVIEWER)
+    private = read_json(package_dir / _PRIVATE)
     _verify_package_seal(package, private)
     run_hash = stable_hash(manifest)
     if (
@@ -517,7 +521,7 @@ def score_diagnostic_review(run: Path, package_dir: Path, submitted: object) -> 
         raise ValueError("conversation_review_diagnostic_package_mismatch")
     for name in ("parent", "candidate"):
         entry = manifest[name]
-        seal = _diagnostic_folder(run, entry) / "generation-seal.json"
+        seal = _diagnostic_folder(run, entry) / _GENERATION_SEAL
         if digest(seal) != entry["generation_seal_sha256"]:
             raise ValueError("conversation_review_diagnostic_seal_mismatch")
         read_generation(seal.parent)

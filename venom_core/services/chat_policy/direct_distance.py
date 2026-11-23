@@ -139,7 +139,7 @@ class DistanceContext:
             self.segments = turn.segments.copy()
             self.target = turn.target
             return True
-        if not turn.segments.keys() <= self.segments.keys():
+        if turn.segments.keys() - self.segments.keys():
             return False
         self.segments.update(turn.segments)
         if turn.target is not None:

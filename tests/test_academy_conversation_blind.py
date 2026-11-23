@@ -670,7 +670,8 @@ def test_blind_review_controls_restarted_campaign(
     assert resumed["selected_run_id"] == run_id
     assert resumed["selected_checkpoint_step"] == step
     if remote:
-        assert resumed["status"] == "succeeded" and resumed.get("phase") is None
+        assert resumed["status"] == "succeeded"
+        assert resumed.get("phase") is None
     else:
         assert resumed["phase"] == "qualification"
     assert receipt["passed"] > receipt["p13_passed"]
@@ -910,7 +911,8 @@ def test_generation_runner_records_full_dev_and_reuses_sealed_evidence(
         stage = Path(command[8])
         assert command[10:12] == ["--resume-partial", "base"]
         assert log.parent == output
-        assert timeout == 144 and not shared_runtime
+        assert timeout == 144
+        assert not shared_runtime
         attempts.append((run_id, stage))
         stage.mkdir()
         if len(attempts) == 1:

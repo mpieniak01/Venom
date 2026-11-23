@@ -372,7 +372,8 @@ def test_remote_conversation_review_survives_restart_and_waits_for_host_verdict(
     }
     host.start.return_value = pending
     first = service.tick("night")
-    assert first["status"] == "running" and first["remote"] == pending
+    assert first["status"] == "running"
+    assert first["remote"] == pending
 
     restored = RemoteTextService(service.local, rental, service.host, clock=clock)
     host.status.side_effect = [
@@ -382,11 +383,13 @@ def test_remote_conversation_review_survives_restart_and_waits_for_host_verdict(
         _review_remote(spec, "succeeded"),
     ]
     unavailable = restored.tick("night")
-    assert unavailable["status"] == "running" and unavailable["remote"] == pending
+    assert unavailable["status"] == "running"
+    assert unavailable["remote"] == pending
     assert unavailable["error"] == "campaign_remote_poll_unavailable"
     clock.return_value = 1410.0
     waiting = restored.tick("night")
-    assert waiting["status"] == "running" and waiting["remote"] == pending
+    assert waiting["status"] == "running"
+    assert waiting["remote"] == pending
     assert waiting["search_cutoff_at"] == queued["search_cutoff_at"]
     assert waiting["deadline_at"] == queued["deadline_at"]
     assert waiting["recovery_attempts"] == 0

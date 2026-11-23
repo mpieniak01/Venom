@@ -357,8 +357,9 @@ def test_campaign_spec_explicitly_enables_0a_review_without_changing_defaults():
     assert reviewed.conversation_review.receipt_id_prefix == "review-0a"
     data = reviewed.model_dump(mode="json")
     data["final_qualification"]["conversation_review_required"] = False
+    spec_type = type(reviewed)
     with pytest.raises(ValueError, match="campaign_final_conversation_review_required"):
-        type(reviewed).model_validate(data)
+        spec_type.model_validate(data)
 
 
 def _checkpoint_campaign(tmp_path, monkeypatch):

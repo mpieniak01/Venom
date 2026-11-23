@@ -185,6 +185,10 @@ def _parse_packet(packet: str) -> tuple[str, dict[str, Any]] | None:
     return (kind, value) if isinstance(value, dict) else None
 
 
+def _valid_calculator_text(value: Any, max_length: int) -> bool:
+    return value is None or (isinstance(value, str) and len(value) <= max_length)
+
+
 def _calculator_snapshot(receipt: Any) -> dict[str, Any] | None:
     if not isinstance(receipt, dict) or receipt.get("tool") != "calculator":
         return None
@@ -193,9 +197,9 @@ def _calculator_snapshot(receipt: Any) -> dict[str, Any] | None:
     recomputed = receipt.get("recomputed")
     if (
         status not in ("succeeded", "missing_expression", "invalid_expression")
-        or (value is not None and (not isinstance(value, str) or len(value) > 160))
+        or not _valid_calculator_text(value, 160)
         or (status == "succeeded") != (value is not None)
-        or (unit is not None and (not isinstance(unit, str) or len(unit) > 16))
+        or not _valid_calculator_text(unit, 16)
         or not isinstance(recomputed, bool)
     ):
         return None

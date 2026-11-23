@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from scripts.academy.omni_pl_chat_dialogue import DialogueHistory, blind_answer
+from scripts.academy.omni_pl_chat_dialogue import digest as history_digest
 from scripts.academy.omni_pl_chat_evaluate import blind_mapping
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.services.training_experiments.checkpoint_evaluation import (
@@ -271,6 +272,13 @@ def test_blind_package_rejects_different_generation_protocol(input_data):
         prepare_blind_package(pending, panel, dataset, parent, candidate)
 
 
+def test_blind_package_rejects_non_object_pending(input_data):
+    with pytest.raises(
+        ValueError, match="conversation_review_pending_checkpoint_required"
+    ):
+        prepare_blind_package([], *input_data[1:])
+
+
 def test_blind_package_rejects_different_history_after_resealing(input_data):
     pending, panel, dataset, parent, candidate = input_data
     raw_path = candidate / "raw.jsonl"
@@ -281,10 +289,16 @@ def test_blind_package_rejects_different_history_after_resealing(input_data):
         if row["case"] == "C000-2" and row["model"] == "checkpoint-21"
     )
     row["input_messages"][0]["content"] = "Different history"
-    raw_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    row["history_sha256"] = history_digest(row["input_messages"])
+    blind_path = candidate / "blind.jsonl"
+    blind = [json.loads(line) for line in blind_path.read_text().splitlines()]
+    matching = next(item for item in blind if item["case"]["record_id"] == row["case"])
+    matching["answers"][row["label"]] = blind_answer(row)
     manifest_path = candidate / "manifest.json"
     manifest = read_json(manifest_path)
-    manifest["outputs"]["raw.jsonl"] = digest(raw_path)
+    for path, records in ((raw_path, rows), (blind_path, blind)):
+        path.write_text("".join(json.dumps(record) + "\n" for record in records))
+        manifest["outputs"][path.name] = digest(path)
     _write(manifest_path, manifest)
     seal_generation(candidate)
     result_path = candidate / "result.json"
@@ -294,7 +308,7 @@ def test_blind_package_rejects_different_history_after_resealing(input_data):
     pending["conversation_review_binding"]["checkpoint_result_sha256"] = digest(
         result_path
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="dialogue receipt history differs"):
         prepare_blind_package(pending, panel, dataset, parent, candidate)
 
 
@@ -548,6 +562,15 @@ def test_blind_review_controls_restarted_campaign(
         issued = prepare(service, campaign_id, run_id, step, panel_file, parent)
         assert issued == prepare(service, campaign_id, run_id, step, panel_file, parent)
         output = Path(issued["reviewer"]).parent
+        if scenario == "stopped":
+            template_path = output / "judgments-template.json"
+            template = template_path.read_bytes()
+            template_path.unlink()
+            with pytest.raises(
+                ValueError, match="conversation_review_judgments_template_missing"
+            ):
+                prepare(service, campaign_id, run_id, step, panel_file, parent)
+            template_path.write_bytes(template)
         private = read_json(output / "private.json")
         monkeypatch.setattr(campaign_cli, "CampaignService", lambda _: service)
         main = campaign_cli.main
@@ -592,15 +615,17 @@ def test_blind_review_controls_restarted_campaign(
         closed = service.advance(campaign_id)
         assert closed["status"] == ("timed_out" if scenario == "expired" else "stopped")
         assert closed["selected_run_id"] is None
+        _fill_review(submitted)
+        _write(judgments, submitted)
         if remote:
+            capsys.readouterr()
             with pytest.raises(SystemExit, match="1"):
                 main(args)
+            assert "campaign_remote_review_unavailable" in capsys.readouterr().err
             assert not (directory / "conversation-reviews").exists()
         else:
             assert closed["qualification_status"] == "incomplete"
             assert closed["phase"] == "complete"
-            _fill_review(submitted)
-            _write(judgments, submitted)
             main(args)
             assert service.status(campaign_id)["selected_run_id"] is None
         return

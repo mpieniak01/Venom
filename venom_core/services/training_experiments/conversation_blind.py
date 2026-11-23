@@ -95,7 +95,7 @@ def _case_index(cases: list[dict], panel: dict) -> dict:
 
 
 def prepare_blind_package(
-    pending: dict,
+    pending: object,
     panel: dict,
     dataset: Path,
     parent_generation: Path,
@@ -108,7 +108,10 @@ def prepare_blind_package(
     and dialogue.id/turn_index. The package proves integrity and binding, while
     actual execution provenance depends on trust in the native evaluator.
     """
-    if pending.get("conversation_review_status") != "pending":
+    if (
+        not isinstance(pending, dict)
+        or pending.get("conversation_review_status") != "pending"
+    ):
         raise ValueError("conversation_review_pending_checkpoint_required")
     binding = pending["conversation_review_binding"]
     if binding["panel_sha256"] != payload_sha(panel):

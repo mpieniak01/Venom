@@ -68,10 +68,13 @@ def prepare(
             service.experiments.run_dir(run_id) / "checkpoint-evaluations" / str(step),
         )
         publish_blind_package(target, package, private)
+    template = target / "judgments-template.json"
+    if not template.is_file():
+        raise ValueError("conversation_review_judgments_template_missing")
     return {
         "review_id": pending["conversation_review_id"],
         "reviewer": str(target / "reviewer.json"),
-        "judgments_template": str(target / "judgments-template.json"),
+        "judgments_template": str(template),
     }
 
 

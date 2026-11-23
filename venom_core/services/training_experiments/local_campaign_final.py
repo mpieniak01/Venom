@@ -430,16 +430,16 @@ def _execute(service: CampaignService, state: dict) -> dict:
     )
 
 
-def _recover_result(service: CampaignService, state: dict) -> None:
+def _restore_result(service: CampaignService, state: dict) -> bool:
     # A crash consumes its attempt; recover a sealed result without inference.
     try:
         cached = read_result(service.experiments.root, state)
-        if cached is not None and cached["status"] != "catalog_pending":
-            finish(state, cached)
-        else:
-            incomplete(state, "campaign_final_retries_exhausted")
+        if cached is None or cached["status"] == "catalog_pending":
+            return False
+        finish(state, cached)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         incomplete(state, _error_code(exc))
+    return True
 
 
 def _wait_for_final_review(service: CampaignService, state: dict) -> bool:
@@ -481,15 +481,17 @@ def _begin(service: CampaignService, directory: Path) -> tuple[dict, bool]:
         state = service._state(directory)
         if state.get("phase") != "qualification":
             return state, False
-        if _wait_for_final_review(service, state):
+        attempts = state.get("qualification_attempts", 0)
+        if (attempts and _restore_result(service, state)) or _wait_for_final_review(
+            service, state
+        ):
             service._save(directory, state)
             return state, False
-        attempts = state.get("qualification_attempts", 0)
         if (
             attempts
             and state.get("retries", 0) >= state["plan"]["budget"]["max_retries"]
         ):
-            _recover_result(service, state)
+            incomplete(state, "campaign_final_retries_exhausted")
             service._save(directory, state)
             return state, False
         if attempts:

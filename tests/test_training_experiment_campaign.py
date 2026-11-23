@@ -1832,6 +1832,37 @@ def test_local_final_busy_gpu_does_not_charge_retry_but_keeps_deadline(
     assert result["qualification"]["reason"] == "campaign_final_deadline_exhausted"
 
 
+@pytest.mark.parametrize("stopped", [False, True])
+def test_local_final_restores_sealed_result_after_campaign_closes(
+    controller, monkeypatch, stopped
+):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    service, experiments, clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    state = service.advance("series")
+    state["plan"]["final_qualification"]["conversation_review_required"] = True
+    state["qualification_attempts"] = 1
+    state["retries"] = state["plan"]["budget"]["max_retries"]
+    if stopped:
+        state.update(status="stopping", termination="stopped")
+    else:
+        clock.now = state["deadline_at"] + 1
+    service._save(service.directory("series"), state)
+
+    sealed = {"status": "passed", "qualified": None}
+    monkeypatch.setattr(local_campaign_final, "read_result", lambda *_: sealed)
+    result = service.advance("series")
+    assert result["phase"] == "complete"
+    assert result["qualification_status"] == "passed"
+    assert result["qualification"] == sealed
+    assert result["qualification_attempts"] == 1
+
+
 def test_local_pending_recovers_interrupted_session_without_renewing_deadline(
     controller, monkeypatch
 ):

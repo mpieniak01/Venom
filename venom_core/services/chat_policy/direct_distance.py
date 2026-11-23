@@ -17,6 +17,8 @@ from venom_core.services.grounded_calculator import result_with_unit
 _NUMBER = r"[0-9]{1,12}(?:[,.][0-9]{1,6})?"
 _UNIT = r"km|cm|m"
 _QUANTITY = rf"(?P<amount>{_NUMBER})\s*(?P<unit>{_UNIT})\b"
+_EXPLICIT_NUMBER = re.compile(r"\d")
+_CORRECTION = re.compile(r"^(?:korekta|poprawka|doprecyzujmy|poprawiam)\b", re.I)
 _DISTANCE = re.compile(rf"(?<![\w.,+\-−]){_QUANTITY}", re.I)
 _SUBJECT = r"(?:tras[ayę]|odcinek|odcinki|odcinka|fragment|fragmenty)"
 _SEGMENT = re.compile(
@@ -79,6 +81,7 @@ class DistanceCalculation:
     segments: tuple[Distance, Distance]
     mode: Mode
     target: Distance | None = None
+    repeat: bool = False
 
     @property
     def sum_expression(self) -> str:
@@ -97,6 +100,17 @@ class DistanceTurn:
     mode: Mode | None
     scoped: bool
     ambiguous: bool
+    correction: bool
+
+
+def _calculation_mode(visible: str, has_segments: bool) -> Mode | None:
+    total = _TOTAL.search(visible)
+    gap = _GAP.search(visible)
+    if _SUMMARY.search(visible) or (total and gap):
+        return "summary"
+    if gap:
+        return "recalculation" if has_segments else "gap"
+    return "sum" if total else None
 
 
 def _read_turn(content: str) -> DistanceTurn | None:
@@ -108,12 +122,7 @@ def _read_turn(content: str) -> DistanceTurn | None:
     segments = list(_SEGMENT.finditer(visible))
     targets = list(_TARGET.finditer(visible))
     values = {match["name"].lower(): Distance.from_match(match) for match in segments}
-    if _SUMMARY.search(visible):
-        mode: Mode | None = "summary"
-    elif _GAP.search(visible):
-        mode = "recalculation" if segments else "gap"
-    else:
-        mode = "sum" if _TOTAL.search(visible) else None
+    mode = _calculation_mode(visible, bool(segments))
     if not (mode or segments or targets):
         return None
     ambiguous = (
@@ -123,8 +132,17 @@ def _read_turn(content: str) -> DistanceTurn | None:
         or len(list(_DISTANCE.finditer(visible))) != len(segments) + len(targets)
         or bool(_AMBIGUITY.search(visible))
     )
+    if not (segments or targets or ambiguous) and _EXPLICIT_NUMBER.search(visible):
+        return None
     target = Distance.from_match(targets[0]) if len(targets) == 1 else None
-    return DistanceTurn(values, target, mode, bool(_SCOPE.search(visible)), ambiguous)
+    return DistanceTurn(
+        values,
+        target,
+        mode,
+        bool(_SCOPE.search(visible)),
+        ambiguous,
+        bool(_CORRECTION.match(visible)),
+    )
 
 
 @dataclass
@@ -136,8 +154,12 @@ class DistanceContext:
         if turn.ambiguous:
             return False
         if turn.scoped and len(turn.segments) == 2:
+            same_exchange = (
+                turn.correction and turn.segments.keys() == self.segments.keys()
+            )
             self.segments = turn.segments.copy()
-            self.target = turn.target
+            if turn.target is not None or not same_exchange:
+                self.target = turn.target
             return True
         if turn.segments.keys() - self.segments.keys():
             return False
@@ -226,7 +248,7 @@ def execute_distance(plan: DistanceCalculation) -> dict[str, Any]:
     tool: dict[str, Any] = {
         "tool": "calculator",
         **receipt,
-        "recomputed": plan.mode in ("recalculation", "summary"),
+        "recomputed": plan.repeat or plan.mode in ("recalculation", "summary"),
     }
     if target is not None and total_value is not None and value is not None:
         tool.update(total=total_value, target=format(Decimal(target).normalize(), "f"))

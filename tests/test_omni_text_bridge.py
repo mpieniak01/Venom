@@ -1441,6 +1441,40 @@ def test_event_proposals_separate_room_time_and_named_events():
     assert shifted.verified_reply == "Miejsce to Brzoza, godzina 18:00, prowadzi Iza."
 
 
+def test_event_lookup_preserves_valid_proposals_and_rejects_equivalent_times():
+    history = [
+        "Ustalenia dla „Ceramika”: sala Jodła, 10:45.",
+        "Przy „Ceramika”: Propozycja: sala Łubin, 9:00, wstęp wolny, trzeba przynieść fartuch.",
+        "Przy „Ceramika”: Propozycja: sala. Co nadal obowiązuje?",
+        "Przy „Ceramika”: Pomysł przesunięcia startu na 09:00 nie został zatwierdzony.",
+    ]
+    lookup = "Dla „Ceramika”: Podaj aktualne ustalenia."
+    result = correction_context(lookup, history)
+    assert result is not None
+    assert result.verified_reply == (
+        "Miejsce to Jodła, godzina 10:45. "
+        "Propozycja do zatwierdzenia to miejsce Łubin, wstęp jest wolny, trzeba przynieść fartuch."
+    )
+    accepted = correction_context(
+        "Decyzja dla „Ceramika”: akceptuję propozycję. Podaj aktualne ustalenia.",
+        history,
+    )
+    assert accepted is not None
+    assert accepted.verified_reply == (
+        "Miejsce to Łubin, godzina 10:45. Wstęp jest wolny i trzeba przynieść fartuch."
+    )
+
+
+def test_event_note_reports_all_new_attributes():
+    result = correction_context(
+        "Doszedł drugi komunikat do „Ceramika”: sala Jodła, wstęp wolny, trzeba przynieść fartuch. "
+        "Wypisz tylko nowe informacje.",
+        ["Ustalenia dla „Ceramika”: sala Jodła, 10:45."],
+    )
+    assert result is not None
+    assert result.verified_reply == "Wstęp jest wolny, trzeba przynieść fartuch."
+
+
 def test_event_note_summary_replaces_location_and_keeps_other_facts():
     initial = "Zapisz sobie na tę rozmowę notatkę „Ceramika”: warsztat jest o 10:45 w pracowni Jodła; wstęp wolny."
     added = "Doszedł drugi komunikat do „Ceramika”: trzeba przynieść własny fartuch. Wypisz w jednym zdaniu tylko nowe informacje."
@@ -1534,12 +1568,41 @@ async def test_native_natural_calculator_preserves_operands_and_receipt(
         assert receipt.get("total") == total
         assert receipt.get("target") == target
         assert expected_text in store.assistant["content"]
+        if index == len(prompts) - 1:
+            assert f"{value} m" in store.assistant["content"]
         history.extend(
             [
                 HistoryMessage(role="user", content=prompt),
                 HistoryMessage(role="assistant", content=store.assistant["content"]),
             ]
         )
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_native_natural_calculator_repeats_from_user_operands(native):
+    _, calls = native
+    await bridge.switch("p13")
+    request = SimpleChatRequest(
+        content="Powtórz wynik.",
+        history=[
+            HistoryMessage(
+                role="user",
+                content="Odcinek A ma 100 m i odcinek B ma 200 m. Ile razem?",
+            ),
+            HistoryMessage(role="assistant", content="Razem 500 m."),
+            HistoryMessage(role="user", content="Ile brakuje do 400 m?"),
+            HistoryMessage(role="assistant", content="Brakuje 20 m."),
+        ],
+    )
+    response = await bridge.response(request)
+    packets = [packet async for packet in response.body_iterator]
+    finished = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+    receipt = finished["tool_result"]
+    assert finished["response_source"] == "calculator"
+    assert receipt["recomputed"] is True
+    assert receipt["value"] == "100"
+    assert "100 m" in "".join(packets)
     assert len(calls) == 1
 
 
@@ -1588,6 +1651,11 @@ async def test_native_natural_calculator_clarifies_without_running_tool(native):
             "clarification",
         ),
         (
+            "Mam 3 kg jabłek i 4 kg gruszek. Ile to razem?",
+            ["Odcinek A ma 100 m i odcinek B ma 200 m. Ile to razem?"],
+            None,
+        ),
+        (
             "Podaj łączną długość i ile brakuje.",
             ["Odcinek A ma 800 m i B to 700 m."],
             "clarification",
@@ -1610,6 +1678,11 @@ async def test_native_natural_calculator_clarifies_without_running_tool(native):
             "Odcinek A ma 999999999999 km i B to 700 m. Ile łącznie?",
             [],
             "Nie udało się obliczyć wyniku. Sprawdź długości odcinków.",
+        ),
+        (
+            "Ile łącznie i ile brakuje do 2 km?",
+            ["Odcinek A ma 800 m i B to 700 m."],
+            "Razem 1,5 km, do 2 km brakuje 500 m.",
         ),
         (
             "Ile brakuje do 999999999999 km?",
@@ -1641,6 +1714,43 @@ def test_natural_calculator_requires_unambiguous_user_operands(
 
 
 @pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        (
+            "Korekta: odcinek A ma 810 m i B to 710 m. Przelicz brak.",
+            "Brakuje 480 m, razem 1520 m.",
+        ),
+        (
+            "Korekta: odcinek A ma 810 m i B to 710 m. Ile brakuje do 3 km?",
+            "Brakuje 1480 m, razem 1520 m.",
+        ),
+        ("Odcinek A ma 810 m i B to 710 m. Ile brakuje?", "clarification"),
+        ("Korekta: odcinek X ma 810 m i Y to 710 m. Przelicz brak.", "clarification"),
+    ],
+)
+def test_distance_correction_preserves_goal_only_for_same_segments(question, expected):
+    from venom_core.services.chat_policy.direct_calculator import plan_calculator
+    from venom_core.services.chat_policy.direct_distance import (
+        DistanceCalculation,
+        DistanceClarification,
+        execute_distance,
+    )
+
+    plan = plan_calculator(
+        question,
+        [
+            {"role": "user", "content": "Odcinek A ma 800 m i B to 700 m."},
+            {"role": "user", "content": "Ile brakuje do 2 km?"},
+        ],
+    )
+    if expected == "clarification":
+        assert isinstance(plan, DistanceClarification)
+    else:
+        assert isinstance(plan, DistanceCalculation)
+        assert execute_distance(plan)["text"] == expected
+
+
+@pytest.mark.parametrize(
     ("declaration", "expected"),
     [
         ("Ustalam opłatę 15 zł.", "Obowiązuje 15 zł."),
@@ -1668,3 +1778,124 @@ def test_explicit_fee_rejection_confirms_only_a_known_pending_amount():
     )
     assert qualified is not None
     assert qualified.verified_reply is None
+
+
+def test_questioned_fee_proposal_does_not_enable_rejection():
+    result = correction_context(
+        "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?",
+        ["Ustalam opłatę 15 zł.", "Proponuję opłatę 21 zł?"],
+    )
+    assert result is None or result.verified_reply is None
+
+
+def test_fee_decision_checks_punctuation_in_its_own_clause():
+    from venom_core.services.chat_policy.direct_correction import _FeeState
+
+    state = _FeeState(field="opłat")
+    state.read("Proponuję opłatę 21.50 zł. Jaka opłata obowiązuje?")
+    state.read("Dziękuję. Odrzucam propozycję zmiany opłaty?")
+    assert state.proposed == "21.50"
+    state.read("Dziękuję. Akceptuję opłatę 20.50 zł.")
+    assert state.binding == "20.50"
+    state.read("Proponuję opłatę 25 zł. Dziękuję.")
+    state.read("Dziękuję. Akceptuję opłatę 22 zł?")
+    assert state.binding == "20.50"
+    assert state.proposed == "25"
+    state.read(
+        "Odrzucam propozycję zmiany opłaty za bilet nr 3. Jaka opłata obowiązuje?"
+    )
+    assert state.proposed is None
+    assert state.binding == "20.50"
+
+
+@pytest.mark.parametrize("unit", ["", " za osobę"])
+def test_pending_fee_only_returns_known_personal_rate(unit):
+    initial = f"Ustalam opłatę 15 zł{unit}."
+    history = [
+        initial,
+        "Proponuję opłatę 21 zł.",
+        "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?",
+    ]
+    proposal = "Proponuję opłatę 25 zł. To tylko propozycja. "
+    general = correction_context(proposal + "Jaka opłata obowiązuje?", history)
+    assert general is not None
+    expected = f"Obowiązuje 15 zł{unit}. Kwota 25 zł jest propozycją do zatwierdzenia."
+    assert general.verified_reply == expected
+    personal = correction_context(
+        proposal + "Ile wynosi teraz opłata za wstęp dla jednej osoby?", history
+    )
+    if unit:
+        assert personal is not None
+        assert personal.verified_reply == expected
+    else:
+        assert personal is None
+
+
+@pytest.mark.parametrize(
+    ("decision", "binding"),
+    [
+        (["Akceptuję opłatę 100 zł za całą grupę."], "100"),
+        (["Proponuję opłatę 100 zł za całą grupę.", "Akceptuję opłatę."], "100"),
+        (["Proponuję opłatę 100 zł za całą grupę.", "Akceptuję opłatę 100 zł."], "100"),
+        (
+            [
+                "Proponuję opłatę 100.00 zł za całą grupę.",
+                "Akceptuję opłatę 100,00 zł.",
+            ],
+            "100,00",
+        ),
+        (
+            ["Proponuję opłatę 1 000 zł za całą grupę.", "Akceptuję opłatę 1000 zł."],
+            "1000",
+        ),
+    ],
+)
+def test_group_fee_acceptance_replaces_personal_scope(decision, binding):
+    history = ["Ustalam opłatę 15 zł za osobę.", *decision]
+    proposal = "Proponuję opłatę 120 zł za całą grupę. To tylko propozycja. "
+    general = correction_context(proposal + "Jaka opłata obowiązuje?", history)
+    assert general is not None
+    assert general.verified_reply == (
+        f"Obowiązuje {binding} zł za całą grupę. "
+        "Kwota 120 zł za całą grupę jest propozycją do zatwierdzenia."
+    )
+    personal = correction_context(
+        proposal + "Ile wynosi teraz opłata za wstęp dla jednej osoby?", history
+    )
+    assert personal is None
+
+
+def test_rejected_group_fee_proposal_preserves_binding_scope():
+    result = correction_context(
+        "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?",
+        [
+            "Ustalam opłatę 100 zł za całą grupę.",
+            "Proponuję opłatę 120 zł za całą grupę.",
+        ],
+    )
+    assert result is not None
+    assert result.verified_reply == (
+        "Obowiązuje 100 zł za całą grupę. Propozycja została odrzucona."
+    )
+
+
+def test_ambiguous_fee_changes_clear_prior_scope():
+    from venom_core.services.chat_policy.direct_correction import _FeeState
+
+    state = _FeeState()
+    state.read("Ustalam opłatę 15 zł za osobę.")
+    state.read("Proponuję opłatę 120 zł za całą grupę.")
+    state.read("Akceptuję opłatę 100 zł za całą grupę i kaucję 50 zł.")
+    assert state.binding_scope == ""
+    assert state.proposed_scope == ""
+    state.read("Akceptuję opłatę 100 zł.")
+    assert state.binding == "100"
+    assert state.binding_scope == ""
+
+
+def test_initial_fee_is_read_only_from_declaration_clause():
+    result = correction_context(
+        "Proponuję opłatę 25 zł. Jaka opłata obowiązuje?",
+        ["Ustalam opłatę. Czy ma wynosić 15 zł?"],
+    )
+    assert result is None

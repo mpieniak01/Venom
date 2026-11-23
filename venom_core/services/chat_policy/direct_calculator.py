@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from venom_core.services.chat_policy.direct_distance import (
     DistanceCalculation,
@@ -109,7 +109,13 @@ def plan_calculator(
         "assistant",
     ]:
         return None
-    previous = _command(history[-2]["content"])
-    if previous is None or not previous.expression:
-        return None
-    return CalculatorRequest(previous.expression, previous.unit, repeat=True)
+    previous_turn = history[-2]["content"]
+    previous = _command(previous_turn)
+    if previous is not None:
+        return replace(previous, repeat=True) if previous.expression else None
+    distance = plan_distance(previous_turn, history[:-2])
+    return (
+        replace(distance, repeat=True)
+        if isinstance(distance, DistanceCalculation)
+        else None
+    )

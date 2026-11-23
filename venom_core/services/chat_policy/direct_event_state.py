@@ -164,8 +164,8 @@ def _apply(state: _Event, header: str, clause: str) -> dict[str, str]:
         return {}
     if proposal := _PROPOSE.match(clause):
         remainder = clause[proposal.end() :].strip()
-        if remainder:
-            state.proposal = _fields(remainder)
+        if fields := _fields(remainder):
+            state.proposal = fields
         return {}
     if rejection := _REJECT.fullmatch(clause):
         _reject(state, rejection)
@@ -179,13 +179,17 @@ def _apply(state: _Event, header: str, clause: str) -> dict[str, str]:
         if accepted
         else _note_update(header, clause)
     )
+    updated = {
+        key: value for key, value in changes.items() if state.values.get(key) != value
+    }
     state.update(changes)
-    return changes
+    return updated
 
 
 def _reject(state: _Event, rejection: re.Match[str]) -> None:
     if rejection["time"] is not None:
-        if state.proposal.get("time") == rejection["time"]:
+        proposed = state.proposal.get("time")
+        if proposed and proposed.zfill(5) == rejection["time"].zfill(5):
             state.proposal.pop("time")
     elif rejection["field"] is not None:
         key = "room" if rejection["field"].casefold() == "sali" else "time"
@@ -201,6 +205,8 @@ def _note_update(header: str, clause: str) -> dict[str, str]:
 
 
 def _read_message(state: _Event, header: str, body: str) -> tuple[dict[str, str], str]:
+    if _LOOKUP.fullmatch(body):
+        return {}, body
     clause, *instructions = _SENTENCE_SEPARATOR.split(body, maxsplit=1)
     return _apply(state, header, clause), instructions[0] if instructions else ""
 
@@ -209,13 +215,28 @@ def _render(state: _Event, changes: dict[str, str], instruction: str) -> str | N
     room, time = state.values.get("room"), state.values.get("time")
     if not room or not time:
         return None
-    if _NEW_ONLY.fullmatch(instruction) and "bring" in changes:
-        return changes["bring"].capitalize() + "."
+    if _NEW_ONLY.fullmatch(instruction) and changes:
+        text = ", ".join(_event_attributes(changes))
+        return text[0].upper() + text[1:] + "."
     if _CHANGES.fullmatch(instruction) and changes.keys() == {"room"}:
         return f"Nowe miejsce to {room}. Godzina {time} pozostaje bez zmian."
     if not _LOOKUP.fullmatch(instruction):
         return None
     return _summary(state)
+
+
+def _event_attributes(fields: dict[str, str]) -> list[str]:
+    attributes = [
+        f"{label} {fields[key]}"
+        for key, label in (
+            ("room", "miejsce"),
+            ("time", "godzina"),
+            ("host", "prowadzi"),
+        )
+        if key in fields
+    ]
+    attributes.extend(fields[key] for key in ("admission", "bring") if key in fields)
+    return attributes
 
 
 def _summary(state: _Event) -> str:
@@ -227,15 +248,7 @@ def _summary(state: _Event) -> str:
     ]
     if details:
         current += ". " + " i ".join(details).capitalize()
-    pending = [
-        f"{label} {state.proposal[key]}"
-        for key, label in (
-            ("room", "miejsce"),
-            ("time", "godzina"),
-            ("host", "prowadzący"),
-        )
-        if key in state.proposal
-    ]
+    pending = _event_attributes(state.proposal)
     if pending:
         current += ". Propozycja do zatwierdzenia to " + ", ".join(pending)
     return current + "."

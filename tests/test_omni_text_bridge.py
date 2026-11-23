@@ -1383,3 +1383,82 @@ def test_fee_binding_requires_one_unambiguous_declared_amount():
         "Akceptuję opłatę 20 zł. Czy opłata 30 zł jest tylko propozycją?"
     )
     assert accepted_with_explicit_amount.binding == "20"
+
+
+def test_pending_fee_survives_rejection_of_a_previous_proposal():
+    history = [
+        "Obowiązuje opłata 20 zł.",
+        "Proponuję opłatę 27 zł. To tylko propozycja. Jaka opłata obowiązuje?",
+        "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?",
+    ]
+    next_proposal = (
+        "Proponuję opłatę 32 zł. To tylko propozycja. Jaka opłata obowiązuje?"
+    )
+    pending = correction_context(next_proposal, history)
+    assert pending is not None
+    assert pending.verified_reply == (
+        "Obowiązuje 20 zł. Kwota 32 zł jest propozycją do zatwierdzenia."
+    )
+    accepted = correction_context(
+        "Zatwierdzam opłatę 32 zł. Jaka opłata obowiązuje?", [*history, next_proposal]
+    )
+    assert accepted is not None
+    assert accepted.verified_reply == "Obowiązuje 32 zł."
+
+
+def test_event_proposals_separate_room_time_and_named_events():
+    history = [
+        "Przyjmij jako ustalone dla „Próba Tria”: sala Brzoza, 16:35, prowadzi Iza.",
+        "Przyjmij jako ustalone dla „Druga Próba”: sala Akacja, 10:00, prowadzi Ania.",
+    ]
+    proposal = "Przy „Próba Tria” proponuję salę"  # No structured update.
+    assert correction_context(proposal, history) is None
+    proposal = "Przy „Próba Tria”: proponuję: sala Łubin, 17:15. Co nadal obowiązuje?"
+    pending = correction_context(proposal, history)
+    assert pending is not None
+    assert pending.verified_reply == (
+        "Miejsce to Brzoza, godzina 16:35, prowadzi Iza. "
+        "Propozycja do zatwierdzenia to miejsce Łubin, godzina 17:15."
+    )
+    reject = "Przy „Próba Tria”: odrzucam propozycję godziny. Co nadal obowiązuje?"
+    rejected = correction_context(reject, [*history, proposal])
+    assert rejected is not None
+    assert rejected.verified_reply == (
+        "Miejsce to Brzoza, godzina 16:35, prowadzi Iza. "
+        "Propozycja do zatwierdzenia to miejsce Łubin."
+    )
+    accepted = correction_context(
+        "Decyzja dla „Próba Tria”: akceptuję propozycję. Podaj aktualne ustalenia.",
+        [*history, proposal, reject],
+    )
+    assert accepted is not None
+    assert accepted.verified_reply == "Miejsce to Łubin, godzina 16:35, prowadzi Iza."
+    shifted = correction_context(
+        "Decyzja dla „Próba Tria”: akceptuję godzinę 18:00. Podaj aktualne ustalenia.",
+        history,
+    )
+    assert shifted is not None
+    assert shifted.verified_reply == "Miejsce to Brzoza, godzina 18:00, prowadzi Iza."
+
+
+def test_event_note_summary_replaces_location_and_keeps_other_facts():
+    initial = "Zapisz sobie na tę rozmowę notatkę „Ceramika”: warsztat jest o 10:45 w pracowni Jodła; wstęp wolny."
+    added = "Doszedł drugi komunikat do „Ceramika”: trzeba przynieść własny fartuch. Wypisz w jednym zdaniu tylko nowe informacje."
+    correction = "Korekta do „Ceramika”: spotkanie przeniesiono do pracowni Topaz, godzina bez zmian. Rozróżnij zmianę od tego, co już było."
+    new_only = correction_context(added, [initial])
+    assert new_only is not None
+    assert new_only.verified_reply == "Trzeba przynieść własny fartuch."
+    corrected = correction_context(correction, [initial, added])
+    assert corrected is not None
+    assert (
+        corrected.verified_reply
+        == "Nowe miejsce to Topaz. Godzina 10:45 pozostaje bez zmian."
+    )
+    summary = correction_context(
+        "Przygotuj teraz dwuzdaniową informację na podstawie obu notatek „Ceramika” po korekcie.",
+        [initial, added, correction],
+    )
+    assert summary is not None
+    assert summary.verified_reply == (
+        "Miejsce to Topaz, godzina 10:45. Wstęp jest wolny i trzeba przynieść własny fartuch."
+    )

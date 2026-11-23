@@ -6,6 +6,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from venom_core.services.chat_policy.direct_event_state import event_state_reply
 from venom_core.services.chat_policy.qualified_chat_quote import (
     single_quoted_operand,
     without_quotes,
@@ -326,6 +327,9 @@ def correction_context(
         context = _conversation_fact_context(visible, preceding_users)
         if context is not None:
             return context
+    event = event_state_reply(content, preceding_users[-6:])
+    if event is not None:
+        return CorrectionContext("event_state", event, verified_reply=event)
     if not _is_fee_state_request(visible):
         return None
     state = _fee_state_from_history(visible, previous)
@@ -518,34 +522,54 @@ def _accepted_fee_question_matches(
     return "dla jednej osoby" not in question.casefold() or per_person
 
 
+def _fee_before_proposal(history: Sequence[str]) -> _FeeState:
+    state = _FeeState()
+    for message in history:
+        visible = without_quotes(message).strip()
+        if _EDIT.match(visible) or _FEE_UNCERTAINTY.search(visible):
+            state = _FeeState()
+            continue
+        if (
+            _INITIAL.match(visible)
+            or _ACCEPT.search(visible)
+            or _REJECT.search(visible)
+            or _PROPOSAL.match(visible)
+        ):
+            state.read(visible)
+        else:
+            # A topic change breaks a replay of consecutive fee messages.
+            state = _FeeState()
+    return state
+
+
 def _pending_fee_context(
     content: str, preceding_users: Sequence[str]
 ) -> CorrectionContext | None:
     proposal, question = _proposal_question(content.strip())
     if not preceding_users or _CURRENT_FEE_QUERY.fullmatch(question) is None:
         return None
-    confirmation = preceding_users[-1]
-    if not proposal and len(preceding_users) >= 2:
-        proposal, previous_question = _proposal_question(confirmation.strip())
+    history = preceding_users[-6:]
+    if not proposal:
+        proposal, previous_question = _proposal_question(history[-1].strip())
         if (
             previous_question
             and _CURRENT_FEE_QUERY.fullmatch(previous_question) is None
         ):
             return None
-        confirmation = preceding_users[-2]
+        history = history[:-1]
     if not proposal:
         return None
 
-    confirmation = without_quotes(confirmation)
-    if _FEE_UNCERTAINTY.search(confirmation):
-        return None
     requested = _FEE.search(question)
     proposed = _FEE.search(proposal)
-    if not requested or not proposed or requested[1].lower() != proposed[1].lower():
+    if (
+        not requested
+        or not proposed
+        or requested[1].casefold() != proposed[1].casefold()
+    ):
         return None
-    state = _FeeState()
-    state.read(confirmation)
-    if state.binding is None or state.field != requested[1].lower():
+    state = _fee_before_proposal(history)
+    if state.binding is None or state.field != requested[1].casefold():
         return None
     state.read(proposal)
     if state.proposed is None:

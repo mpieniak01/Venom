@@ -191,14 +191,14 @@ Przy `discard_rejected` retencja chroni cały przebieg, w którym znajduje się 
 
 ### Automatyczny odbiór checkpointów względem rodzica
 
-Dla profilu dev z kalibracją `exact-v1` można zarejestrować referencję rodzica z ukończonej, zapieczętowanej generacji M0 i adaptera. Użyj tego samego profilu co w kampanii, w tym tej samej kalibracji, dev, bazy i środowiska inferencji. Katalog generacji w poniższym przykładzie zawiera wynik ewaluatora dla ramion `base` oraz `checkpoint-145`.
+Dla profilu dev z kalibracją `exact-v1` lub zakwalifikowanym scorerem semantycznym można zarejestrować referencję rodzica z ukończonej, zapieczętowanej generacji M0 i adaptera. Użyj tego samego profilu co w kampanii, w tym tej samej kalibracji, dev, bazy i środowiska inferencji. Katalog generacji w poniższym przykładzie zawiera wynik ewaluatora dla ramion `base` oraz `checkpoint-145`.
 
 ```bash
 python -m scripts.academy.quality --root "$experiment_root" register-parent \
   "$profile_id" omni-p13-145 145 "$parent_generation" p13-dev
 ```
 
-Rejestracja sprawdza tożsamość i sumy kontrolne zarejestrowanego adaptera, zapieczętowane odpowiedzi, własną historię obu ramion oraz zgodność protokołu. Oblicza werdykty kalibracją profilu. Powtórne wykonanie na tych samych wejściach zwraca ten sam rekord. Zmiana danych wymaga nowej tożsamości referencji. W manifeście kampanii powiąż rekord z wariantami startującymi od tego samego `initial_adapter_id`.
+Rejestracja sprawdza tożsamość i sumy kontrolne zarejestrowanego adaptera, zapieczętowane odpowiedzi, własną historię obu ramion oraz zgodność protokołu. Dla `exact-v1` oblicza werdykty z kalibracji. Dla scorera semantycznego przekaż `--judgments /ścieżka/judgments.json` z zapisanymi odpowiedziami sędziego. Rejestracja odtwarza każde żądanie dla dokładnego przypadku, aliasu i tekstu, weryfikuje jego potwierdzenie i odrzuca niepełne lub nierozstrzygnięte oceny. Robi to bez ponownego wywoływania modelu. Powtórne wykonanie na tych samych wejściach zwraca ten sam rekord. Zmiana danych wymaga nowej tożsamości referencji. W manifeście kampanii powiąż rekord z wariantami startującymi od tego samego `initial_adapter_id`.
 
 ```json
 {
@@ -248,7 +248,7 @@ ocen. Pola `p13_identity` i `candidate_identity` zgłoszenia muszą zgadzać si�
 z wartościami z `binding`. Kontroler czeka na werdykt w ramach rezerwy FINAL.
 Oczekiwanie nie zużywa ponowień kwalifikacji.
 
-`campaigns plan` zamraża identyfikator i hash referencji. Przy automatycznej ocenie każdy checkpoint trafia do rankingu po porównaniu z rodzicem. Utrata użytecznego wyniku lub pełnego zaliczenia P13 blokuje wybór nawet przy poprawie średniej. Remis nie spełnia wymagania przyrostu. Jeśli plan przewiduje powtórzenie receptury i żaden krok nie przejdzie bramki, kolejny seed zostaje pominięty. Raport zachowuje deltę względem M0, deltę względem rodzica i identyfikatory utraconych przypadków. Kalibracja `exact-v1` ocenia zadeklarowane odpowiedzi i ich format. Otwarty dialog i kwalifikacja do wydania mają osobny protokół i niezależny finał.
+`campaigns plan` zamraża identyfikator i hash referencji. Przy automatycznej ocenie każdy checkpoint trafia do rankingu po porównaniu z rodzicem. Utrata użytecznego wyniku lub pełnego zaliczenia P13 blokuje wybór nawet przy poprawie średniej. Remis nie spełnia wymagania przyrostu. Nierozstrzygnięta ocena semantyczna blokuje wybór i oznacza niekompletny odbiór DEV. Jeśli plan przewiduje powtórzenie receptury i żaden krok nie przejdzie bramki, kolejny seed zostaje pominięty. Raport zachowuje deltę względem M0, deltę względem rodzica i identyfikatory utraconych przypadków. Kalibracja `exact-v1` ocenia zadeklarowane odpowiedzi i ich format. Otwarty dialog i kwalifikacja do wydania mają osobny protokół i niezależny finał.
 
 ## Kampania Optuna
 

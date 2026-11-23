@@ -12,6 +12,7 @@ from scripts.academy.omni_pl_chat_data import MAX_DEV_TASK_LENGTH
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.services.remote_training.paths import operator_path
 
+from . import semantic_judge_dispatch
 from .adapters import resolve_adapter
 from .calibration import scorer_protocol, validate_calibration
 from .checkpoint_evaluation import (
@@ -21,6 +22,7 @@ from .checkpoint_evaluation import (
     verify_generation_pair,
 )
 from .evidence import ADAPTER_FILES, calibrated_judgments, review_data, sealed_report
+from .grounded_claims import UNCERTAIN
 from .profiles import (
     MAX_JSON_BYTES,
     digest,
@@ -319,6 +321,40 @@ def frozen_evaluation_identity(
     )
 
 
+def _parent_judgments(
+    calibration: dict, bundle: dict, judgments_path: Path | None
+) -> list[dict]:
+    if not semantic_judge_dispatch.is_semantic(calibration):
+        if judgments_path is not None:
+            raise ValueError("campaign_parent_exact_judgments_unexpected")
+        return calibrated_judgments(calibration, bundle)
+    if judgments_path is None:
+        raise ValueError("campaign_parent_semantic_judgments_required")
+    judgments = _verified_json(judgments_path, digest(judgments_path))
+    if not isinstance(judgments, list):
+        raise ValueError("campaign_parent_semantic_judgments_invalid")
+    grades = {(grade["record_id"], grade["label"]): grade for grade in judgments}
+    expected = {
+        (row["case"]["record_id"], label)
+        for row in bundle["answers"]
+        for label in row["answers"]
+    }
+    if len(grades) != len(judgments) or grades.keys() != expected:
+        raise ValueError("campaign_parent_semantic_judgments_invalid")
+    pin = semantic_judge_dispatch.qualification(calibration)
+    for row in bundle["answers"]:
+        case = row["case"]
+        case_id = case["record_id"]
+        for label, answer in row["answers"].items():
+            grade = grades[case_id, label]
+            semantic_judge_dispatch.verify_review_receipt(
+                pin, calibration["cases"][case_id], case, answer, grade
+            )
+            if grade["reason"] == UNCERTAIN:
+                raise ValueError("campaign_parent_semantic_judgments_incomplete")
+    return judgments
+
+
 def register_parent_reference(
     experiments: Any,
     profile_id: str,
@@ -326,8 +362,10 @@ def register_parent_reference(
     generation: Path,
     checkpoint_step: int,
     record_id: str,
+    *,
+    judgments_path: Path | None = None,
 ) -> dict:
-    """Score a sealed parent evaluation on the campaign dev without running inference."""
+    """Register a sealed parent evaluation without rerunning inference."""
     if type(checkpoint_step) is not int or not 1 <= checkpoint_step <= 10000:
         raise ValueError("experiment_checkpoint_invalid")
     profile, _ = load_profile(experiments.root, profile_id)
@@ -338,8 +376,6 @@ def register_parent_reference(
         experiments.root / "profiles" / f"{profile_id}.calibration.json",
         calibration_sha,
     )
-    if not isinstance(calibration, dict) or calibration.get("judge") != "exact-v1":
-        raise ValueError("campaign_parent_exact_calibration_required")
     _, adapter = resolve_adapter(
         experiments.root, adapter_id, recipe_for(profile, None)
     )
@@ -362,7 +398,7 @@ def register_parent_reference(
     if identity != frozen_evaluation_identity(experiments, profile_id, "automatic"):
         raise ValueError("campaign_quality_identity_changed")
     bundle = review_data(generation, dev)
-    grades = calibrated_judgments(calibration, bundle)
+    grades = _parent_judgments(calibration, bundle, judgments_path)
     report = sealed_report(
         generation,
         dev,

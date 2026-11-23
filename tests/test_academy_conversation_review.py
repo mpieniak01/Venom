@@ -499,6 +499,41 @@ def _checkpoint_campaign(tmp_path, monkeypatch):
     )
 
 
+def test_unresolved_dev_checkpoint_cannot_advance_despite_broad_pass(
+    tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments.campaign import (
+        _rank,
+        development_complete,
+    )
+    from venom_core.services.training_experiments.local_campaign_final import transition
+
+    service, plan, run_id, *_ = _checkpoint_campaign(tmp_path, monkeypatch)
+    report, checksum = service.experiments.checkpoint_report(run_id, 13)
+    report["unverifiable_answers"] = 1
+    monkeypatch.setattr(
+        service,
+        "_verify_conversation_checkpoint_review",
+        lambda *_: ({"status": "PASS"}, {}),
+    )
+    trial = {"run_id": run_id, "status": "succeeded", "result_sha256": checksum}
+    state = {"plan": plan, "trials": [trial], "status": "succeeded", "phase": "trials"}
+    trial["checkpoint_evaluations"] = [
+        service._assess_checkpoint(state, run_id, 13, None)
+    ]
+    item = trial["checkpoint_evaluations"][0]
+    assert item["usable_delta"] > 0
+    assert item["conversation_review_status"] == "pass"
+    assert item["unverifiable_answers"] == 1
+    assert not item["qualified"]
+    assert not development_complete(state)
+    _rank(state)
+    transition(state)
+    assert state["selected_checkpoint_step"] is None
+    assert state["qualification_status"] == "incomplete"
+    assert state["qualification"]["reason"] == "campaign_development_incomplete"
+
+
 @pytest.mark.parametrize("tamper", ["replace", "remove"])
 def test_dev_checkpoint_waits_then_rechecks_and_blocks_tampered_winner(
     tmp_path, monkeypatch, tamper

@@ -42,6 +42,7 @@ def main(argv: list[str] | None = None) -> None:
     parent.add_argument("checkpoint_step", type=int)
     parent.add_argument("generation", type=Path)
     parent.add_argument("record_id")
+    parent.add_argument("--judgments", type=Path)
     prepare = commands.add_parser("prepare-checkpoint-review")
     prepare.add_argument("pending", type=Path)
     prepare.add_argument("panel", type=Path)
@@ -75,6 +76,7 @@ def main(argv: list[str] | None = None) -> None:
                 args.generation,
                 args.checkpoint_step,
                 args.record_id,
+                judgments_path=args.judgments,
             )
         elif args.command == "prepare-checkpoint-review":
             result = prepare_checkpoint_review(

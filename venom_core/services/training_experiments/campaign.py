@@ -422,7 +422,8 @@ def _parent_metrics(item: dict, guard: dict) -> None:
 
 def _passes_selection(row: dict, selection: dict) -> bool:
     if (
-        row.get("critical_delta") is None
+        row.get("unverifiable_answers", 0) != 0
+        or row.get("critical_delta") is None
         or row["usable_delta"] < selection["min_usable_delta"]
         or row["critical_delta"] > selection["max_critical_delta"]
     ):
@@ -593,6 +594,8 @@ def development_complete(state: dict) -> bool:
         if any(
             row.get("status") != "succeeded"
             or not row.get("result_sha256")
+            or row.get("unverifiable_answers", 0) != 0
+            or row.get("conversation_review_status") == "blocked"
             or guarded
             and row.get("quality_guard", {}).get("status") not in {"passed", "rejected"}
             for row in rows
@@ -758,10 +761,16 @@ def _deltas(report: dict) -> dict:
             for key in ("usable", "critical")
         ):
             raise ValueError("campaign_evaluation_invalid")
-    return {
+    unverifiable = report.get("unverifiable_answers", 0)
+    if type(unverifiable) is not int or not 0 <= unverifiable <= 2 * n:
+        raise ValueError("campaign_evaluation_invalid")
+    deltas = {
         f"{key}_delta": (totals[1][key] - totals[0][key]) / n
         for key in ("usable", "critical")
     }
+    if unverifiable:
+        deltas["unverifiable_answers"] = unverifiable
+    return deltas
 
 
 def _reassessing_quality(state: dict) -> bool:
@@ -2038,6 +2047,7 @@ class CampaignService:
         guard = trial.get("quality_guard", {})
         if (
             "result_sha256" in trial
+            and trial.get("unverifiable_answers", 0) == 0
             and guard.get("status") != "blocked"
             and trial.get("critical_delta") is not None
         ):

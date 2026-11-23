@@ -46,10 +46,10 @@ _NOTE_EVENT = re.compile(
 _FREE_ENTRY = re.compile(r"wstęp (?:jest )?wolny", re.I)
 _BRING = re.compile(r"trzeba przynieść (?P<item>[a-ząćęłńóśźż -]{1,60})", re.I)
 _PROPOSE = re.compile(
-    r"(?:rozważamy zmianę|proponuję|propozycja)\s*:\s*(?P<fields>.+)", re.I
+    r"(?:rozważamy zmianę|proponuję|propozycja)\s*:(?>\s*)(?P<fields>.+)", re.I
 )
 _ACCEPT = re.compile(
-    r"(?:zatwierdzam|akceptuję|przyjmuję)\b(?:\s+(?P<fields>.+))?", re.I
+    r"(?:zatwierdzam|akceptuję|przyjmuję)\b(?:(?>\s+)(?P<fields>.+))?", re.I
 )
 _REJECT = re.compile(
     rf"(?:odrzucam (?:propozycję|zmianę)(?: (?P<field>godziny|sali))?|"

@@ -1638,3 +1638,17 @@ def test_natural_calculator_requires_unambiguous_user_operands(
     else:
         assert isinstance(plan, DistanceCalculation)
         assert execute_distance(plan)["text"] == result
+
+
+@pytest.mark.parametrize(
+    ("declaration", "expected"),
+    [
+        ("Ustalam opłatę 15 zł.", "Obowiązuje 15 zł."),
+        ("Obowiązuje opłata 18 zł za osobę.", "Obowiązuje 18 zł za osobę."),
+    ],
+)
+def test_explicit_fee_declaration_is_binding(declaration, expected):
+    result = correction_context(declaration, [])
+    assert result is not None
+    assert result.verified_reply == expected
+    assert correction_context(declaration.rstrip(".") + "?", []) is None

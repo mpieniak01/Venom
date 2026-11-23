@@ -52,6 +52,11 @@ _CURRENT_FEE_QUERY = re.compile(
 )
 _FEE_ENTRY = r"(?:wejście|wstęp|bilet)"
 _PER_PERSON = r"(?:za (?:jedną )?osobę|na (?:jedną )?osobę|od osoby)"
+_FEE_ESTABLISHMENT = re.compile(
+    rf"(?:ustalam {_FEE_ACCUSATIVE}|obowiązuje {_FEE_NOMINATIVE})"
+    rf"\s+{_AMOUNT.pattern}(?:\s+(?P<unit>{_PER_PERSON}))?\s*[.!]?",
+    re.I,
+)
 _ACCEPTED_FEE_QUESTION = re.compile(
     rf"(?:zatwierdzam|akceptuję|przyjmuję)\s+(?P<field>{_FEE_ACCUSATIVE})"
     rf"(?:\s+za (?P<subject>{_FEE_ENTRY}))?\s+(?:w wysokości\s+)?"
@@ -391,6 +396,11 @@ def _cancelled_registration_context(
 def _conversation_fact_context(
     visible: str, preceding_users: Sequence[str]
 ) -> CorrectionContext | None:
+    established = _FEE_ESTABLISHMENT.fullmatch(visible.strip())
+    if established:
+        unit = " za osobę" if established["unit"] else ""
+        reply = f"Obowiązuje {established[1]} zł{unit}."
+        return CorrectionContext("binding_fee", reply, verified_reply=reply)
     for resolver in (
         _reservation_from_conversation,
         _accepted_fee_context,

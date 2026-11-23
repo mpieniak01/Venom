@@ -1413,7 +1413,7 @@ def test_event_proposals_separate_room_time_and_named_events():
     ]
     proposal = "Przy „Próba Tria” proponuję salę"  # No structured update.
     assert correction_context(proposal, history) is None
-    proposal = "Przy „Próba Tria”: proponuję: sala Łubin, 17:15. Co nadal obowiązuje?"
+    proposal = "Przy „Próba Tria” rozważamy zmianę: sala Łubin, 17:15. To propozycja. Co nadal obowiązuje?"
     pending = correction_context(proposal, history)
     assert pending is not None
     assert pending.verified_reply == (

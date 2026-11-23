@@ -17,6 +17,7 @@ _HEADER = re.compile(
     r"(?:decyzja|ustalenie) dla|(?:ostatnia kwestia )?przy|w sprawie|dla)\s*",
     re.I,
 )
+_HEADER_PROPOSAL = re.compile(r"(przy|w sprawie)\s+rozważamy zmianę", re.I)
 _TITLE = re.compile(r"[\w -]{1,80}", re.UNICODE)
 _INITIAL_HEADERS = {
     "przyjmij jako ustalone dla",
@@ -52,6 +53,7 @@ _REJECT = re.compile(
     re.I,
 )
 _LOOKUP = re.compile(
+    r"(?:to (?:tylko )?propozycja\.\s+)?"
     r"(?:co (?:nadal )?obowiązuje|podaj (?:teraz )?(?:obowiązującą wersję|aktualne ustalenia)|"
     r"(?:w jednym lub dwóch zdaniach )?daj ostateczne podsumowanie|"
     r"potwierdź zwięźle najważniejsze ustalenia)\s*[.!?]?",
@@ -85,10 +87,16 @@ def _named_message(message: str) -> tuple[str, str, str] | None:
         return None
     visible = without_quotes(message)
     prefix, separator, body = visible.partition(":")
-    prefix = prefix.strip()
-    if not separator or not _HEADER.fullmatch(prefix):
+    prefix, body = prefix.strip(), body.strip()
+    if not separator:
         return None
-    return title.casefold(), prefix.casefold(), body.strip()
+    if proposal := _HEADER_PROPOSAL.fullmatch(prefix):
+        return title.casefold(), proposal[1].casefold(), f"propozycja: {body}"
+    return (
+        (title.casefold(), prefix.casefold(), body)
+        if _HEADER.fullmatch(prefix)
+        else None
+    )
 
 
 def _fields(clause: str) -> dict[str, str]:

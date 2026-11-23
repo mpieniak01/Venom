@@ -126,8 +126,9 @@ def input_data(tmp_path, request):
                     ],
                 }
             )
-    numeric = getattr(request, "param", False)
-    if numeric:
+    scenario = getattr(request, "param", None)
+    parent_answers, candidate_answers = {}, {}
+    if scenario == "numeric":
         first_numeric = cases[8]
         first_numeric["messages"][0]["content"] = (
             "Mam 9 arkuszy, kupuję 7, zużywam 4. Ile zostaje?"
@@ -138,6 +139,26 @@ def input_data(tmp_path, request):
             "role": "remaining",
             "unit": "arkuszy",
         }
+        parent_answers["checkpoint-145", "C002-1"] = "Zostało 12 arkuszy."
+        candidate_answers["checkpoint-21", "C002-1"] = "Zostało 2 arkusze."
+    elif scenario == "fee":
+        cases[4]["messages"][0]["content"] = (
+            "Opłata wynosi 19 zł za komplet materiałów."
+        )
+        cases[5]["messages"][0]["content"] = (
+            "Proponuję 26 zł za komplet, ale jeszcze nie zatwierdzam. Ile obowiązuje?"
+        )
+        cases[5]["fee_state"] = {
+            "criterion": "content",
+            "binding": "19",
+            "proposed": "26",
+        }
+        parent_answers["checkpoint-145", "C001-2"] = (
+            "Obowiązuje 19 zł. Kwota 26 zł to propozycja."
+        )
+        candidate_answers["checkpoint-21", "C001-2"] = (
+            "Obowiązuje opłata 19 zł za komplet materiałów."
+        )
     dataset = tmp_path / "data.jsonl"
     dataset.write_text("".join(json.dumps(row) + "\n" for row in cases))
     parent = {
@@ -154,9 +175,7 @@ def input_data(tmp_path, request):
         digest(dataset),
         parent,
         145,
-        answers={("checkpoint-145", "C002-1"): "Zostało 12 arkuszy."}
-        if numeric
-        else None,
+        answers=parent_answers,
     )
     _generation(
         cdir,
@@ -164,9 +183,7 @@ def input_data(tmp_path, request):
         digest(dataset),
         candidate,
         21,
-        answers={("checkpoint-21", "C002-1"): "Zostało 2 arkusze."}
-        if numeric
-        else None,
+        answers=candidate_answers,
     )
     _write(
         cdir / "result.json",
@@ -362,7 +379,7 @@ def _fill_review(submission):
                 verdict.update(criteria={"content": True}, critical=False)
 
 
-@pytest.mark.parametrize("input_data", [True], indirect=True)
+@pytest.mark.parametrize("input_data", ["numeric"], indirect=True)
 def test_numeric_contradiction_blocks_blind_promotion(issued_review, tmp_path):
     pending, output, submission, private = issued_review
     _fill_review(submission)
@@ -437,6 +454,82 @@ def test_numeric_proof_rejects_unknown_criterion():
         numeric_expectation(case)
     with pytest.raises(ValueError, match="numeric_rule_invalid"):
         numeric_expectation({**case, "numeric_claim": None})
+
+
+@pytest.mark.parametrize("input_data", ["fee"], indirect=True)
+def test_missing_fee_proposal_fails_criterion_without_raising_critical(
+    issued_review, tmp_path
+):
+    pending, output, submission, private = issued_review
+    _fill_review(submission)
+    aliases = private["aliases"]["C001"]
+    answers = read_json(output / "reviewer.json")["conversations"]["C001"]["turns"][
+        "T2"
+    ]["answers"]
+    candidate = next(alias for alias, arm in aliases.items() if arm == "candidate")
+    parent = next(alias for alias, arm in aliases.items() if arm == "p13")
+    assert answers[candidate]["fee_omission"] == {
+        "criterion": "content",
+        "present_binding_pln": "19",
+        "missing_proposed_pln": "26",
+        "quote": "Obowiązuje opłata 19 zł za komplet materiałów.",
+    }
+    assert "fee_omission" not in answers[parent]
+
+    receipt = register_blind_review(
+        tmp_path / "experiments", pending, output, submission
+    )
+    assert receipt["status"] == "STOP"
+    assert receipt["failures"] == ["parent_conversation_lost"]
+
+
+@pytest.mark.parametrize(
+    "text, finish, has_proof",
+    [
+        ("Aktualna opłata wynosi 19,00 PLN.", None, True),
+        ("Obowiązuje nadal 19 złotych.", None, True),
+        ("Obowiązuje 19 zł, a 26 zł czeka na akceptację.", None, False),
+        (
+            "Obowiązuje 19 zł. Nowa propozycja to dwadzieścia sześć złotych.",
+            None,
+            False,
+        ),
+        ("Obowiązuje 19 zł.", "length", False),
+        ("„Obowiązuje 19 zł.”", None, False),
+        ("Obowiązuje 26 zł.", None, False),
+    ],
+)
+def test_fee_omission_requires_unambiguous_binding_only_reply(text, finish, has_proof):
+    from venom_core.services.training_experiments.conversation_numeric import (
+        fee_expectation,
+        fee_omission,
+    )
+
+    rule = {"criterion": "state", "binding": "19", "proposed": "26"}
+    case = {"criteria": [{"id": "state", "kind": "content"}], "fee_state": rule}
+    expected = fee_expectation(case)
+    assert (
+        fee_omission({"text": text, "finish": finish}, expected) is not None
+    ) is has_proof
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        None,
+        {"criterion": "other", "binding": "19", "proposed": "26"},
+        {"criterion": "state", "binding": "19", "proposed": "19,00"},
+        {"criterion": "state", "binding": "-19", "proposed": "26"},
+    ],
+)
+def test_fee_proof_rejects_invalid_rule(rule):
+    from venom_core.services.training_experiments.conversation_numeric import (
+        fee_expectation,
+    )
+
+    case = {"criteria": [{"id": "state", "kind": "content"}], "fee_state": rule}
+    with pytest.raises(ValueError, match="fee_rule_invalid"):
+        fee_expectation(case)
 
 
 def _store_checkpoint(experiments, dataset, generation, binding):

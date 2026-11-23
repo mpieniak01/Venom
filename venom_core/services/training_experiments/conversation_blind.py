@@ -16,6 +16,8 @@ from venom_core.services.training_experiments.checkpoint_evaluation import (
     verify_generation_pair,
 )
 from venom_core.services.training_experiments.conversation_numeric import (
+    fee_expectation,
+    fee_omission,
     numeric_contradiction,
     numeric_expectation,
 )
@@ -194,19 +196,23 @@ def _render_blind_package(
         turns = {}
         for turn in sorted(spec["turns"]):
             record_id = index[conversation, turn]
-            expected = numeric_expectation(cases_by_id[record_id])
+            case = cases_by_id[record_id]
+            expected = numeric_expectation(case)
+            fee = fee_expectation(case)
             views = {}
             for alias, arm in mapping[conversation].items():
                 answer = (parent if arm == "p13" else candidate)[record_id]["answer"]
                 view = _review_answer(answer, allow_cutoff=allow_cutoff)
                 if proof := numeric_contradiction(view, expected):
                     view["numeric_contradiction"] = proof
+                if omission := fee_omission(view, fee):
+                    view["fee_omission"] = omission
                 views[alias] = view
             turns[turn] = {
                 "criteria": spec["turns"][turn],
                 "criterion_descriptions": {
                     criterion["id"]: criterion["description"]
-                    for criterion in cases_by_id[record_id]["criteria"]
+                    for criterion in case["criteria"]
                 },
                 "answers": views,
             }
@@ -392,14 +398,23 @@ def _unblind_conversation(
         _require_keys(verdicts, alias_map)
         row = spec["turns"][turn]
         for alias, arm in alias_map.items():
-            verdict = verdicts[alias]
-            proof = row["answers"][alias].get("numeric_contradiction")
-            if proof is not None and _valid_verdict(verdict, row["criteria"]):
-                verdict = {
-                    "critical": True,
-                    "criteria": {**verdict["criteria"], proof["criterion"]: False},
-                }
-            request[arm][conversation][turn] = verdict
+            request[arm][conversation][turn] = _apply_review_evidence(
+                verdicts[alias], row["criteria"], row["answers"][alias]
+            )
+
+
+def _apply_review_evidence(verdict: dict, criteria: list[str], answer: dict) -> dict:
+    failed = {
+        answer[key]["criterion"]: False
+        for key in ("numeric_contradiction", "fee_omission")
+        if key in answer
+    }
+    if not failed or not _valid_verdict(verdict, criteria):
+        return verdict
+    return {
+        "critical": verdict["critical"] or "numeric_contradiction" in answer,
+        "criteria": {**verdict["criteria"], **failed},
+    }
 
 
 def _diagnostic_manifest(run: Path) -> dict:

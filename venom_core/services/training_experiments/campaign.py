@@ -900,7 +900,9 @@ class CampaignService:
 
     def _refresh_pending_conversation_reviews(self, state: dict) -> None:
         config = state["plan"].get("conversation_review")
-        if config is None:
+        if config is None or state.get("phase") == "complete":
+            return
+        if state.get("termination") and "training_status" in state:
             return
         from .conversation_review import checkpoint_review_id
 
@@ -1182,7 +1184,9 @@ class CampaignService:
         state["termination"] = "timed_out" if expired else None
         if expired:
             state["status"] = "stopping"
-        elif self._remote_conversation_review(state) and "training_status" in state:
+        elif state.get("training_status") in {"running", "succeeded"} and plan.get(
+            "conversation_review"
+        ):
             state["status"] = "awaiting_review"
 
     def _verify_activation_inputs(self, plan: dict, *, first_start: bool) -> None:
@@ -2099,64 +2103,67 @@ class CampaignService:
             for row in trial.get("checkpoint_evaluations", ())
         )
 
-    def _pause_remote_conversation_review(self, state: dict) -> bool:
-        if not self._remote_conversation_review(state):
+    def _pause_conversation_review(self, state: dict) -> bool:
+        if not state["plan"].get("conversation_review"):
             return False
         extension = state["plan"].get("extension") or {}
-        trial_index = state["trial_index"]
         review_boundary = state["status"] == "succeeded" or (
             state["status"] == "running"
-            and trial_index == extension.get("initial_trials")
+            and state["trial_index"] == extension.get("initial_trials")
             and "extension_decision" not in state
         )
         if not review_boundary or not self._pending_conversation_review(state):
             return False
         state["training_status"] = state["status"]
         state["status"] = "awaiting_review"
+        if state.get("phase") == "trials":
+            state["qualification_status"] = "pending_conversation_review"
         return True
 
     def _awaiting_conversation_review(self, state: dict) -> bool:
-        if self._remote_conversation_review(state):
-            return state["status"] == "awaiting_review" or (
-                state["status"] == "stopping" and "training_status" in state
-            )
-        return (
-            state.get("phase") == "trials"
-            and state.get("status") == "awaiting_review"
-            and state["plan"].get("conversation_review") is not None
+        if state.get("phase") != "trials" and not self._remote_conversation_review(
+            state
+        ):
+            return False
+        return state["plan"].get("conversation_review") is not None and (
+            state["status"] == "awaiting_review"
+            or (state["status"] == "stopping" and "training_status" in state)
         )
+
+    @staticmethod
+    def _end_conversation_review(state: dict) -> None:
+        terminal = state.get("termination") or "timed_out"
+        state.update(
+            status=terminal,
+            training_status=terminal,
+            termination=terminal,
+            selected_run_id=None,
+            selected_checkpoint_step=None,
+        )
+        if state["plan"].get("final_qualification"):
+            from .local_campaign_final import incomplete
+
+            reason = (
+                "campaign_stopped"
+                if terminal == "stopped"
+                else "campaign_development_review_timed_out"
+            )
+            incomplete(state, reason)
 
     def _advance_conversation_review(self, directory: Path) -> dict:
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
             self._review_selection(state)
-            review_changed = (
-                state.get("error") == "campaign_quality_conversation_review_changed"
-            )
-            if self._remote_conversation_review(state) and not review_changed:
+            if state.get("error") != "campaign_quality_conversation_review_changed":
                 self._elapsed(state)
                 if (
                     state["status"] == "stopping"
                     or self._campaign_seconds_left(state) <= 0
                 ):
-                    terminal = state.get("termination") or "timed_out"
-                    state.update(
-                        status=terminal,
-                        termination=terminal,
-                        selected_run_id=None,
-                        selected_checkpoint_step=None,
-                    )
+                    self._end_conversation_review(state)
                 elif not self._pending_conversation_review(state):
                     state["status"] = state.pop("training_status")
-                    _confirm_repeat(state)
-            elif not review_changed:
-                state["status"] = state.get("training_status", "succeeded")
-                if state["plan"].get("final_qualification"):
-                    from .local_campaign_final import transition
-
-                    transition(state, service=self)
-                else:
-                    state["status"] = "succeeded"
+                    self._after_trial_advance(state)
             if state["status"] not in _ACTIVE:
                 state["worker"] = None
             self._save(directory, state)
@@ -2169,9 +2176,9 @@ class CampaignService:
                 return state
             self._elapsed(state)
             try:
-                if not self._pause_remote_conversation_review(state):
+                if not self._pause_conversation_review(state):
                     self._advance(directory, state)
-                    self._pause_remote_conversation_review(state)
+                    self._pause_conversation_review(state)
             except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
                 state["status"] = "blocked"
                 code = str(exc)
@@ -2187,15 +2194,20 @@ class CampaignService:
                     )
                     else "campaign_stage_failed"
                 )
-            _confirm_repeat(state)
-            if state["plan"].get("final_qualification"):
-                from .local_campaign_final import transition
-
-                transition(state, service=self)
+            if not self._awaiting_conversation_review(state):
+                self._after_trial_advance(state)
             if state["status"] not in _ACTIVE:
                 state["worker"] = None
             self._save(directory, state)
             return state
+
+    def _after_trial_advance(self, state: dict) -> None:
+        _confirm_repeat(state)
+        if state["plan"].get("final_qualification"):
+            from .local_campaign_final import transition
+
+            state["qualification_status"] = "pending"
+            transition(state, service=self)
 
     @staticmethod
     def _record_retention(state: dict, receipt: dict) -> None:

@@ -231,9 +231,11 @@ kanonicznego JSON panelu: klucze sortowane, UTF-8, bez spacji separatorów.
 Przed kwalifikacją checkpointu wymagany jest osobny immutable receipt dla każdej
 pary run/krok. Receipt wiąże hash raportu checkpointu, wagi i konfigurację obu
 adapterów, snapshot, referencję P13, panel i wynik scorera 96 pełnych rozmów.
-Brak receipt pozostawia kampanię w `awaiting_review`; po ręcznej rejestracji
-wykonawca ponawia assessment. Mismatch blokuje awans, a wynik `STOP` odrzuca
-checkpoint. Przykładowy hash z samymi zerami jest placeholderem; w planie podaj
+Przed decyzją o dogrywce i przed wyborem finalisty kampania czeka w
+`awaiting_review` na brakujące werdykty. Po rejestracji kontroler sprawdza
+dowody i wznawia decyzję. Wynik `STOP` odrzuca checkpoint. Zatrzymanie albo
+wyczerpanie czasu na DEV w trakcie oczekiwania kończy lokalną kwalifikację jako
+niekompletną. Czas na DEV obejmuje ocenę i zachowuje rezerwę dla FINAL. Przykładowy hash z samymi zerami jest placeholderem; w planie podaj
 rzeczywisty hash panelu.
 
 `campaigns plan` zamraża identyfikator i hash referencji. Przy automatycznej ocenie każdy checkpoint trafia do rankingu po porównaniu z rodzicem. Utrata użytecznego wyniku lub pełnego zaliczenia P13 blokuje wybór nawet przy poprawie średniej. Remis nie spełnia wymagania przyrostu. Jeśli plan przewiduje powtórzenie receptury i żaden krok nie przejdzie bramki, kolejny seed zostaje pominięty. Raport zachowuje deltę względem M0, deltę względem rodzica i identyfikatory utraconych przypadków. Kalibracja `exact-v1` ocenia zadeklarowane odpowiedzi i ich format. Otwarty dialog i kwalifikacja do wydania mają osobny protokół i niezależny finał.

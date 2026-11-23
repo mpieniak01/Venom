@@ -386,16 +386,21 @@ def _store_checkpoint(experiments, dataset, generation, binding):
 
 
 @pytest.mark.parametrize(
-    ("scenario", "remote"),
+    ("scenario", "remote", "extension"),
     [
-        (scenario, remote)
+        (scenario, remote, False)
         for scenario in ("gain", "regression", "tie")
         for remote in (False, True)
     ]
-    + [("expired", True), ("stopped", True)],
+    + [
+        (scenario, remote, True)
+        for scenario in ("expired", "stopped")
+        for remote in (False, True)
+    ]
+    + [(scenario, False, True) for scenario in ("gain", "regression")],
 )
 def test_blind_review_controls_restarted_campaign(
-    input_data, tmp_path, capsys, monkeypatch, scenario, remote
+    input_data, tmp_path, capsys, monkeypatch, scenario, remote, extension
 ):
     from scripts.academy import campaigns as campaign_cli
     from scripts.academy.quality import main as quality_cli
@@ -480,10 +485,23 @@ def test_blind_review_controls_restarted_campaign(
         "started_at": None,
         "elapsed_seconds": 0,
         "worker": None,
+        "termination": None,
         "trials": [trial],
     }
     now = [1000.0]
     service = CampaignService(experiments, clock=lambda: now[0])
+    plan["budget"] = {"max_seconds": 600, "trial_seconds": 120}
+    state.update(started_at=900.0, deadline_at=1400.0, trial_index=1)
+    repeat_id = f"{run_id}-repeat"
+    if extension:
+        state["status"] = "running"
+        state["trials"].append({"run_id": repeat_id, "status": "pending"})
+        plan["extension"] = {
+            "initial_trials": 1,
+            "min_usable_delta": 0.05,
+            "repeat_best_recipe": True,
+            "repeat_variants": {run_id: repeat_id},
+        }
     if remote:
         from venom_core.services.remote_training.lifecycle import process_identity
         from venom_core.services.training_experiments.profiles import load_profile
@@ -491,29 +509,31 @@ def test_blind_review_controls_restarted_campaign(
         plan["conversation_review"]["final_mode"] = "remote"
         plan["profile_identity"] = load_profile(tmp_path, "fixture")[1]
         plan.pop("final_qualification")
-        plan["budget"] = {"max_seconds": 600}
-        if scenario in {"expired", "stopped"}:
-            state.update(status="running", trial_index=1)
-            plan["extension"] = {"initial_trials": 1}
-        else:
-            state["trial_index"] = 1
         state.update(
             started_at=900.0, cutoff_at=1400.0, worker=process_identity(os.getpid())
         )
         state.pop("phase")
+        state.pop("deadline_at")
     service._record_checkpoint_results(state, trial, policy)
     (pending,) = trial["checkpoint_evaluations"]
     assert pending["conversation_review_status"] == "pending"
     assert pending["conversation_review_binding"]["run_id"] == run_id
     assert pending["conversation_review_binding"]["step"] == step
     _rank(state)
-    if remote:
-        assert service._pause_remote_conversation_review(state)
-    else:
-        transition(state)
+    if not extension:
+        if remote:
+            assert service._pause_conversation_review(state)
+        else:
+            transition(state)
     directory = service.directory(campaign_id)
     directory.mkdir(parents=True)
     service._save(directory, state)
+    if extension:
+        paused = service.advance(campaign_id)
+        assert paused["status"] == "awaiting_review"
+        assert paused["training_status"] == "running"
+        assert "extension_decision" not in paused
+        assert paused["trials"][1]["status"] == "pending"
 
     pending_file, judgments = tmp_path / "pending.json", tmp_path / "submission.json"
     if remote:
@@ -570,9 +590,17 @@ def test_blind_review_controls_restarted_campaign(
         closed = service.advance(campaign_id)
         assert closed["status"] == ("timed_out" if scenario == "expired" else "stopped")
         assert closed["selected_run_id"] is None
-        with pytest.raises(SystemExit, match="1"):
+        if remote:
+            with pytest.raises(SystemExit, match="1"):
+                main(args)
+            assert not (directory / "conversation-reviews").exists()
+        else:
+            assert closed["qualification_status"] == "incomplete"
+            assert closed["phase"] == "complete"
+            _fill_review(submitted)
+            _write(judgments, submitted)
             main(args)
-        assert not (directory / "conversation-reviews").exists()
+            assert service.status(campaign_id)["selected_run_id"] is None
         return
     _fill_review(submitted)
     for name in parent_failed:
@@ -601,6 +629,28 @@ def test_blind_review_controls_restarted_campaign(
     resumed = restarted.advance(campaign_id)
     (outcome,) = resumed["trials"][0]["checkpoint_evaluations"]
     assert outcome["conversation_review_sha256"] == stable_hash(receipt)
+    if extension:
+        assert resumed["status"] == "running"
+        assert resumed["qualification_status"] == "pending"
+        assert "extension_decision" not in resumed
+        prepared = []
+        monkeypatch.setattr(restarted, "_run", lambda *_: None)
+        monkeypatch.setattr(
+            restarted,
+            "_prepare_trial",
+            lambda _directory, _state, trial: prepared.append(trial["run_id"]),
+        )
+        decided = restarted.advance(campaign_id)
+        assert decided.get("error") is None, decided.get("error")
+        assert prepared == ([repeat_id] if scenario == "gain" else [])
+        assert decided["extension_decision"]["status"] == (
+            "approved" if scenario == "gain" else "skipped"
+        )
+        if scenario == "regression":
+            assert decided["qualification_status"] == "failed_quality"
+            assert decided["selected_run_id"] is None
+        return
+
     if scenario != "gain":
         assert resumed["selected_run_id"] is None
         if remote:

@@ -45,12 +45,8 @@ _NOTE_EVENT = re.compile(
 )
 _FREE_ENTRY = re.compile(r"wstęp (?:jest )?wolny", re.I)
 _BRING = re.compile(r"trzeba przynieść (?P<item>[a-ząćęłńóśźż -]{1,60})", re.I)
-_PROPOSE = re.compile(
-    r"(?:rozważamy zmianę|proponuję|propozycja)\s*:(?>\s*)(?P<fields>.+)", re.I
-)
-_ACCEPT = re.compile(
-    r"(?:zatwierdzam|akceptuję|przyjmuję)\b(?:(?>\s+)(?P<fields>.+))?", re.I
-)
+_PROPOSE = re.compile(r"(?:rozważamy zmianę|proponuję|propozycja)\s*:", re.I)
+_ACCEPT = re.compile(r"(?:zatwierdzam|akceptuję|przyjmuję)\b", re.I)
 _REJECT = re.compile(
     rf"(?:odrzucam (?:propozycję|zmianę)(?: (?P<field>godziny|sali))?|"
     rf"pomysł przesunięcia startu na (?P<time>{_TIME}) nie został zatwierdzony)",
@@ -166,15 +162,20 @@ def _apply(state: _Event, header: str, clause: str) -> dict[str, str]:
         return {}
     if not state.values:
         return {}
-    if proposal := _PROPOSE.fullmatch(clause):
-        state.proposal = _fields(proposal["fields"])
+    if proposal := _PROPOSE.match(clause):
+        remainder = clause[proposal.end() :].strip()
+        if remainder:
+            state.proposal = _fields(remainder)
         return {}
     if rejection := _REJECT.fullmatch(clause):
         _reject(state, rejection)
         return {}
-    accepted = _ACCEPT.fullmatch(clause)
+    accepted = _ACCEPT.match(clause)
+    remainder = clause[accepted.end() :] if accepted else ""
+    if accepted and remainder and not remainder[0].isspace():
+        accepted = None
     changes = (
-        _accepted_fields(state, accepted["fields"])
+        _accepted_fields(state, remainder.strip() or None)
         if accepted
         else _note_update(header, clause)
     )

@@ -52,6 +52,11 @@ _CURRENT_FEE_QUERY = re.compile(
 )
 _FEE_ENTRY = r"(?:wejście|wstęp|bilet)"
 _PER_PERSON = r"(?:za (?:jedną )?osobę|na (?:jedną )?osobę|od osoby)"
+_REJECTED_FEE_QUESTION = re.compile(
+    r"odrzucam (?:propozycję (?:zmiany )?|zmianę )(?:składki|kaucji|opłaty|ceny)"
+    r"[.!]\s+(?P<question>[^.!?]+\?)",
+    re.I,
+)
 _FEE_ESTABLISHMENT = re.compile(
     rf"(?:ustalam {_FEE_ACCUSATIVE}|obowiązuje {_FEE_NOMINATIVE})"
     rf"\s+{_AMOUNT.pattern}(?:\s+(?P<unit>{_PER_PERSON}))?\s*[.!]?",
@@ -203,7 +208,12 @@ class _FeeState:
         return True
 
     def _read_rejection(self, text: str) -> bool:
-        if _REJECT.search(text) and self.proposed is not None:
+        rejection = _REJECT.search(text)
+        if (
+            rejection is not None
+            and self.proposed is not None
+            and not _question_in_clause(text, rejection.start())
+        ):
             self.proposed = None
             self.decision = True
             return True
@@ -404,6 +414,7 @@ def _conversation_fact_context(
     for resolver in (
         _reservation_from_conversation,
         _accepted_fee_context,
+        _rejected_fee_context,
         _pending_fee_context,
     ):
         context = resolver(visible, preceding_users)
@@ -550,6 +561,37 @@ def _fee_before_proposal(history: Sequence[str]) -> _FeeState:
             # A topic change breaks a replay of consecutive fee messages.
             state = _FeeState()
     return state
+
+
+def _rejected_fee_context(
+    content: str, preceding_users: Sequence[str]
+) -> CorrectionContext | None:
+    decision = _REJECTED_FEE_QUESTION.fullmatch(content.strip())
+    if decision is None or not _CURRENT_FEE_QUERY.fullmatch(decision["question"]):
+        return None
+    rejected = _FEE.search(content)
+    requested = _FEE.search(decision["question"])
+    if (
+        rejected is None
+        or requested is None
+        or rejected[1].casefold() != requested[1].casefold()
+    ):
+        return None
+    recent = preceding_users[-6:]
+    state = _fee_before_proposal(recent)
+    if (
+        state.binding is None
+        or state.proposed is None
+        or state.field != requested[1].casefold()
+    ):
+        return None
+    # Leave qualified prices to the context that includes their full wording.
+    if "dla jednej osoby" in decision["question"].casefold() or any(
+        _PER_PERSON_UNIT.search(message) for message in recent
+    ):
+        return None
+    reply = f"Obowiązuje {state.binding} zł. Propozycja została odrzucona."
+    return CorrectionContext("binding_fee", reply, verified_reply=reply)
 
 
 def _pending_fee_context(

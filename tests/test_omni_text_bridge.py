@@ -1652,3 +1652,18 @@ def test_explicit_fee_declaration_is_binding(declaration, expected):
     assert result is not None
     assert result.verified_reply == expected
     assert correction_context(declaration.rstrip(".") + "?", []) is None
+
+
+def test_explicit_fee_rejection_confirms_only_a_known_pending_amount():
+    history = ["Ustalam opłatę 15 zł.", "Proponuję opłatę 21 zł."]
+    rejection = "Odrzucam propozycję zmiany opłaty. Jaka opłata obowiązuje?"
+    confirmed = correction_context(rejection, history)
+    assert confirmed is not None
+    assert confirmed.verified_reply == "Obowiązuje 15 zł. Propozycja została odrzucona."
+    assert correction_context(f"Przetłumacz „{rejection}”", history) is None
+    assert correction_context(rejection.replace("opłaty.", "opłaty?"), history) is None
+    assert correction_context(rejection, history[:1]) is None
+    qualified = correction_context(
+        rejection, ["Ustalam opłatę 15 zł za osobę.", history[1]]
+    )
+    assert qualified is not None and qualified.verified_reply is None

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from venom_core.services.training_experiments.conversation_blind import (
+    diagnostic_cutoff_ceiling,
     prepare_diagnostic_review,
     publish_blind_package,
     score_diagnostic_review,
@@ -20,6 +21,9 @@ def main(argv: list[str] | None = None) -> None:
     prepare = commands.add_parser("prepare")
     for name in ("run", "panel", "dataset", "output"):
         prepare.add_argument(name, type=Path)
+    ceiling = commands.add_parser("cutoff-ceiling")
+    for name in ("run", "panel", "dataset"):
+        ceiling.add_argument(name, type=Path)
     evaluate = commands.add_parser("score")
     for name in ("run", "package", "judgments"):
         evaluate.add_argument(name, type=Path)
@@ -32,6 +36,10 @@ def main(argv: list[str] | None = None) -> None:
             result = {
                 "package": str(publish_blind_package(args.output, package, private))
             }
+        elif args.command == "cutoff-ceiling":
+            result = diagnostic_cutoff_ceiling(
+                args.run, read_json(args.panel), args.dataset
+            )
         else:
             result = score_diagnostic_review(
                 args.run, args.package, read_json(args.judgments)

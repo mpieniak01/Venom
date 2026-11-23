@@ -31,7 +31,7 @@ def _write(path, obj):
     path.write_text(json.dumps(obj), encoding="utf-8")
 
 
-def _generation(path, cases, dataset_hash, identity, step):
+def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=()):
     path.mkdir()
     tag = f"checkpoint-{step}"
     models = {
@@ -55,7 +55,9 @@ def _generation(path, cases, dataset_hash, identity, step):
                 "label": label,
                 "response": {
                     "text": f"Answer {model}",
-                    "finish": "stop",
+                    "finish": "length"
+                    if model == tag and case["record_id"] in cutoffs
+                    else "stop",
                     "error": None,
                 },
                 **context,
@@ -582,7 +584,7 @@ def test_blind_review_controls_restarted_campaign(
     assert service.advance(campaign_id)["status"] == "awaiting_review"
     if scenario in {"expired", "stopped"}:
         if scenario == "expired":
-            now[0] = 1400.0
+            now[0] = 1400.0 if remote else 1370.0
         else:
             state = service._state(directory)
             state.update(status="stopping", termination="stopped")
@@ -762,7 +764,10 @@ def test_blind_import_rejects_incomplete_or_unbound_review(
     assert not root.exists()
 
 
-def test_blind_diagnostic_scores_without_campaign_receipt(input_data, tmp_path, capsys):
+@pytest.mark.parametrize("cutoffs", [False, True])
+def test_blind_diagnostic_scores_without_campaign_receipt(
+    input_data, tmp_path, capsys, cutoffs
+):
     from scripts.academy.conversation_diagnostic import main
 
     pending, panel, dataset, parent, candidate = input_data
@@ -771,6 +776,18 @@ def test_blind_diagnostic_scores_without_campaign_receipt(input_data, tmp_path, 
     pair_dir.mkdir(parents=True)
     entries = {}
     binding = pending["conversation_review_binding"]
+    if cutoffs:
+        from scripts.academy.omni_pl_chat_data import read_jsonl
+
+        candidate = tmp_path / "cutoff-source"
+        _generation(
+            candidate,
+            read_jsonl(dataset),
+            digest(dataset),
+            binding["candidate_identity"],
+            21,
+            cutoffs={f"C{number:03}-1" for number in range(2, 35, 4)} | {"C002-2"},
+        )
     for name, step, source, identity in (
         ("parent", 145, parent, binding["p13_identity"]),
         ("candidate", 21, candidate, binding["candidate_identity"]),
@@ -795,6 +812,27 @@ def test_blind_diagnostic_scores_without_campaign_receipt(input_data, tmp_path, 
     _write(run / "generation-acceptance.json", manifest)
     panel_path = tmp_path / "panel.json"
     _write(panel_path, panel)
+    ceiling_args = ["cutoff-ceiling", str(run), str(panel_path), str(dataset)]
+    main(ceiling_args)
+    ceiling = json.loads(capsys.readouterr().out)
+    assert ceiling["status"] == ("STOP" if cutoffs else "REVIEW")
+    assert ceiling["failed_groups"] == (["W"] if cutoffs else [])
+    assert ceiling["fails_total"] is False
+    assert ceiling["arms"]["candidate"]["maximum_full_conversations"] == (
+        87 if cutoffs else 96
+    )
+    assert ceiling["arms"]["candidate"]["cutoff_turns"] == (10 if cutoffs else 0)
+    assert ceiling["arms"]["p13"]["maximum_full_conversations"] == 96
+    assert ceiling["parent_retention_assessed"] is False
+    assert not list(tmp_path.rglob("receipt.json"))
+
+    if cutoffs:
+        (pair_dir / "21" / "raw.jsonl").write_text("{}")
+        with pytest.raises(SystemExit):
+            main(ceiling_args)
+        assert "experiment_evidence_changed" in capsys.readouterr().err
+        return
+
     output = tmp_path / "diagnostic-package"
     main(["prepare", str(run), str(panel_path), str(dataset), str(output)])
     capsys.readouterr()

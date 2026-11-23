@@ -429,8 +429,14 @@ Generacja używa izolowanego wykonawcy Academy i własnej historii każdej rozmo
 Przygotuj pakiet dla recenzenta i przelicz wypełniony formularz.
 
 ```bash
+python -m scripts.academy.conversation_diagnostic cutoff-ceiling "$out" panel.json dev.jsonl
 python -m scripts.academy.conversation_diagnostic prepare "$out" panel.json dev.jsonl "$package"
 python -m scripts.academy.conversation_diagnostic score "$out" "$package" judgments.json
 ```
+
+`cutoff-ceiling` sprawdza zapieczętowaną generację przed oceną treści. Gdy
+ucięcia uniemożliwiają osiągnięcie progu całego panelu lub którejś grupy,
+zwraca diagnostyczny `STOP`. Pozostałe wyniki wymagają oceny treści i mają
+status `REVIEW`. Polecenie zapisuje wynik na standardowym wyjściu.
 
 Recenzent otrzymuje `reviewer.json` i `judgments-template.json`. Operator zachowuje prywatną mapę aliasów. Scorer wymaga kompletu ocen i odrzuca zaliczenie odpowiedzi uciętej przez limit długości. Wynik `diagnostic_only` jest wypisywany jako osobny dowód i nie tworzy potwierdzenia dla kampanii. Kampania kwalifikuje checkpoint własną ścieżką wiązania i rejestracji.

@@ -450,6 +450,56 @@ def prepare_diagnostic_review(
     )
 
 
+def diagnostic_cutoff_ceiling(run: Path, panel: dict, dataset: Path) -> dict:
+    """Determine whether cutoffs alone rule out passing the sealed DEV panel."""
+    package, private = prepare_diagnostic_review(run, panel, dataset)
+    size, group_size, threshold, group_threshold, turns = _validate_panel("dev", panel)
+    cutoff_turns = {"p13": 0, "candidate": 0}
+    cutoff_dialogues: dict[str, dict[str, set[str]]] = {
+        arm: {group: set() for group in "SKWR"} for arm in cutoff_turns
+    }
+    for conversation, _turn, alias in _diagnostic_cutoffs(package):
+        arm = private["aliases"][conversation][alias]
+        group = panel[conversation]["group"]
+        cutoff_turns[arm] += 1
+        cutoff_dialogues[arm][group].add(conversation)
+
+    arms = {}
+    for arm, groups in cutoff_dialogues.items():
+        by_group = {group: group_size - len(ids) for group, ids in groups.items()}
+        arms[arm] = {
+            "cutoff_turns": cutoff_turns[arm],
+            "cutoff_dialogue_ids": {
+                group: sorted(ids) for group, ids in groups.items()
+            },
+            "maximum_full_conversations_by_group": by_group,
+            "maximum_full_conversations": sum(by_group.values()),
+        }
+    candidate = arms["candidate"]
+    failed_groups = [
+        group
+        for group, ceiling in candidate["maximum_full_conversations_by_group"].items()
+        if ceiling < group_threshold
+    ]
+    fails_total = candidate["maximum_full_conversations"] < threshold
+    return {
+        "status": "STOP" if fails_total or failed_groups else "REVIEW",
+        "scope": "diagnostic_only",
+        "decision_basis": "upper_bound_from_verified_cutoffs",
+        "generation_acceptance_sha256": private["binding_sha256"],
+        "dataset_sha256": package["dataset_sha256"],
+        "panel_sha256": package["panel_sha256"],
+        "conversations": size,
+        "turns_per_arm": turns,
+        "thresholds": {"total": threshold, "per_group": group_threshold},
+        "fails_total": fails_total,
+        "failed_groups": failed_groups,
+        "critical_errors_assessed": False,
+        "parent_retention_assessed": False,
+        "arms": arms,
+    }
+
+
 def score_diagnostic_review(run: Path, package_dir: Path, submitted: object) -> dict:
     """Score a completed blind diagnostic without publishing a campaign receipt."""
     manifest = _diagnostic_manifest(run)

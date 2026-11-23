@@ -15,7 +15,12 @@ from venom_core.services.training_experiments.checkpoint_evaluation import (
     read_generation,
     verify_generation_pair,
 )
+from venom_core.services.training_experiments.conversation_numeric import (
+    numeric_contradiction,
+    numeric_expectation,
+)
 from venom_core.services.training_experiments.conversation_review import (
+    _valid_verdict,
     _validate_panel,
     payload_sha,
     prepare_checkpoint_review,
@@ -189,10 +194,14 @@ def _render_blind_package(
         turns = {}
         for turn in sorted(spec["turns"]):
             record_id = index[conversation, turn]
+            expected = numeric_expectation(cases_by_id[record_id])
             views = {}
             for alias, arm in mapping[conversation].items():
                 answer = (parent if arm == "p13" else candidate)[record_id]["answer"]
-                views[alias] = _review_answer(answer, allow_cutoff=allow_cutoff)
+                view = _review_answer(answer, allow_cutoff=allow_cutoff)
+                if proof := numeric_contradiction(view, expected):
+                    view["numeric_contradiction"] = proof
+                views[alias] = view
             turns[turn] = {
                 "criteria": spec["turns"][turn],
                 "criterion_descriptions": {
@@ -358,7 +367,7 @@ def _decode_judgments(
     _require_keys(judgments, panel)
     _require_keys(aliases, panel)
     arms: dict[str, dict] = {"p13": {}, "candidate": {}}
-    for conversation, spec in panel.items():
+    for conversation, spec in package["conversations"].items():
         for verdicts in arms.values():
             verdicts[conversation] = {}
         _unblind_conversation(arms, conversation, spec, judgments, aliases)
@@ -381,8 +390,16 @@ def _unblind_conversation(
     _require_keys(turns, spec["turns"])
     for turn, verdicts in turns.items():
         _require_keys(verdicts, alias_map)
+        row = spec["turns"][turn]
         for alias, arm in alias_map.items():
-            request[arm][conversation][turn] = verdicts[alias]
+            verdict = verdicts[alias]
+            proof = row["answers"][alias].get("numeric_contradiction")
+            if proof is not None and _valid_verdict(verdict, row["criteria"]):
+                verdict = {
+                    "critical": True,
+                    "criteria": {**verdict["criteria"], proof["criterion"]: False},
+                }
+            request[arm][conversation][turn] = verdict
 
 
 def _diagnostic_manifest(run: Path) -> dict:

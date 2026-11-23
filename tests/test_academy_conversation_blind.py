@@ -32,7 +32,7 @@ def _write(path, obj):
     path.write_text(json.dumps(obj), encoding="utf-8")
 
 
-def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=()):
+def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=(), answers=None):
     path.mkdir()
     tag = f"checkpoint-{step}"
     models = {
@@ -42,6 +42,7 @@ def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=()):
             "adapter_model.safetensors": identity["weights_sha256"],
         },
     }
+    overrides = answers or {}
     mapping = blind_mapping(cases, list(models))
     raw, blind = [], []
     histories = {model: DialogueHistory() for model in models}
@@ -55,7 +56,9 @@ def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=()):
                 "model": model,
                 "label": label,
                 "response": {
-                    "text": f"Answer {model}",
+                    "text": overrides.get(
+                        (model, case["record_id"]), f"Answer {model}"
+                    ),
                     "finish": "length"
                     if model == tag and case["record_id"] in cutoffs
                     else "stop",
@@ -100,7 +103,7 @@ def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=()):
 
 
 @pytest.fixture
-def input_data(tmp_path):
+def input_data(tmp_path, request):
     panel, cases = {}, []
     for i in range(96):
         conversation, group = f"C{i:03}", "SKWR"[i % 4]
@@ -123,6 +126,18 @@ def input_data(tmp_path):
                     ],
                 }
             )
+    numeric = getattr(request, "param", False)
+    if numeric:
+        first_numeric = cases[8]
+        first_numeric["messages"][0]["content"] = (
+            "Mam 9 arkuszy, kupuję 7, zużywam 4. Ile zostaje?"
+        )
+        first_numeric["numeric_claim"] = {
+            "criterion": "content",
+            "expression": "9 + 7 - 4",
+            "role": "remaining",
+            "unit": "arkuszy",
+        }
     dataset = tmp_path / "data.jsonl"
     dataset.write_text("".join(json.dumps(row) + "\n" for row in cases))
     parent = {
@@ -133,8 +148,26 @@ def input_data(tmp_path):
     }
     candidate = {**parent, "weights_sha256": sha256(b"candidate").hexdigest()}
     pdir, cdir = tmp_path / "parent", tmp_path / "candidate"
-    pseal = _generation(pdir, cases, digest(dataset), parent, 145)
-    _generation(cdir, cases, digest(dataset), candidate, 21)
+    pseal = _generation(
+        pdir,
+        cases,
+        digest(dataset),
+        parent,
+        145,
+        answers={("checkpoint-145", "C002-1"): "Zostało 12 arkuszy."}
+        if numeric
+        else None,
+    )
+    _generation(
+        cdir,
+        cases,
+        digest(dataset),
+        candidate,
+        21,
+        answers={("checkpoint-21", "C002-1"): "Zostało 2 arkusze."}
+        if numeric
+        else None,
+    )
     _write(
         cdir / "result.json",
         {
@@ -327,6 +360,83 @@ def _fill_review(submission):
         for arms in turns.values():
             for verdict in arms.values():
                 verdict.update(criteria={"content": True}, critical=False)
+
+
+@pytest.mark.parametrize("input_data", [True], indirect=True)
+def test_numeric_contradiction_blocks_blind_promotion(issued_review, tmp_path):
+    pending, output, submission, private = issued_review
+    _fill_review(submission)
+    aliases = private["aliases"]["C002"]
+    answers = read_json(output / "reviewer.json")["conversations"]["C002"]["turns"][
+        "T1"
+    ]["answers"]
+    candidate = next(alias for alias, arm in aliases.items() if arm == "candidate")
+    parent = next(alias for alias, arm in aliases.items() if arm == "p13")
+    assert answers[candidate]["numeric_contradiction"]["quote"] == "Zostało 2 arkusze."
+    assert answers[candidate]["numeric_contradiction"]["expected_value"] == "12"
+    assert "numeric_contradiction" not in answers[parent]
+
+    receipt = register_blind_review(
+        tmp_path / "experiments", pending, output, submission
+    )
+    assert receipt["status"] == "STOP"
+    assert "critical_error" in receipt["failures"]
+
+
+@pytest.mark.parametrize(
+    "text, finish, contradicted",
+    [
+        ("Razem 2,25 km.", None, False),
+        ("Łącznie 2\\u202f250 m.", None, False),
+        ("Razem 1,75 km.", None, True),
+        ("Razem 2250 zł.", None, True),
+        ("Brakuje 180 m.", None, False),
+        ("„Razem 1,75 km.”", None, False),
+        ("Razem 1,75 km. Lub 2,25 km.", None, False),
+        ("Razem 1,75 km.", "length", False),
+    ],
+)
+def test_numeric_proof_requires_complete_claim_in_the_expected_role(
+    text, finish, contradicted
+):
+    from venom_core.services.training_experiments.conversation_numeric import (
+        numeric_contradiction,
+        numeric_expectation,
+    )
+
+    case = {
+        "criteria": [{"id": "total", "kind": "content"}],
+        "numeric_claim": {
+            "criterion": "total",
+            "expression": "1400 + 850",
+            "role": "total",
+            "unit": "m",
+        },
+    }
+    expected = numeric_expectation(case)
+    assert (
+        numeric_contradiction({"text": text, "finish": finish}, expected) is not None
+    ) is contradicted
+
+
+def test_numeric_proof_rejects_unknown_criterion():
+    from venom_core.services.training_experiments.conversation_numeric import (
+        numeric_expectation,
+    )
+
+    case = {
+        "criteria": [{"id": "total", "kind": "content"}],
+        "numeric_claim": {
+            "criterion": "other",
+            "expression": "1400 + 850",
+            "role": "total",
+            "unit": "m",
+        },
+    }
+    with pytest.raises(ValueError, match="numeric_rule_invalid"):
+        numeric_expectation(case)
+    with pytest.raises(ValueError, match="numeric_rule_invalid"):
+        numeric_expectation({**case, "numeric_claim": None})
 
 
 def _store_checkpoint(experiments, dataset, generation, binding):

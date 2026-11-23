@@ -2144,9 +2144,9 @@ class CampaignService:
             from .local_campaign_final import incomplete
 
             reason = (
-                "campaign_stopped"
-                if terminal == "stopped"
-                else "campaign_development_review_timed_out"
+                "campaign_development_review_timed_out"
+                if terminal == "timed_out"
+                else state.get("error") or f"campaign_{terminal}"
             )
             incomplete(state, reason)
 

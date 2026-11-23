@@ -464,7 +464,7 @@ def diagnostic_cutoff_ceiling(run: Path, panel: dict, dataset: Path) -> dict:
         cutoff_turns[arm] += 1
         cutoff_dialogues[arm][group].add(conversation)
 
-    arms = {}
+    arms: dict[str, dict] = {}
     for arm, groups in cutoff_dialogues.items():
         by_group = {group: group_size - len(ids) for group, ids in groups.items()}
         arms[arm] = {

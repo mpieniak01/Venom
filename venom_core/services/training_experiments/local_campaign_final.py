@@ -336,6 +336,50 @@ def observe(root: Path, state: dict) -> None:
         incomplete(state, _error_code(exc))
 
 
+def final_review_binding(service: CampaignService, campaign_id: str) -> dict:
+    """Expose the sealed finalist binding on the local reviewer host."""
+    from .remote_text_qualification import _binding
+
+    state = service.status(campaign_id)
+    config = state["plan"].get("final_qualification") or {}
+    if state.get("phase") != "qualification" or not config.get(
+        "conversation_review_required"
+    ):
+        raise ValueError("campaign_final_conversation_review_unavailable")
+    remaining = math.floor(_check(service, campaign_id))
+    if remaining < 1:
+        raise TimeoutError("campaign_final_deadline_exhausted")
+    _, completed, receipts, pins = collect_local(
+        service.experiments.root, campaign_id, timeout=remaining
+    )
+    qualification = _binding(
+        completed,
+        receipts,
+        pins["final_test_sha256"],
+        pins["final_calibration_sha256"],
+        source="local",
+    )
+    selected = next(
+        trial
+        for trial in completed["trials"]
+        if trial["run_id"] == qualification["run_id"]
+    )
+    checkpoint = next(
+        row
+        for row in selected["checkpoint_evaluations"]
+        if row["step"] == qualification["step"]
+    )
+    development = checkpoint["conversation_review_binding"]
+    return {
+        "review_id": config["conversation_review_id"],
+        "binding": {
+            "qualification": qualification,
+            "p13_identity": development["p13_identity"],
+            "candidate_identity": development["candidate_identity"],
+        },
+    }
+
+
 def _execute(service: CampaignService, state: dict) -> dict:
     from .remote_text_qualification import QualificationInputs, _evaluate, qualify
 
@@ -398,10 +442,47 @@ def _recover_result(service: CampaignService, state: dict) -> None:
         incomplete(state, _error_code(exc))
 
 
+def _wait_for_final_review(service: CampaignService, state: dict) -> bool:
+    config = state["plan"]["final_qualification"]
+    if not config.get("conversation_review_required"):
+        if state["plan"].get("conversation_review") is None:
+            return False
+        incomplete(state, "campaign_final_conversation_review_required")
+        return True
+    if state.get("termination") in {"stopped", "blocked"}:
+        incomplete(state, state.get("error") or "campaign_final_stopped")
+        return True
+    if state["deadline_at"] <= service._clock():
+        incomplete(state, "campaign_final_deadline_exhausted")
+        return True
+    from .conversation_review import _ID
+
+    review_id = config["conversation_review_id"]
+    if not isinstance(review_id, str) or not _ID.fullmatch(review_id):
+        raise ValueError("conversation_review_id_invalid")
+    receipt = operator_path(
+        service.experiments.root
+        / "local-text-qualification"
+        / state["campaign_id"]
+        / "evidence"
+        / "conversation-reviews"
+        / review_id
+        / "receipt.json"
+    )
+    if receipt.is_file():
+        return False
+    state["qualification_status"] = "pending_conversation_review"
+    service._elapsed(state)
+    return True
+
+
 def _begin(service: CampaignService, directory: Path) -> tuple[dict, bool]:
     with file_lock(directory / _STATE_LOCK):
         state = service._state(directory)
         if state.get("phase") != "qualification":
+            return state, False
+        if _wait_for_final_review(service, state):
+            service._save(directory, state)
             return state, False
         attempts = state.get("qualification_attempts", 0)
         if (

@@ -111,12 +111,18 @@ class QualificationInputs(BaseModel):
 
 
 def _requires_remote_conversation_review(remote: dict, source: str) -> bool:
-    review = remote["plan"].get("conversation_review") or {}
+    review: dict = remote["plan"].get("conversation_review") or {}
     return source == "remote" and review.get("final_mode") == "remote"
 
 
+def _requires_final_conversation_review(state: dict, source: str) -> bool:
+    if source == "local":
+        return state["plan"].get("conversation_review") is not None
+    return _requires_remote_conversation_review(state, source)
+
+
 def _development_review_hash(trial: dict, step: int) -> str:
-    review = next(
+    review: dict = next(
         (row for row in trial.get("checkpoint_evaluations", ()) if row["step"] == step),
         {},
     )
@@ -152,7 +158,7 @@ def _binding(
     development_review = (
         {
             "development_conversation_review_sha256": _development_review_hash(
-                trial, step
+                trial, candidate["step"]
             )
         }
         if _requires_remote_conversation_review(remote, source)
@@ -878,7 +884,7 @@ def read_qualification(
     if (
         result is not None
         and result.get("qualified") is not None
-        and _requires_remote_conversation_review(remote, source)
+        and _requires_final_conversation_review(remote, source)
         and not result.get("conversation_review_id")
     ):
         return {
@@ -935,7 +941,7 @@ def qualify(
 ) -> dict:
     ensure_data_mutation_allowed("academy_remote_text_qualification")
     if (
-        _requires_remote_conversation_review(remote, source)
+        _requires_final_conversation_review(remote, source)
         and not spec.conversation_review_required
     ):
         raise ValueError("remote_text_conversation_review_required")

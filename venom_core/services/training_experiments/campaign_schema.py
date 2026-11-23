@@ -235,6 +235,11 @@ class CampaignSpec(BaseModel):
             != (self.final_qualification is not None)
         ):
             raise ValueError("campaign_conversation_review_invalid")
+        if (
+            self.final_qualification is not None
+            and not self.final_qualification.conversation_review_required
+        ):
+            raise ValueError("campaign_final_conversation_review_required")
 
     def _validate_repeat_recipe(self) -> None:
         if (

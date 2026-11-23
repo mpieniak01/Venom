@@ -2758,6 +2758,68 @@ def test_retention_keeps_repeat_source_until_confirmation(controller):
     assert source.exists()
 
 
+@pytest.mark.parametrize("event", ["receipt", "expired", "stopped"])
+def test_local_final_waits_without_spending_retries(controller, monkeypatch, event):
+    from unittest.mock import Mock
+
+    from venom_core.services.training_experiments import local_campaign_final
+
+    service, experiments, clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    state = service.advance("series")
+    config = state["plan"]["final_qualification"]
+    review_id = "final-" + "a" * 58
+    config.update(conversation_review_required=True, conversation_review_id=review_id)
+    directory = service.directory("series")
+    service._save(directory, state)
+    evaluator = Mock(return_value={"status": "failed_quality", "qualified": None})
+    monkeypatch.setattr(local_campaign_final, "_execute", evaluator)
+
+    for _ in range(2):
+        waiting = service.advance("series")
+        assert waiting["status"] == "qualifying"
+        assert waiting["qualification_status"] == "pending_conversation_review"
+        assert waiting["qualification_attempts"] == waiting["retries"] == 0
+    evaluator.assert_not_called()
+
+    if event == "receipt":
+        receipt = (
+            experiments.root
+            / "local-text-qualification"
+            / "series"
+            / "evidence"
+            / "conversation-reviews"
+            / review_id
+            / "receipt.json"
+        )
+        receipt.parent.mkdir(parents=True)
+        receipt.write_text("{}", encoding="utf-8")
+    elif event == "expired":
+        clock.now = state["deadline_at"]
+    else:
+        service.stop("series")
+
+    final = service.advance("series")
+    assert final["phase"] == "complete"
+    if event == "receipt":
+        evaluator.assert_called_once()
+        assert final["qualification_attempts"] == 1
+        assert final["qualification_status"] == "failed_quality"
+    else:
+        evaluator.assert_not_called()
+        assert final["qualification_attempts"] == 0
+        assert final["qualification_status"] == "incomplete"
+        assert final["qualification"]["reason"] == (
+            "campaign_final_deadline_exhausted"
+            if event == "expired"
+            else "campaign_final_stopped"
+        )
+
+
 def test_local_final_consumes_shared_retry_budget(controller, monkeypatch):
     from venom_core.services.training_experiments import local_campaign_final
 

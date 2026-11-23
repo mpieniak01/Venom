@@ -221,7 +221,9 @@ Rejestracja sprawdza tożsamość i sumy kontrolne zarejestrowanego adaptera, za
   },
   "final_qualification": {
     "inputs_id": "fresh-final",
-    "reserve_seconds": 900
+    "reserve_seconds": 900,
+    "conversation_review_required": true,
+    "conversation_review_id": "final-0a"
   }
 }
 ```
@@ -237,6 +239,14 @@ dowody i wznawia decyzję. Wynik `STOP` odrzuca checkpoint. Zatrzymanie albo
 wyczerpanie czasu na DEV w trakcie oczekiwania kończy lokalną kwalifikację jako
 niekompletną. Czas na DEV obejmuje ocenę i zachowuje rezerwę dla FINAL. Przykładowy hash z samymi zerami jest placeholderem; w planie podaj
 rzeczywisty hash panelu.
+
+Lokalny plan 0A wymaga też werdyktu dla 48 niezależnych rozmów FINAL. Po
+wybraniu finalisty polecenie `python -m scripts.academy.campaigns final-review-binding CAMPAIGN_ID`
+zwraca identyfikator werdyktu i powiązanie z dokładnym checkpointem. Użyj ich
+w zgłoszeniu `quality register-review` z trybem `final`, panelem i kompletem
+ocen. Pola `p13_identity` i `candidate_identity` zgłoszenia muszą zgadzać się
+z wartościami z `binding`. Kontroler czeka na werdykt w ramach rezerwy FINAL.
+Oczekiwanie nie zużywa ponowień kwalifikacji.
 
 `campaigns plan` zamraża identyfikator i hash referencji. Przy automatycznej ocenie każdy checkpoint trafia do rankingu po porównaniu z rodzicem. Utrata użytecznego wyniku lub pełnego zaliczenia P13 blokuje wybór nawet przy poprawie średniej. Remis nie spełnia wymagania przyrostu. Jeśli plan przewiduje powtórzenie receptury i żaden krok nie przejdzie bramki, kolejny seed zostaje pominięty. Raport zachowuje deltę względem M0, deltę względem rodzica i identyfikatory utraconych przypadków. Kalibracja `exact-v1` ocenia zadeklarowane odpowiedzi i ich format. Otwarty dialog i kwalifikacja do wydania mają osobny protokół i niezależny finał.
 

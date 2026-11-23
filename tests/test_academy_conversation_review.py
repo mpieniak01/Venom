@@ -343,13 +343,22 @@ def test_campaign_spec_explicitly_enables_0a_review_without_changing_defaults():
             "max_critical_delta": 0,
             "protect_parent_full_pass": True,
         },
-        final_qualification={"inputs_id": "final", "reserve_seconds": 30},
+        final_qualification={
+            "inputs_id": "final",
+            "reserve_seconds": 30,
+            "conversation_review_required": True,
+            "conversation_review_id": "final-01",
+        },
         conversation_review={
             "panel_sha256": "0" * 64,
             "receipt_id_prefix": "review-0a",
         },
     )
     assert reviewed.conversation_review.receipt_id_prefix == "review-0a"
+    data = reviewed.model_dump(mode="json")
+    data["final_qualification"]["conversation_review_required"] = False
+    with pytest.raises(ValueError, match="campaign_final_conversation_review_required"):
+        type(reviewed).model_validate(data)
 
 
 def _checkpoint_campaign(tmp_path, monkeypatch):
@@ -455,7 +464,13 @@ def _checkpoint_campaign(tmp_path, monkeypatch):
             "protect_parent_full_pass": False,
         },
         "quality_policy": {"parent_reference_record_id": "history:p13"},
-        "final_qualification": {"inputs_id": "final", "reserve_seconds": 30},
+        "budget": {"max_seconds": 600},
+        "final_qualification": {
+            "inputs_id": "final",
+            "reserve_seconds": 30,
+            "conversation_review_required": True,
+            "conversation_review_id": "final-01",
+        },
         "conversation_review": {
             "panel_sha256": panel_hash,
             "receipt_id_prefix": "review-0a",

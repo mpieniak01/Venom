@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> None:
     register.add_argument("inputs_id")
     register.add_argument("inputs", type=Path)
     sub.add_parser("plan").add_argument("manifest", type=Path)
+    sub.add_parser("final-review-binding").add_argument("campaign_id")
     for name in ("prepare-remote-review", "submit-remote-review"):
         review = sub.add_parser(name)
         review.add_argument("campaign_id")
@@ -82,6 +83,12 @@ def main(argv: list[str] | None = None) -> None:
                 result = remote_conversation_review.submit(
                     service, args.campaign_id, args.run_id, args.step, args.judgments
                 )
+        elif args.command == "final-review-binding":
+            from venom_core.services.training_experiments.local_campaign_final import (
+                final_review_binding,
+            )
+
+            result = final_review_binding(service, args.campaign_id)
         elif args.command == "plan":
             result = service.plan(CampaignSpec.model_validate(read_json(args.manifest)))
         else:

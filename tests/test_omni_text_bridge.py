@@ -1462,3 +1462,179 @@ def test_event_note_summary_replaces_location_and_keeps_other_facts():
     assert summary.verified_reply == (
         "Miejsce to Topaz, godzina 10:45. Wstęp jest wolny i trzeba przynieść własny fartuch."
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("initial", "goal", "correction", "expected"),
+    (
+        (
+            "Trasa A ma 1,4 km, B 850 m. Ile razem? Wytłumacz z jednostkami.",
+            "W sprawie „długość dwóch tras”: A ile brakuje do 2,5 km?",
+            "Doprecyzujmy „długość dwóch tras”: B zmierzono faktycznie na 920 m. Przelicz brak.",
+            [
+                ("2250", "2,25 km", None, None),
+                ("250", "250 m", "2250", "2500"),
+                ("180", "2320 m", "2320", "2500"),
+                ("180", "2,32 km", "2320", "2500"),
+            ],
+        ),
+        (
+            "Odcinek X mierzy 0,65 km, a odcinek Y ma 300 m. Ile łącznie?",
+            "Ile jeszcze brakuje do 1,2 km?",
+            "Korekta: Y wynosi teraz 31500 cm. Przelicz brak.",
+            [
+                ("950", "950 m", None, None),
+                ("250", "250 m", "950", "1200"),
+                ("235", "965 m", "965", "1200"),
+                ("235", "0,965 km", "965", "1200"),
+            ],
+        ),
+    ),
+)
+async def test_native_natural_calculator_preserves_operands_and_receipt(
+    native, monkeypatch, initial, goal, correction, expected
+):
+    from venom_core.config import SETTINGS
+    from venom_core.services.chat_history import persist_direct_response
+
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    _, calls = native
+    await bridge.switch("p13")
+
+    class Store:
+        def append_turn_once(self, *args):
+            self.assistant = args[2][1]
+
+    store = Store()
+    history = []
+    prompts = [
+        initial,
+        goal,
+        correction,
+        "Zakończmy „długość dwóch tras”. Jedno zdanie do notatki z wynikiem i brakiem.",
+    ]
+    for index, (prompt, check) in enumerate(zip(prompts, expected, strict=True)):
+        value, expected_text, total, target = check
+        request = SimpleChatRequest(
+            content=prompt, history=history, max_tokens=192, session_id="distances"
+        )
+        response = persist_direct_response(
+            await bridge.response(request), request, store
+        )
+        packets = [part async for part in response.body_iterator]
+        row = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+        assert row["response_source"] == "calculator"
+        receipt = row["tool_result"]
+        assert receipt == store.assistant["tool_result"]
+        assert receipt["status"] == "succeeded"
+        assert receipt["value"] == value
+        assert receipt["unit"] == "m"
+        assert receipt["recomputed"] is (index >= 2)
+        assert receipt.get("total") == total
+        assert receipt.get("target") == target
+        assert expected_text in store.assistant["content"]
+        history.extend(
+            [
+                HistoryMessage(role="user", content=prompt),
+                HistoryMessage(role="assistant", content=store.assistant["content"]),
+            ]
+        )
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_native_natural_calculator_clarifies_without_running_tool(native):
+    _, calls = native
+    await bridge.switch("p13")
+    response = await bridge.response(
+        SimpleChatRequest(
+            content="Korekta: Y ma 330 m albo 340 m. Przelicz brak.",
+            history=[
+                HistoryMessage(
+                    role="user",
+                    content="Odcinek X mierzy 0,65 km, a odcinek Y ma 300 m. Ile łącznie?",
+                ),
+                HistoryMessage(role="assistant", content="Razem 950 m."),
+                HistoryMessage(role="user", content="Ile brakuje do 1,2 km?"),
+                HistoryMessage(role="assistant", content="Brakuje 250 m."),
+            ],
+        )
+    )
+    packets = [packet async for packet in response.body_iterator]
+    finished = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+    assert "Podaj dokładne długości" in "".join(packets)
+    assert finished["response_source"] == "calculator_clarification"
+    assert "tool_result" not in finished
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("question", "history", "result"),
+    (
+        (
+            "Ile brakuje do 2 km?",
+            ["Odcinek A ma 800 m i B to 700 m.", "Kiedy jedzie pociąg?"],
+            None,
+        ),
+        (
+            "Przetłumacz zdanie „Odcinek A ma 800 m i B to 700 m. Ile łącznie?”",
+            [],
+            None,
+        ),
+        (
+            "Odcinek A ma 800 m. Ile łącznie?",
+            [],
+            "clarification",
+        ),
+        (
+            "Podaj łączną długość i ile brakuje.",
+            ["Odcinek A ma 800 m i B to 700 m."],
+            "clarification",
+        ),
+        (
+            "Podaj łączną długość i ile brakuje.",
+            [
+                "Odcinek A ma 800 m i B to 700 m.",
+                "Ile brakuje do 2 km?",
+                "Korekta: B ma 800 m albo 900 m.",
+            ],
+            "clarification",
+        ),
+        (
+            "Ile brakuje do 1 km?",
+            ["Odcinek A ma 800 m i B to 700 m."],
+            "Powyżej celu o 500 m.",
+        ),
+        (
+            "Odcinek A ma 999999999999 km i B to 700 m. Ile łącznie?",
+            [],
+            "Nie udało się obliczyć wyniku. Sprawdź długości odcinków.",
+        ),
+        (
+            "Ile brakuje do 999999999999 km?",
+            ["Odcinek A ma 800 m i B to 700 m."],
+            "Nie udało się obliczyć wyniku. Sprawdź długości odcinków.",
+        ),
+    ),
+)
+def test_natural_calculator_requires_unambiguous_user_operands(
+    question, history, result
+):
+    from venom_core.services.chat_policy.direct_calculator import plan_calculator
+    from venom_core.services.chat_policy.direct_distance import (
+        DistanceCalculation,
+        DistanceClarification,
+        execute_distance,
+    )
+
+    plan = plan_calculator(
+        question, [{"role": "user", "content": message} for message in history]
+    )
+    if result is None:
+        assert plan is None
+    elif result == "clarification":
+        assert isinstance(plan, DistanceClarification)
+    else:
+        assert isinstance(plan, DistanceCalculation)
+        assert execute_distance(plan)["text"] == result

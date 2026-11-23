@@ -199,13 +199,19 @@ def _calculator_snapshot(receipt: Any) -> dict[str, Any] | None:
         or not isinstance(recomputed, bool)
     ):
         return None
-    return {
+    snapshot = {
         "tool": "calculator",
         "status": status,
         "value": value,
         "unit": unit,
         "recomputed": recomputed,
     }
+    if status == "succeeded" and unit == "m":
+        for key in ("total", "target"):
+            amount = receipt.get(key)
+            if isinstance(amount, str) and len(amount) <= 160:
+                snapshot[key] = amount
+    return snapshot
 
 
 def _cost_snapshot(charge: dict[str, Any]) -> dict[str, Any]:

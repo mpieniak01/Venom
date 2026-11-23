@@ -27,6 +27,11 @@ from venom_core.services.chat_policy.direct_correction import (
     corrected_registration_reply,
     correction_context,
 )
+from venom_core.services.chat_policy.direct_distance import (
+    DistanceCalculation,
+    DistanceClarification,
+    execute_distance,
+)
 from venom_core.services.chat_policy.direct_drafts import reservation_confirmation_draft
 from venom_core.services.chat_policy.direct_invitations import (
     exchange_title_context,
@@ -330,6 +335,10 @@ def _calculator_reply(
     if plan is None:
         return None
     _verify_selection(selection)
+    if isinstance(plan, DistanceCalculation):
+        return execute_distance(plan)
+    if isinstance(plan, DistanceClarification):
+        return {"text": plan.text, "response_source": "calculator_clarification"}
     receipt = result_with_unit(plan.expression, plan.unit)
     value = receipt["value"]
     if value is not None:

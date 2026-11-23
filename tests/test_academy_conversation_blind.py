@@ -1,11 +1,13 @@
 """Integrity tests for the blinded conversation-review package."""
 
 import json
+from hashlib import sha256
 
 import pytest
 
 from scripts.academy.omni_pl_chat_dialogue import DialogueHistory, blind_answer
 from scripts.academy.omni_pl_chat_evaluate import blind_mapping
+from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.services.training_experiments.checkpoint_evaluation import (
     seal_generation,
 )
@@ -16,6 +18,7 @@ from venom_core.services.training_experiments.conversation_blind import (
 )
 from venom_core.services.training_experiments.conversation_review import payload_sha
 from venom_core.services.training_experiments.profiles import (
+    MODEL,
     digest,
     read_json,
     stable_hash,
@@ -70,7 +73,15 @@ def _generation(path, cases, dataset_hash, identity, step):
             "snapshot_manifest_sha256": identity["snapshot_sha256"],
             "data_sha256": dataset_hash,
             "evaluated_ids": [case["record_id"] for case in cases],
+            "revision": "fixture",
+            "max_prompt_tokens": 4096,
             "max_new_tokens": 512,
+            "seed": 42,
+            "engine": {"torch": "fixture"},
+            "template": "vendor",
+            "generation_mode": "text",
+            "do_sample": False,
+            "enable_thinking": False,
             "case_max_new_tokens": {case["record_id"]: 512 for case in cases},
             "dialogue_protocol": "own-history-v1",
             "outputs": {
@@ -98,6 +109,8 @@ def input_data(tmp_path):
                     "record_id": f"{conversation}-{turn}",
                     "group_id": conversation,
                     "review_group": group,
+                    "task": group,
+                    "split": "dev",
                     "dialogue": {"id": conversation, "turn_index": turn},
                     "messages": [{"role": "user", "content": f"Question {turn}"}],
                     "criteria": [
@@ -108,12 +121,12 @@ def input_data(tmp_path):
     dataset = tmp_path / "data.jsonl"
     dataset.write_text("".join(json.dumps(row) + "\n" for row in cases))
     parent = {
-        "model": "omni",
+        "model": MODEL,
         "weights_sha256": "a" * 64,
-        "config_sha256": "b" * 64,
-        "snapshot_sha256": "c" * 64,
+        "config_sha256": sha256(b"{}").hexdigest(),
+        "snapshot_sha256": digest(SNAPSHOT_PIN),
     }
-    candidate = {**parent, "weights_sha256": "d" * 64}
+    candidate = {**parent, "weights_sha256": sha256(b"candidate").hexdigest()}
     pdir, cdir = tmp_path / "parent", tmp_path / "candidate"
     pseal = _generation(pdir, cases, digest(dataset), parent, 145)
     _generation(cdir, cases, digest(dataset), candidate, 21)
@@ -154,7 +167,16 @@ def test_blind_package_binds_sealed_own_history(input_data):
 
 
 @pytest.mark.parametrize(
-    "damage", ["panel", "dataset", "parent", "candidate", "result"]
+    "damage",
+    [
+        "panel",
+        "dataset",
+        "missing_turn",
+        "duplicate_turn",
+        "parent",
+        "candidate",
+        "result",
+    ],
 )
 def test_blind_package_rejects_changed_evidence(input_data, damage):
     pending, panel, dataset, parent, candidate = input_data
@@ -162,6 +184,19 @@ def test_blind_package_rejects_changed_evidence(input_data, damage):
         panel["C000"]["turns"]["T1"] = ["other"]
     elif damage == "dataset":
         dataset.write_text(dataset.read_text() + " ")
+    elif damage in {"missing_turn", "duplicate_turn"}:
+        rows = dataset.read_text().splitlines()
+        if damage == "missing_turn":
+            rows.pop()
+        else:
+            rows.append(rows[0])
+        dataset.write_text("\n".join(rows) + "\n")
+        pending["conversation_review_binding"]["development_identity"][
+            "dataset_sha256"
+        ] = digest(dataset)
+        with pytest.raises(ValueError, match="panel_mapping_invalid"):
+            prepare_blind_package(pending, panel, dataset, parent, candidate)
+        return
     elif damage == "parent":
         (parent / "raw.jsonl").write_text("{}")
     elif damage == "candidate":
@@ -274,6 +309,250 @@ def _fill_review(submission):
         for arms in turns.values():
             for verdict in arms.values():
                 verdict.update(criteria={"content": True}, critical=False)
+
+
+def _store_checkpoint(experiments, dataset, generation, binding):
+    from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
+    from venom_core.services.training_experiments.checkpoint_evaluation import (
+        step_directory,
+    )
+    from venom_core.services.training_experiments.evidence import sealed_report
+
+    run_id, step = binding["run_id"], binding["step"]
+    run = experiments.run_dir(run_id)
+    folder = step_directory(run, step)
+    folder.parent.mkdir(parents=True)
+    generation.rename(folder)
+    checkpoint = run / "training" / f"checkpoint-{step}"
+    checkpoint.mkdir(parents=True)
+    for name in CHECKPOINT_FILES:
+        (checkpoint / name).write_bytes(
+            b"candidate" if name == "adapter_model.safetensors" else b"{}"
+        )
+    _write(
+        checkpoint / "hashes.json",
+        {name: digest(checkpoint / name) for name in CHECKPOINT_FILES},
+    )
+    manifest = {
+        "profile": {
+            "model": binding["candidate_identity"]["model"],
+            "label": "Offline integration",
+            "dataset": "Synthetic panel",
+            "snapshot": "snapshot",
+            "training_venv": "training-venv",
+            "train": "train.jsonl",
+            "train_sha256": "e" * 64,
+            "dev": dataset.name,
+            "dev_sha256": digest(dataset),
+        },
+        "recipe": {"rank": 4},
+        "calibration": None,
+    }
+    profile_path = experiments.root / "profiles" / "fixture.json"
+    profile_path.parent.mkdir()
+    _write(profile_path, manifest["profile"])
+    _write(run / "manifest.json", manifest)
+    _write(run / "state.json", {"status": "succeeded", "checkpoint_steps": [step]})
+    mapping = read_json(folder / "unblind.json")
+    grades = [
+        {
+            "record_id": case,
+            "label": label,
+            "criteria": {"content": variant != "base"},
+            "natural_ok": True,
+            "polish_ok": True,
+            "critical_error": False,
+            "reason": "Synthetic offline verdict.",
+        }
+        for case, variants in mapping.items()
+        for label, variant in variants.items()
+    ]
+    _write(folder / "judgments.json", grades)
+    report = read_json(folder / "result.json")
+    report.update(
+        sealed_report(folder, dataset, grades, report["checkpoint"]),
+        artifacts=[report["checkpoint"]],
+        dev_sha256=digest(dataset),
+        manifest_sha256=stable_hash(manifest),
+        judgment_sha256=digest(folder / "judgments.json"),
+    )
+    _write(folder / "result.json", report)
+    _write(
+        folder / "result-seal.json", {"result_sha256": digest(folder / "result.json")}
+    )
+    return folder
+
+
+@pytest.mark.parametrize("scenario", ["gain", "regression", "tie"])
+def test_blind_review_controls_restarted_campaign(
+    input_data, tmp_path, capsys, scenario
+):
+    from scripts.academy.quality import main
+    from venom_core.services.training_experiments import quality_guard, quality_native
+    from venom_core.services.training_experiments.campaign import CampaignService, _rank
+    from venom_core.services.training_experiments.campaign_schema import (
+        CampaignQualityPolicy,
+    )
+    from venom_core.services.training_experiments.local_campaign_final import transition
+    from venom_core.services.training_experiments.quality import QualityStore
+    from venom_core.services.training_experiments.service import ExperimentService
+
+    fixture, panel, dataset, parent, source = input_data
+    binding = fixture["conversation_review_binding"]
+    campaign_id, run_id, step = (
+        binding[key] for key in ("campaign_id", "run_id", "step")
+    )
+    experiments = ExperimentService(tmp_path)
+    generation = _store_checkpoint(experiments, dataset, source, binding)
+    record = quality_native.native_record(experiments, run_id, step)
+    parent_id = "history:parent"
+    parent_failed = set(list(panel)[-8:]) if scenario != "tie" else set()
+    parent_record = {
+        "record_id": "parent",
+        "split": "dev",
+        "identity": record["identity"],
+        "source": {"identity": "parent-145", "sha256": binding["p13_record_sha256"]},
+        "candidate_sha256": binding["p13_identity"]["weights_sha256"],
+        "candidate_config_sha256": binding["p13_identity"]["config_sha256"],
+        "cases": {
+            key: {
+                **case,
+                "candidate": {
+                    "usable": key.split("-", 1)[0] not in parent_failed,
+                    "passed": key.split("-", 1)[0] not in parent_failed,
+                    "critical": False,
+                },
+            }
+            for key, case in record["cases"].items()
+        },
+    }
+    QualityStore(tmp_path).import_record(parent_record)
+    context = quality_native.profile_context(experiments, "fixture", "automatic")
+    context["initial_adapter_sha256"] = parent_record["candidate_sha256"]
+    settings = CampaignQualityPolicy(
+        reference_record_ids=[parent_id],
+        parent_reference_record_id=parent_id,
+        protect_parent_full_pass=True,
+    )
+    policy = quality_guard.freeze_policy(
+        settings.model_dump(mode="json"),
+        context,
+        lambda key: quality_native.get_record(experiments, key),
+    )
+    plan = {
+        "campaign_id": campaign_id,
+        "plan_sha256": "3" * 64,
+        "profile_identity": "4" * 64,
+        "profile_id": "fixture",
+        "review_mode": "automatic",
+        "checkpoint_evaluation_identity": record["identity"],
+        "checkpoint_steps": [step],
+        "selection": {
+            "min_usable_delta": 0.05,
+            "max_critical_delta": 0,
+            "protect_parent_full_pass": True,
+        },
+        "quality_policy": policy,
+        "final_qualification": {"inputs_id": "final", "reserve_seconds": 30},
+        "conversation_review": {
+            "panel_sha256": payload_sha(panel),
+            "receipt_id_prefix": "review-0a",
+        },
+        "variants": [{"run_id": run_id, "initial_adapter": binding["p13_identity"]}],
+    }
+    trial = {"run_id": run_id, "status": "succeeded"}
+    state = {
+        "campaign_id": campaign_id,
+        "plan": plan,
+        "status": "succeeded",
+        "phase": "trials",
+        "started_at": None,
+        "elapsed_seconds": 0,
+        "worker": None,
+        "trials": [trial],
+    }
+    service = CampaignService(experiments)
+    service._record_checkpoint_results(state, trial, policy)
+    (pending,) = trial["checkpoint_evaluations"]
+    assert pending["conversation_review_status"] == "pending"
+    assert pending["conversation_review_binding"]["run_id"] == run_id
+    assert pending["conversation_review_binding"]["step"] == step
+    _rank(state)
+    transition(state)
+    directory = service.directory(campaign_id)
+    directory.mkdir(parents=True)
+    service._save(directory, state)
+
+    package, private = prepare_blind_package(
+        pending, panel, dataset, parent, generation
+    )
+    output = publish_blind_package(tmp_path / "package", package, private)
+    submitted = read_json(output / "judgments-template.json")
+    submitted.update(reviewer_id="operator", reviewer_note="Synthetic offline review.")
+    pending_file, judgments = tmp_path / "pending.json", tmp_path / "submission.json"
+    _write(pending_file, pending)
+    args = [
+        "--root",
+        str(tmp_path),
+        "register-blind-review",
+        str(pending_file),
+        str(output),
+        str(judgments),
+    ]
+
+    _write(judgments, submitted)
+    with pytest.raises(SystemExit, match="1"):
+        main(args)
+    assert service.advance(campaign_id)["status"] == "awaiting_review"
+    _fill_review(submitted)
+    for name in parent_failed:
+        alias = next(
+            alias for alias, role in private["aliases"][name].items() if role == "p13"
+        )
+        for turn in submitted["judgments"][name].values():
+            turn[alias]["criteria"]["content"] = False
+    if scenario == "regression":
+        aliases = private["aliases"]["C000"]
+        alias = next(alias for alias, role in aliases.items() if role == "candidate")
+        submitted["judgments"]["C000"]["T1"][alias]["criteria"]["content"] = False
+    _write(judgments, submitted)
+    main(args)
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["status"] == ("STOP" if scenario == "regression" else "PASS")
+    reviews = directory / "conversation-reviews"
+    receipt_path = reviews / receipt["review_id"] / "receipt.json"
+    before = receipt_path.stat().st_mtime_ns
+    main(args)
+    assert json.loads(capsys.readouterr().out) == receipt
+    assert list(reviews.glob("*/receipt.json")) == [receipt_path]
+    assert receipt_path.stat().st_mtime_ns == before
+
+    restarted = CampaignService(ExperimentService(tmp_path))
+    resumed = restarted.advance(campaign_id)
+    (outcome,) = resumed["trials"][0]["checkpoint_evaluations"]
+    assert outcome["conversation_review_sha256"] == stable_hash(receipt)
+    if scenario != "gain":
+        assert resumed["selected_run_id"] is None
+        assert resumed["qualification_status"] == "failed_quality"
+        assert restarted.advance(campaign_id) == resumed
+        if scenario == "regression":
+            assert receipt["passed"] > receipt["p13_passed"]
+            assert receipt["failures"] == ["parent_conversation_lost"]
+        else:
+            assert outcome["quality_guard"]["parent_delta"]["usable_delta"] == 0
+        return
+
+    assert resumed["selected_run_id"] == run_id
+    assert resumed["selected_checkpoint_step"] == step
+    assert resumed["phase"] == "qualification"
+    assert receipt["passed"] > receipt["p13_passed"]
+    _write(receipt_path, {**receipt, "reviewer_note": "Changed after PASS."})
+    blocked = restarted.advance(campaign_id)
+    assert blocked["status"] == "blocked"
+    assert blocked["selected_run_id"] is None
+    assert blocked["error"] == "campaign_quality_conversation_review_changed"
+    assert blocked.get("qualification_attempts", 0) == 0
+    assert not (tmp_path / "local-text-qualification").exists()
 
 
 @pytest.mark.parametrize("critical", [False, True])

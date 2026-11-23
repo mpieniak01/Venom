@@ -6,6 +6,12 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from venom_core.services.chat_policy.direct_distance import (
+    DistanceCalculation,
+    DistanceClarification,
+    plan_distance,
+)
+
 _PREFIX = re.compile(
     r"(?:oblicz|policz|użyj kalkulatora)(?:[ \t]*:[ \t]*|[ \t]+|(?=[.!]?$))",
     re.IGNORECASE,
@@ -94,10 +100,10 @@ def _split_inline_unit(expression: str) -> tuple[str, str]:
 
 def plan_calculator(
     content: str, history: Sequence[dict[str, str]]
-) -> CalculatorRequest | None:
-    """Repeat only an immediately preceding explicit calculation."""
+) -> CalculatorRequest | DistanceCalculation | DistanceClarification | None:
+    """Plan an explicit command or a supported calculation from the conversation."""
     if _REPEAT.fullmatch(content.strip()) is None:
-        return _command(content)
+        return _command(content) or plan_distance(content, history)
     if len(history) < 2 or [row["role"] for row in history[-2:]] != [
         "user",
         "assistant",

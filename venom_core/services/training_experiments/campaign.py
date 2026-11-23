@@ -2115,9 +2115,8 @@ class CampaignService:
         state["status"] = "awaiting_review"
         return True
 
-    @staticmethod
-    def _awaiting_conversation_review(state: dict) -> bool:
-        if CampaignService._remote_conversation_review(state):
+    def _awaiting_conversation_review(self, state: dict) -> bool:
+        if self._remote_conversation_review(state):
             return state["status"] == "awaiting_review" or (
                 state["status"] == "stopping" and "training_status" in state
             )

@@ -315,6 +315,12 @@ def _source_policy(
     return policy
 
 
+def _is_wikipedia_result(source: Any) -> bool:
+    if isinstance(source, PublicSourceContext):
+        return source.evidence.scope == "wiki" or source.evidence.wiki_unit is not None
+    return source is PublicSourceUnavailable.WIKIPEDIA
+
+
 def _source_context_state(
     request: SimpleChatRequest,
     source_context: Any,
@@ -329,7 +335,9 @@ def _source_context_state(
     scope_reply = plan.scope_reply
     if plan.explicit_rss and not headlines:
         scope_reply = _RSS_NOT_READ
-    if not source_context:
+    if not source_context or (
+        not setup.local_qualification and not _is_wikipedia_result(source_context)
+    ):
         return source_context, headlines, scope_reply, None
     evidence = None
     if isinstance(source_context, PublicSourceContext):

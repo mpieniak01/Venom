@@ -145,6 +145,7 @@ def test_native_direct_full_wire_reloads_from_same_host_session_store(
         service_type="local",
         config_hash="cfg",
         runtime_id="runtime",
+        host_local=True,
     )
     monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
     monkeypatch.setattr(
@@ -1320,3 +1321,150 @@ def test_direct_calculator_does_not_claim_other_requests(settings):
         )
         is None
     )
+
+
+def test_direct_short_draft_prompt_keeps_user_facts_on_revision(monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False
+    )
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", "Custom"
+    )
+    runtime = SimpleNamespace(
+        provider="ollama", endpoint="http://127.0.0.1:11434/v1", host_local=True
+    )
+    request = SimpleChatRequest(
+        content="Popraw wyłącznie termin na środę. Zakończ pytaniem o zgodę.",
+        history=[
+            {
+                "role": "user",
+                "content": "Ułóż gotową wiadomość do pani Mai z prośbą o klucz.",
+            },
+            {"role": "assistant", "content": "Zgoda została udzielona."},
+            {"role": "user", "content": "Dopisz, że odniosę klucz do portierni."},
+            {"role": "assistant", "content": "Treść szkicu"},
+        ],
+    )
+    resulting_request, prompt, reply, complete = (
+        llm_simple_service._qualified_stream_prompt(request, runtime, "local-model", "")
+    )
+    assert resulting_request is request and reply is None and complete is None
+    assert prompt.startswith("Custom\n\n")
+    assert "gotową do użycia treść" in prompt and "znakiem zapytania" in prompt
+    assert "Zgoda została udzielona" not in prompt
+
+
+@pytest.mark.parametrize(
+    ("content", "features", "endpoint", "context"),
+    [
+        ("Zacytuj «Ułóż gotową wiadomość do Mai» jako przykład.", {}, "", ""),
+        ("Napisz krótką prośbę w dwóch wariantach.", {}, "", ""),
+        ("Opisz, czemu zwrot napisz krótką prośbę jest niejasny.", {}, "", ""),
+        ("Napisz krótką prośbę do Mai.", {"studio_normal": True}, "", ""),
+        ("Napisz krótką prośbę do Mai.", {"material_ids": ["material"]}, "", ""),
+        ("Napisz krótką prośbę do Mai.", {"tools": []}, "", ""),
+        ("Napisz krótką prośbę do Mai.", {"response_format": "json"}, "", ""),
+        ("Napisz krótką prośbę do Mai.", {}, "https://ollama.example.local/v1", ""),
+        ("Napisz krótką prośbę do Mai.", {}, "", "Sources were supplied."),
+    ],
+)
+def test_direct_short_draft_hint_preserves_other_contracts(
+    monkeypatch, content, features, endpoint, context
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False
+    )
+    request = SimpleChatRequest.model_validate({"content": content, **features})
+    runtime = SimpleNamespace(
+        provider="ollama",
+        endpoint=endpoint or "http://127.0.0.1:11434/v1",
+        host_local=not endpoint,
+    )
+    _, prompt, _, _ = llm_simple_service._qualified_stream_prompt(
+        request, runtime, "local-model", context
+    )
+    assert "gotową do użycia treść" not in prompt
+
+
+def test_direct_fit_prompt_keeps_independent_bounds_after_a_correction(monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False
+    )
+    runtime = SimpleNamespace(
+        provider="ollama", endpoint="http://127.0.0.1:11434/v1", host_local=True
+    )
+    bounds = "Wymagana szerokość wewnętrzna to minimum 310 mm. Maksymalna szerokość zewnętrzna to 35 cm."
+    request = SimpleChatRequest(
+        content=bounds,
+        history=[{"role": "user", "content": "Dobieram skrzynkę."}],
+    )
+    _, prompt, _, _ = llm_simple_service._qualified_stream_prompt(
+        request, runtime, "local-model", ""
+    )
+    assert "szerokość wewnętrzna to co najmniej 310 mm" in prompt
+    assert "szerokość zewnętrzna to co najwyżej 35 cm" in prompt
+    request = SimpleChatRequest(
+        content="Korekta: maksymalna szerokość zewnętrzna to 34 cm. Minimum wewnątrz nadal obowiązuje. Podaj instrukcję przymiarki.",
+        history=[
+            {"role": "user", "content": bounds},
+            {"role": "assistant", "content": "Wystarczy 330 mm."},
+        ],
+    )
+    _, prompt, _, _ = llm_simple_service._qualified_stream_prompt(
+        request, runtime, "local-model", ""
+    )
+    assert "szerokość wewnętrzna to co najmniej 310 mm" in prompt
+    assert "szerokość zewnętrzna to co najwyżej 34 cm" in prompt
+    assert "35 cm" not in prompt and "330 mm" not in prompt
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "Przetłumacz: minimalna wysokość wewnętrzna to 18 cm. Maksymalna wysokość zewnętrzna to 20 cm.",
+        "Minimalna szerokość wewnętrzna to około 18 cm. Maksymalna szerokość zewnętrzna to 20 cm.",
+        "Minimalna długość wewnętrzna to 18 cm. Maksymalna szerokość zewnętrzna to 20 cm.",
+        "Minimalna szerokość wewnętrzna to 18 cm. Minimalna szerokość wewnętrzna to 19 cm. Maksymalna szerokość zewnętrzna to 20 cm.",
+        "Minimalna szerokość wewnętrzna to 18 cm. Oblicz objętość.",
+    ],
+)
+def test_fit_bounds_hint_refuses_ambiguous_or_unrelated_dimensions(statement):
+    from venom_core.services.chat_policy.qualified_chat_fit import fit_bounds_hint
+
+    assert not fit_bounds_hint(statement, [])
+
+
+def test_fit_bounds_does_not_restore_a_canceled_measurement():
+    from venom_core.api.schemas.llm_simple import HistoryMessage
+    from venom_core.services.chat_policy.qualified_chat_fit import fit_bounds_hint
+
+    previous = HistoryMessage(
+        role="user",
+        content="Minimalna wysokość wewnętrzna to 22 cm. Maksymalna wysokość zewnętrzna to 25 cm.",
+    )
+    correction = (
+        "Korekta: maksymalna wysokość zewnętrzna to 24 cm. "
+        "Minimum wewnątrz już nie obowiązuje. Podaj instrukcję przymiarki."
+    )
+    assert fit_bounds_hint(correction, [previous]) == ""
+
+
+def test_draft_prompt_distinguishes_given_consent_from_a_request():
+    from venom_core.services.chat_policy.direct_drafts import short_message_hint
+
+    prompt = short_message_hint(
+        "Zgadzam się na czwartkowy pokaz bez zdjęć. Napisz odpowiedź w moim imieniu.",
+        [],
+    )
+    assert "zdaniu oznajmującym" in prompt and "pozostałe podane ograniczenia" in prompt
+    assert "Zakończ wiadomość wymaganym pytaniem" not in prompt
+
+
+def test_measuring_only_the_exterior_preserves_the_need_to_measure_the_interior():
+    from venom_core.services.chat_policy.qualified_chat_fit import fit_bounds_hint
+
+    hint = fit_bounds_hint(
+        "Czy sama zmierzona szerokość zewnętrzna 32 cm wystarcza do potwierdzenia dopasowania?",
+        [],
+    )
+    assert "nie potwierdza dopasowania" in hint and "pomiar wewnętrzny" in hint

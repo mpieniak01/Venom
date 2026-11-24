@@ -29,6 +29,7 @@ from venom_core.services.chat_policy.direct_calculator import (
     execute_calculator,
     plan_calculator,
 )
+from venom_core.services.chat_policy.direct_drafts import short_message_hint
 from venom_core.services.chat_policy.direct_text import (
     prepare_omni_history,
     simple_system_prompt,
@@ -41,7 +42,7 @@ from venom_core.services.chat_policy.qualified_chat import (
     prepare_studio_reply,
 )
 from venom_core.services.chat_policy.qualified_chat_explanations import explanation_hint
-from venom_core.services.chat_policy.qualified_chat_fit import fit_hint
+from venom_core.services.chat_policy.qualified_chat_fit import fit_bounds_hint, fit_hint
 from venom_core.services.chat_policy.qualified_chat_options import (
     CountRequirement,
     requested_count,
@@ -1393,19 +1394,25 @@ def _prepare_local_direct_prompt(
     )
 
 
-def _qualified_request(request: SimpleChatRequest, runtime: LLMRuntimeInfo) -> bool:
+def _plain_text_request(request: SimpleChatRequest) -> bool:
     from venom_core.services.chat_material_payload import has_materials
 
     return (
-        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
-        and is_host_ollama(runtime)
-        and not has_materials(request)
+        not has_materials(request)
         and request.tools is None
         and request.tool_choice is None
         and request.format is None
         and request.response_format is None
         and not request.logprobs
         and request.top_logprobs is None
+    )
+
+
+def _qualified_request(request: SimpleChatRequest, runtime: LLMRuntimeInfo) -> bool:
+    return (
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        and is_host_ollama(runtime)
+        and _plain_text_request(request)
     )
 
 
@@ -1543,6 +1550,17 @@ def _qualified_stream_prompt(
     system_prompt = _apply_studio_prompt_hints(
         request, runtime, model_name, system_context, system_prompt, complete_reply
     )
+    if (
+        qualified_reply is None
+        and not request.studio_normal
+        and not system_context
+        and _plain_text_request(request)
+    ):
+        hint = short_message_hint(request.content, request.history) or fit_bounds_hint(
+            request.content, request.history
+        )
+        if hint and is_host_ollama(runtime):
+            system_prompt = "\n\n".join(filter(None, (system_prompt, hint)))
     return request, system_prompt, qualified_reply, complete_reply
 
 
@@ -1630,23 +1648,7 @@ def _direct_calculator_response(
     request_id: UUID,
     system_context: str,
 ) -> StreamingResponse | None:
-    from venom_core.services.chat_material_payload import has_materials
-
-    if request.studio_normal or system_context or has_materials(request):
-        return None
-    if (
-        any(
-            feature is not None
-            for feature in (
-                request.tools,
-                request.tool_choice,
-                request.response_format,
-                request.format,
-                request.top_logprobs,
-            )
-        )
-        or request.logprobs
-    ):
+    if request.studio_normal or system_context or not _plain_text_request(request):
         return None
     history = [turn.model_dump(include={"role", "content"}) for turn in request.history]
     plan = plan_calculator(request.content, history)

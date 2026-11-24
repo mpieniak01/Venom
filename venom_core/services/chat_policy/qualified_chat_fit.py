@@ -1,4 +1,4 @@
-"""Compare explicitly supplied two-dimensional fitting measurements."""
+"""Interpret explicit fitting measurements and bounds."""
 
 from __future__ import annotations
 
@@ -161,3 +161,109 @@ def fit_hint(text: str, history: Sequence[HistoryMessage]) -> str:
         if capacity is not None:
             return _fit_capacity_hint(users, index, capacity)
     return ""
+
+
+_MINIMUM = re.compile(r"\b(?:co najmniej|minimum|minimaln\w*)\b", re.I)
+_MAXIMUM = re.compile(r"\b(?:co najwyżej|maksimum|maksymaln\w*|najwyżej)\b", re.I)
+_INTERNAL = re.compile(r"\b(?:wewnątrz|wewnętrzn\w*)\b", re.I)
+_AXIS = re.compile(r"\b(długo|szeroko|wysoko|głęboko)(?:ść|ści)\b", re.I)
+_CLAUSE_END = re.compile(r"[;!?\n]|[.,](?=\s|$)")
+_BOUND_CORRECTION = re.compile(r"^\s*(?:korekta|poprawka)\s*:", re.I)
+_CHECK_FIT = re.compile(r"\b(?:przymiark\w*|dopasowan\w*|zmieści\w*)\b", re.I)
+_EXTERIOR_ONLY = re.compile(r"^\s*czy\s+sama?\b", re.I)
+_FIT_CONTAINER = re.compile(r"\b(?:skrzynk|skrzync|futerał|futeral)\w*\b", re.I)
+_CARRY_BOUND = re.compile(r"\b(?:bez zmian|nadal obowiązuje|zostaje)\b", re.I)
+_ASK_DIMENSION = re.compile(
+    r"\b(?:poproś|zapytaj)\s+o\s+(?:(?:potrzebn|właściw)[ye]\s+)?wymiar(?:y)?\b",
+    re.I,
+)
+_NON_LITERAL_BOUND = re.compile(
+    r"\b(?:około|chyba|mniej więcej|albo|lub|nie|jeśli|gdyby)\b|[×+/–−-]", re.I
+)
+_AXIS_LABELS = {
+    "długo": "długość",
+    "szeroko": "szerokość",
+    "wysoko": "wysokość",
+    "głęboko": "głębokość",
+}
+
+
+def _fit_bounds(text: str) -> dict[str, tuple[str, str]]:
+    bounds: dict[str, tuple[str, str]] = {}
+    for clause in _CLAUSE_END.split(text):
+        minimum = bool(_MINIMUM.search(clause) and _INTERNAL.search(clause))
+        maximum = bool(_MAXIMUM.search(clause) and _EXTERNAL.search(clause))
+        if minimum == maximum:
+            continue
+        axes = _AXIS.findall(clause)
+        length = _one_measurement(_LENGTH, clause)
+        if (
+            length is None
+            and not _LENGTH.search(clause)
+            and _CARRY_BOUND.search(clause)
+        ):
+            continue
+        side = "minimum" if minimum else "maximum"
+        if (
+            length is None
+            or len(axes) != 1
+            or _NON_LITERAL_BOUND.search(clause)
+            or side in bounds
+        ):
+            return {}
+        bounds[side] = (_AXIS_LABELS[axes[0].casefold()], length[0])
+    return bounds
+
+
+def fit_bounds_hint(text: str, history: Sequence[HistoryMessage]) -> str:
+    """Keep explicit interior fit requirements separate from exterior limits."""
+    if is_text_transformation(text):
+        return ""
+    visible = without_quotes(text)
+    if (
+        (_CAPACITY.search(visible) or _FIT_CONTAINER.search(visible))
+        and _ASK_DIMENSION.search(visible)
+        and not _LENGTH.search(visible)
+    ):
+        return "Zadaj tylko jedno krótkie pytanie o wymiar potrzebny do przymiarki."
+    if _OTHER_TASK.search(visible):
+        return ""
+    if (
+        _EXTERIOR_ONLY.match(visible)
+        and _EXTERNAL.search(visible)
+        and _CHECK_FIT.search(visible)
+        and not _INTERNAL.search(visible)
+        and _one_measurement(_LENGTH, visible)
+    ):
+        return (
+            "Sam pomiar zewnętrzny nie potwierdza dopasowania. "
+            "W jednym lub dwóch zdaniach wskaż potrzebny pomiar wewnętrzny "
+            "oraz jego minimum, jeśli jest w ustaleniach użytkownika."
+        )
+    bounds = _fit_bounds(visible)
+    if (
+        len(bounds) == 1
+        and _BOUND_CORRECTION.match(visible)
+        and _CHECK_FIT.search(visible)
+    ):
+        prior = next((t.content for t in reversed(history) if t.role == "user"), "")
+        previous = (
+            _fit_bounds(without_quotes(prior))
+            if not is_text_transformation(prior)
+            else {}
+        )
+        bounds = previous | bounds
+    if len(bounds) != 2:
+        return ""
+    axis, minimum = bounds["minimum"]
+    outer_axis, maximum = bounds["maximum"]
+    if axis != outer_axis:
+        return ""
+    return (
+        f"Podaj w odpowiedzi obie granice. Wymagana {axis} wewnętrzna "
+        f"to co najmniej {minimum}. Dopuszczalna {axis} zewnętrzna to co najwyżej {maximum}. "
+        "Do potwierdzenia dopasowania brakuje pomiaru. Z tych granic nie obliczaj luzu. "
+        "Jeśli użytkownik chce instrukcji, w jednym zdaniu poleć osobno zmierzyć wnętrze i zewnętrze "
+        "oraz porównać je z odpowiednimi granicami. Zachowaj podane jednostki. "
+        "Zakończ po tej instrukcji bez dodatkowych zaleceń."
+    )

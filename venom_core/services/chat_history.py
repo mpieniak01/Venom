@@ -94,8 +94,15 @@ class DirectHistory:
                 )
                 if isinstance(identity.get(key), str) and len(identity[key]) <= 256
             }
-            if kind == "done" and identity.get("response_source") == "calculator":
-                self.tool_result = _calculator_snapshot(identity.get("tool_result"))
+        if kind == "done" and self.mode == "direct":
+            # The service owns this envelope. Native Omni carries the same
+            # receipt inside its pinned model identity.
+            metadata = identity if self.model_identity is not None else value
+            if (
+                isinstance(metadata, dict)
+                and metadata.get("response_source") == "calculator"
+            ):
+                self.tool_result = _calculator_snapshot(metadata.get("tool_result"))
         charge = value if kind == "cost" else value.get("cost")
         if isinstance(charge, dict):
             self.cost = _cost_snapshot(charge)

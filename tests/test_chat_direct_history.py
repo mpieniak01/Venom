@@ -1235,3 +1235,88 @@ def test_studio_keeps_link_only_history_when_the_assistant_url_is_omitted(tmp_pa
     assert normal[-1].content == url
     assert current[-1].content == "Poprzednia odpowiedź zawierała tylko odnośnik."
     assert store.get_history(session)[-1]["content"] == url
+
+
+def test_ollama_direct_calculator_persists_verified_receipt_without_academy(
+    monkeypatch, tmp_path
+):
+    runtime = SimpleNamespace(
+        provider="ollama",
+        model_name="gemma4:12b-it-q4_K_M",
+        endpoint="http://127.0.0.1:11434/v1",
+        service_type="local",
+        host_local=True,
+    )
+    monkeypatch.setattr(
+        llm_simple_service,
+        "_resolve_non_openrouter_runtime",
+        AsyncMock(return_value=(runtime, "ollama", runtime.model_name)),
+    )
+    monkeypatch.setattr(openrouter_runtime, "selection", lambda: None)
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False
+    )
+
+    async def never_infer(*args, **kwargs):
+        pytest.fail("A verified calculator request must not reach the provider")
+
+    monkeypatch.setattr(llm_simple_service, "_non_openrouter_messages", never_infer)
+    path = str(tmp_path / "calculator.json")
+    store = SessionStore(path)
+    history = []
+    client = TestClient(application(store))
+    prompts = (
+        ("Trasa A ma 1,8 km, a trasa B 420 m. Ile razem w metrach?", "2220", None),
+        ("Do celu 3 km ile jeszcze brakuje?", "780", "2220"),
+        (
+            "Korekta: trasa B ma 560 m. Podaj nową sumę oraz ile brakuje w metrach.",
+            "640",
+            "2360",
+        ),
+        ("Oblicz 14 × 9 i podaj wynik w sztukach.", "126", None),
+    )
+    for question, expected, total in prompts:
+        reply = client.post(
+            "/api/v1/llm/simple/stream",
+            json={"content": question, "session_id": "calc", "history": history},
+        )
+        assert reply.status_code == 200
+        packet = next(
+            x for x in reply.text.split("\n\n") if x.startswith("event: done")
+        )
+        completed = json.loads(packet.split("data: ", 1)[1])
+        assert completed["response_source"] == "calculator"
+        receipt = completed["tool_result"]
+        assert receipt["value"] == expected
+        assert receipt["unit"] == ("szt." if expected == "126" else "m")
+        assert receipt.get("total") == total
+        saved = SessionStore(path).get_history("calc")
+        assert saved[-1]["tool_result"] == receipt
+        history = [{"role": item["role"], "content": item["content"]} for item in saved]
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"content": "Zacytuj «Oblicz 19 × 11» bez liczenia."},
+        {"content": "Mnożnik może wynosić 8 albo 12. Dopytaj."},
+        {"studio_normal": True},
+        {"tools": []},
+        {"format": "json"},
+        {"material_ids": ["file-1"]},
+    ],
+)
+def test_direct_calculator_does_not_claim_other_requests(settings):
+    request = SimpleChatRequest.model_validate(
+        {"content": "Oblicz 19 × 11", **settings}
+    )
+    runtime = SimpleNamespace(
+        provider="ollama", endpoint="http://127.0.0.1:11434/v1", host_local=True
+    )
+    assert (
+        llm_simple_service._direct_calculator_response(
+            request, runtime, "gemma", uuid4(), ""
+        )
+        is None
+    )

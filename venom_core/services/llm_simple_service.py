@@ -25,6 +25,10 @@ from venom_core.services.chat_grounding import (
     PUBLIC_SOURCE_BLOCK,
     is_current_news_request,
 )
+from venom_core.services.chat_policy.direct_calculator import (
+    execute_calculator,
+    plan_calculator,
+)
 from venom_core.services.chat_policy.direct_text import (
     prepare_omni_history,
     simple_system_prompt,
@@ -1619,6 +1623,60 @@ def _stream_non_openrouter_response(
     )
 
 
+def _direct_calculator_response(
+    request: SimpleChatRequest,
+    runtime: LLMRuntimeInfo,
+    model_name: str,
+    request_id: UUID,
+    system_context: str,
+) -> StreamingResponse | None:
+    from venom_core.services.chat_material_payload import has_materials
+
+    if request.studio_normal or system_context or has_materials(request):
+        return None
+    if (
+        any(
+            feature is not None
+            for feature in (
+                request.tools,
+                request.tool_choice,
+                request.response_format,
+                request.format,
+                request.top_logprobs,
+            )
+        )
+        or request.logprobs
+    ):
+        return None
+    history = [turn.model_dump(include={"role", "content"}) for turn in request.history]
+    plan = plan_calculator(request.content, history)
+    if plan is None or not is_host_ollama(runtime):
+        return None
+    _plain_request_history(request, runtime, "", request.content)
+
+    async def chunks() -> AsyncIterator[str]:
+        async with runtime_request_guard(
+            request_kind="simple_chat_stream",
+            provider=runtime.provider,
+            model=model_name,
+        ):
+            result = execute_calculator(plan)
+            text = result.pop("text")
+            yield _SSE_EVENT_START
+            yield (
+                "event: content\ndata: "
+                + json.dumps({"text": text}, ensure_ascii=False)
+                + "\n\n"
+            )
+            yield "event: done\ndata: " + json.dumps(result) + "\n\n"
+
+    return StreamingResponse(
+        chunks(),
+        media_type=_SSE_MEDIA_TYPE,
+        headers=_build_streaming_headers(str(request_id), request.session_id or ""),
+    )
+
+
 async def _stream_non_openrouter_chat(
     request: SimpleChatRequest, *, system_context: str = ""
 ):
@@ -1626,6 +1684,11 @@ async def _stream_non_openrouter_chat(
         request
     )
     request_id: UUID = uuid4()
+    calculator = _direct_calculator_response(
+        request, runtime, model_name, request_id, system_context
+    )
+    if calculator is not None:
+        return calculator
     _trace_simple_request(request_id, request, runtime, model_name)
     request, system_prompt, qualified_reply, complete_reply = _qualified_stream_prompt(
         request, runtime, model_name, system_context

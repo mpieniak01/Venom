@@ -21,23 +21,20 @@ from fastapi.responses import StreamingResponse
 
 from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
 from venom_core.services import omni_native_dialogue
-from venom_core.services.chat_policy.direct_calculator import plan_calculator
+from venom_core.services.chat_policy.direct_calculator import (
+    execute_calculator,
+    plan_calculator,
+)
 from venom_core.services.chat_policy.direct_correction import (
     CorrectionContext,
     corrected_registration_reply,
     correction_context,
-)
-from venom_core.services.chat_policy.direct_distance import (
-    DistanceCalculation,
-    DistanceClarification,
-    execute_distance,
 )
 from venom_core.services.chat_policy.direct_drafts import reservation_confirmation_draft
 from venom_core.services.chat_policy.direct_invitations import (
     exchange_title_context,
     invitation_context,
 )
-from venom_core.services.grounded_calculator import result_with_unit
 from venom_core.services.model_resources import model_operation
 from venom_core.services.remote_training.paths import operator_path
 from venom_core.services.runtime_switch_gate import runtime_request_guard
@@ -335,25 +332,7 @@ def _calculator_reply(
     if plan is None:
         return None
     _verify_selection(selection)
-    if isinstance(plan, DistanceCalculation):
-        return execute_distance(plan)
-    if isinstance(plan, DistanceClarification):
-        return {"text": plan.text, "response_source": "calculator_clarification"}
-    receipt = result_with_unit(plan.expression, plan.unit)
-    value = receipt["value"]
-    if value is not None:
-        text = value.replace(".", ",")
-        if plan.unit:
-            text += f" {plan.unit}"
-    elif receipt["status"] == "missing_expression":
-        text = "Jakie wyrażenie mam obliczyć? Możesz też podać jednostkę."
-    else:
-        text = "Nie udało się obliczyć wyniku. Sprawdź liczby i znaki działania."
-    return {
-        "text": text,
-        "response_source": "calculator",
-        "tool_result": {"tool": "calculator", **receipt, "recomputed": plan.repeat},
-    }
+    return execute_calculator(plan)
 
 
 @model_operation

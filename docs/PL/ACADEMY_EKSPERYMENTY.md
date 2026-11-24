@@ -410,6 +410,8 @@ python -m scripts.academy.quality --root "$experiment_root" register-blind-revie
   pending.json /prywatny/katalog/ocena-01 judgments.json
 ```
 
+W regule liczbowej `numeric_claim` można ustawić `allow_bare: true`, gdy rubryka przewiduje jeden jednoznaczny wynik. Pozwala to sprawdzić odpowiedź składającą się z samej wartości i jednostki, także zapisanej słownie, np. „79 metrów”. Samą liczbę bez jednostki oraz odpowiedź z kilkoma liczbami rozstrzyga recenzent.
+
 Dla kryterium wymagającego niezależnej oceny języka lub znaczenia tura DEV może zawierać np. `"operator_criteria": ["tresc"]`. Podaj wyłącznie identyfikatory istniejących kryteriów treści. W ślepej paczce pojawi się formularz `operator_evidence` dla każdego zaznaczonego kryterium i aliasu. Recenzent podaje `quote`, czyli dosłowny cytat z ocenianej odpowiedzi, oraz `reason`, krótkie uzasadnienie oceny. Dla pominięcia można zacytować całą odpowiedź i wyjaśnić, czego brakuje. Import wymaga uzupełnienia tych pól. Zachowaj wypełniony `judgments.json` z wydaną paczką, żeby odtworzyć hash dowodów z potwierdzenia.
 
 Import sprawdza zgodność paczki, mapy aliasów, formularza, panelu i wiązania checkpointu. Weryfikacja sum wykrywa zmianę lokalnych plików przy zachowaniu zaufania do miejsca ich przechowywania. Scorer zapisuje PASS albo STOP z hashem dowodów. Identyczny import można ponowić na tym samym zapisie `pending.json`. Kampania uwzględnia potwierdzenie przy następnym odczycie lub przejściu. Historyczna generacja na innym zbiorze wymaga osobnego protokołu.

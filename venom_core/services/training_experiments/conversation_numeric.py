@@ -12,6 +12,9 @@ _UNITS = {
     "km": ("length", 3),
     "m": ("length", 0),
     "cm": ("length", -2),
+    **dict.fromkeys(("metr", "metry", "metrów"), ("length", 0)),
+    **dict.fromkeys(("kilometr", "kilometry", "kilometrów"), ("length", 3)),
+    **dict.fromkeys(("centymetr", "centymetry", "centymetrów"), ("length", -2)),
     "zł": ("money", 0),
     "pln": ("money", 0),
 }
@@ -27,7 +30,7 @@ _NUMBER = (
     r"[+-]?(?:[0-9]{1,3}(?:[ \u00a0\u202f][0-9]{3}){1,2}|[0-9]{1,9})(?:[.,][0-9]{1,6})?"
 )
 _CLAIM = re.compile(
-    rf"(?P<label>{'|'.join(_ROLES)}):?[ \t]+"
+    rf"(?:(?P<label>{'|'.join(_ROLES)}):?[ \t]+)?"
     rf"(?P<value>{_NUMBER})[ \t]+(?P<unit>{'|'.join(_UNITS)})\.?",
     re.IGNORECASE,
 )
@@ -54,12 +57,12 @@ def numeric_expectation(case: dict) -> dict | None:
     if "numeric_claim" not in case:
         return None
     rule = case["numeric_claim"]
-    if not isinstance(rule, dict) or rule.keys() != {
-        "criterion",
-        "expression",
-        "unit",
-        "role",
-    }:
+    required = {"criterion", "expression", "unit", "role"}
+    if (
+        not isinstance(rule, dict)
+        or not required <= rule.keys() <= required | {"allow_bare"}
+        or type(rule.get("allow_bare", False)) is not bool
+    ):
         raise ValueError("conversation_review_numeric_rule_invalid")
     if (
         not _content_criterion(case, rule["criterion"])
@@ -85,7 +88,13 @@ def numeric_contradiction(answer: dict, expected: dict | None) -> dict | None:
         return None
     text = answer["text"].strip()
     match = _CLAIM.fullmatch(text) if len(text) <= 96 else None
-    if match is None or _ROLES[match["label"].lower()] != expected["role"]:
+    if match is None:
+        return None
+    label = match["label"]
+    if label is None:
+        if not expected.get("allow_bare", False):
+            return None
+    elif _ROLES[label.lower()] != expected["role"]:
         return None
     unit = match["unit"].lower()
     if _normalize(match["value"], unit) == _normalize(

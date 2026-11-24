@@ -447,6 +447,44 @@ def test_numeric_proof_requires_complete_claim_in_the_expected_role(
     ) is contradicted
 
 
+@pytest.mark.parametrize(
+    "text, allow_bare, contradiction",
+    [
+        ("79 metrów.", True, True),
+        ("80 metrów.", True, False),
+        ("79 metrów.", False, False),
+        ("Brakuje 79 metrów.", False, True),
+        ("Razem 79 metrów.", True, False),
+        ("8 000 centymetrów.", True, False),
+        ("79 metrów. Lub 80 metrów.", True, False),
+    ],
+)
+def test_numeric_gate_binds_bare_value_only_when_rubric_allows_it(
+    text, allow_bare, contradiction
+):
+    from venom_core.services.training_experiments.conversation_numeric import (
+        numeric_contradiction,
+        numeric_expectation,
+    )
+
+    case = {
+        "criteria": [{"id": "gap", "kind": "content"}],
+        "numeric_claim": {
+            "criterion": "gap",
+            "expression": "900 - (600 + 220)",
+            "unit": "m",
+            "role": "gap",
+            "allow_bare": allow_bare,
+        },
+    }
+    assert (
+        numeric_contradiction({"text": text}, numeric_expectation(case)) is not None
+    ) is contradiction
+    case["numeric_claim"]["allow_bare"] = "true"
+    with pytest.raises(ValueError, match="numeric_rule_invalid"):
+        numeric_expectation(case)
+
+
 def test_numeric_proof_rejects_unknown_criterion():
     from venom_core.services.training_experiments.conversation_numeric import (
         numeric_expectation,

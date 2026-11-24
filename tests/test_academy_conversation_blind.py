@@ -159,6 +159,17 @@ def input_data(tmp_path, request):
         candidate_answers["checkpoint-21", "C001-2"] = (
             "Obowiązuje opłata 19 zł za komplet materiałów."
         )
+    elif scenario == "operator":
+        cases[3]["operator_criteria"] = ["content"]
+        cases[12]["operator_criteria"] = ["content"]
+        parent_answers["checkpoint-145", "C000-4"] = (
+            "Pokaz „Szkło i Światło” zaczyna się o 17:40, a wstęp kosztuje 16 zł."
+        )
+        candidate_answers["checkpoint-21", "C000-4"] = (
+            "Start do Skło i Światła o 17:40 kosztuje 16 zł."
+        )
+        parent_answers["checkpoint-145", "C003-1"] = "Chmury pod Lupą\nKlub Podniebny"
+        candidate_answers["checkpoint-21", "C003-1"] = "Obserwacja Chmur, Klub Chmury"
     dataset = tmp_path / "data.jsonl"
     dataset.write_text("".join(json.dumps(row) + "\n" for row in cases))
     parent = {
@@ -530,6 +541,68 @@ def test_fee_proof_rejects_invalid_rule(rule):
     case = {"criteria": [{"id": "state", "kind": "content"}], "fee_state": rule}
     with pytest.raises(ValueError, match="fee_rule_invalid"):
         fee_expectation(case)
+
+
+@pytest.mark.parametrize("input_data", ["operator"], indirect=True)
+def test_qualitative_turn_needs_operator_evidence_before_promotion(
+    issued_review, tmp_path
+):
+    pending, package_dir, submission, private = issued_review
+    _fill_review(submission)
+    package = read_json(package_dir / "reviewer.json")
+    root = tmp_path / "experiments"
+    for dialogue, turn in (("C000", "T4"), ("C003", "T1")):
+        row = package["conversations"][dialogue]["turns"][turn]
+        assert row["operator_criteria"] == ["content"]
+        for alias, arm in private["aliases"][dialogue].items():
+            verdict = submission["judgments"][dialogue][turn][alias]
+            assert verdict["operator_evidence"] == {
+                "content": {"quote": "", "reason": ""}
+            }
+            verdict["operator_evidence"]["content"] = {
+                "quote": row["answers"][alias]["text"],
+                "reason": "Użycie nazwy lub opłaty ocenione w kontekście odpowiedzi.",
+            }
+            verdict["criteria"]["content"] = arm == "p13"
+
+    alias = next(
+        label for label, arm in private["aliases"]["C003"].items() if arm == "candidate"
+    )
+    verdict = submission["judgments"]["C003"]["T1"][alias]
+    evidence = verdict.pop("operator_evidence")
+    verdict["criteria"]["content"] = True
+    with pytest.raises(ValueError, match="operator_evidence_required"):
+        register_blind_review(root, pending, package_dir, submission)
+    assert not list(root.rglob("receipt.json"))
+
+    verdict["operator_evidence"] = {
+        "content": {"quote": "Brak w odpowiedzi", "reason": "Fałszywy cytat."}
+    }
+    with pytest.raises(ValueError, match="operator_evidence_invalid"):
+        register_blind_review(root, pending, package_dir, submission)
+
+    verdict["operator_evidence"] = evidence
+    verdict["criteria"]["content"] = False
+    receipt = register_blind_review(root, pending, package_dir, submission)
+    assert receipt["status"] == "STOP"
+    assert receipt["failures"] == ["parent_conversation_lost"]
+    assert register_blind_review(root, pending, package_dir, submission) == receipt
+
+
+@pytest.mark.parametrize(
+    "markers", ["content", ["content", "content"], ["missing"], [None]]
+)
+def test_operator_review_targets_known_content_criteria(markers):
+    from venom_core.services.training_experiments.conversation_blind import (
+        _operator_criteria,
+    )
+
+    case = {
+        "criteria": [{"id": "content", "kind": "content"}],
+        "operator_criteria": markers,
+    }
+    with pytest.raises(ValueError, match="operator_criteria_invalid"):
+        _operator_criteria(case)
 
 
 def _store_checkpoint(experiments, dataset, generation, binding):

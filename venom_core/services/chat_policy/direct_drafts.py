@@ -35,7 +35,7 @@ def reservation_confirmation_draft(
 
 _SHORT_MESSAGE = re.compile(
     r"(?:^|(?<=[.!?])\s+)(?:napisz|ułóż|przygotuj)\s+(?:"
-    r"(?:gotową|krótką|zwięzłą|jedną)\s+(?:wiadomość|prośbę|odpowiedź)"
+    r"(?:(?:gotową|krótką|zwięzłą|jedną)\s+){1,2}(?:wiadomość|prośbę|odpowiedź)"
     r"|odpowiedź\s+w\s+(?:moim|naszym)\s+imieniu)\b",
     re.I,
 )
@@ -48,20 +48,49 @@ _OTHER_FORMAT = re.compile(
 _CONSENT = re.compile(
     r"(?:^|(?<=[.!?])\s+)(?:zgadzam się|udzielam zgody|wyrażam zgodę)\b", re.I
 )
+_ROLE_REPLY = re.compile(
+    r"(?:Teraz\s+(?:jestem|piszę jako|odpowiadam jako|wypowiadam się jako)"
+    r"\s+[^.!?\n:]{2,100})\.\s*"
+    r"(?P<consent>(?:Zgadzam się|Udzielam zgody|Wyrażam zgodę)\s+"
+    r"(?:tylko\s+|wyłącznie\s+)?na\s+[^.!?\n:]{3,500})\.\s*"
+    r"(?:Napisz|Ułóż|Przygotuj)\s+(?:krótką\s+)?odpowiedź\s+w moim imieniu[.!]?",
+    re.I,
+)
+_ADDRESSEE = re.compile(r"(?i:\bdo\s+(?:pani|pana))\s+([A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]{1,40})\b")
 _END_WITH_QUESTION = re.compile(r"\bzakończ\s+pytaniem\b", re.I)
-_MESSAGE_HINT = (
-    "Zwróć wyłącznie jedną krótką, gotową do użycia treść wiadomości. "
-    "Jeśli podano imię adresata, użyj go w zwrocie na początku. "
+_DRAFT_OPENING = "Zwróć wyłącznie jedną krótką, gotową do użycia treść wiadomości. "
+_USE_OF_RECIPIENT_WORK = re.compile(
+    r"\bz prośbą o (?:odtworzenie|pokazanie|wystawienie|odczytanie|publikację|"
+    r"udostępnienie)\s+(?:jej|jego)\b",
+    re.I,
+)
+_PENDING_CONSENT = re.compile(
+    r"\b(?:zgoda nie została|nie (?:ma|mam|mamy) zgody)\b", re.I
+)
+_OFFER_TO_PRESENT = re.compile(
+    r"\b(?:odtworz(?:ę|ymy)|pokaż(?:ę|emy)|wystawi(?:ę|my)|odczyta(?:m|my)|"
+    r"opublikuj(?:ę|emy)|udostępni(?:ę|my))\b",
+    re.I,
+)
+_MESSAGE_BODY = (
     "Pomiń wstęp, temat, podpis i pola do uzupełnienia, chyba że użytkownik ich wymaga. "
     "Zachowaj fakty z wiadomości użytkownika i zastosuj ostatnią korektę. "
     "Pisz w imieniu osoby wskazanej w ostatnim poleceniu. Prośbę i dodatkowe ustalenia "
-    "ujmij w osobnych zdaniach. Użyj poprawnej odmiany imienia."
+    "ujmij w osobnych zdaniach."
 )
 _CONSENT_HINT = (
     "Sformułuj samą zgodę w zdaniu oznajmującym. "
     "Wymień wprost jej przedmiot, termin, miejsce i pozostałe podane ograniczenia."
 )
 _QUESTION_HINT = "Zakończ wiadomość wymaganym pytaniem ze znakiem zapytania."
+
+
+def role_consent_reply(text: str) -> str | None:
+    """Use the consent the new speaker explicitly supplied, with all its limits."""
+    if without_quotes(text) != text:
+        return None
+    match = _ROLE_REPLY.fullmatch(text.strip())
+    return f"{match['consent']}." if match else None
 
 
 def short_message_hint(text: str, history: Sequence[HistoryMessage]) -> str:
@@ -78,9 +107,34 @@ def short_message_hint(text: str, history: Sequence[HistoryMessage]) -> str:
         if _OTHER_FORMAT.search(candidate):
             break
         if _SHORT_MESSAGE.search(candidate):
-            hints = [_MESSAGE_HINT]
-            if _CONSENT.search(visible):
-                hints.append(_CONSENT_HINT)
+            consent = _CONSENT.search(visible)
+            if consent:
+                hints = [
+                    _DRAFT_OPENING + _MESSAGE_BODY,
+                    _CONSENT_HINT,
+                    "Zacznij od samej zgody, bez zwrotu do odbiorcy.",
+                ]
+            elif _ADDRESSEE.search(candidate):
+                hints = [
+                    _DRAFT_OPENING
+                    + "Jeśli podano imię adresata, użyj go w zwrocie na początku. "
+                    + _MESSAGE_BODY
+                    + " Użyj poprawnej odmiany imienia."
+                ]
+                if _USE_OF_RECIPIENT_WORK.search(candidate) and (
+                    _PENDING_CONSENT.search(candidate)
+                    or _OFFER_TO_PRESENT.search(visible)
+                ):
+                    hints.append(
+                        "Nadawca prosi odbiorcę o zgodę, aby sam mógł wykonać czynność "
+                        "opisaną w prośbie. Zapytaj, czy nadawca może to zrobić. "
+                        "Nie proś odbiorcy o wykonanie tej czynności."
+                    )
+            else:
+                hints = [
+                    _DRAFT_OPENING + _MESSAGE_BODY,
+                    "Zacznij od treści bez imion i bez zwrotu do odbiorcy.",
+                ]
             if _END_WITH_QUESTION.search(visible):
                 hints.append(_QUESTION_HINT)
             return " ".join(hints)

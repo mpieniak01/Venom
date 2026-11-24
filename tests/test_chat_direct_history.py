@@ -1401,8 +1401,8 @@ def test_direct_fit_prompt_keeps_independent_bounds_after_a_correction(monkeypat
     _, prompt, _, _ = llm_simple_service._qualified_stream_prompt(
         request, runtime, "local-model", ""
     )
-    assert "szerokość wewnętrzna to co najmniej 310 mm" in prompt
-    assert "szerokość zewnętrzna to co najwyżej 35 cm" in prompt
+    assert "Wewnętrzna szerokość musi wynosić co najmniej 310 mm" in prompt
+    assert "zewnętrzna co najwyżej 35 cm" in prompt
     request = SimpleChatRequest(
         content="Korekta: maksymalna szerokość zewnętrzna to 34 cm. Minimum wewnątrz nadal obowiązuje. Podaj instrukcję przymiarki.",
         history=[
@@ -1413,8 +1413,8 @@ def test_direct_fit_prompt_keeps_independent_bounds_after_a_correction(monkeypat
     _, prompt, _, _ = llm_simple_service._qualified_stream_prompt(
         request, runtime, "local-model", ""
     )
-    assert "szerokość wewnętrzna to co najmniej 310 mm" in prompt
-    assert "szerokość zewnętrzna to co najwyżej 34 cm" in prompt
+    assert "Wewnętrzna szerokość musi wynosić co najmniej 310 mm" in prompt
+    assert "zewnętrzna co najwyżej 34 cm" in prompt
     assert "35 cm" not in prompt and "330 mm" not in prompt
 
 
@@ -1468,3 +1468,152 @@ def test_measuring_only_the_exterior_preserves_the_need_to_measure_the_interior(
         [],
     )
     assert "nie potwierdza dopasowania" in hint and "pomiar wewnętrzny" in hint
+
+
+def test_local_direct_verifies_limits_and_renders_the_explicit_role_switch(
+    monkeypatch, tmp_path
+):
+    from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT
+
+    runtime = SimpleNamespace(
+        provider="ollama",
+        model_name="local-model",
+        endpoint="http://127.0.0.1:11434/v1",
+        service_type="local",
+        host_local=True,
+    )
+    monkeypatch.setattr(
+        llm_simple_service,
+        "_resolve_non_openrouter_runtime",
+        AsyncMock(return_value=(runtime, "ollama", runtime.model_name)),
+    )
+    monkeypatch.setattr(openrouter_runtime, "selection", lambda: None)
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False
+    )
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS,
+        "SIMPLE_MODE_SYSTEM_PROMPT",
+        DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT,
+    )
+    monkeypatch.setattr(
+        llm_simple_service,
+        "_non_openrouter_messages",
+        AsyncMock(
+            side_effect=AssertionError("Provider was selected for verified text")
+        ),
+    )
+
+    path = str(tmp_path / "verified-direct.json")
+    store = SessionStore(path)
+    checks = [
+        (
+            "fit",
+            "Przynajmniej 31 cm szerokości w środku, a szerokość na zewnątrz ma najwyżej 35 cm.",
+            "Wewnętrzna szerokość musi wynosić co najmniej 31 cm",
+        ),
+        (
+            "fit",
+            "Zmiana: szerokość zewnętrzna ma wynosić najwyżej 34 cm. Warunek w środku jest ten sam. Napisz, co zmierzyć.",
+            "zewnętrzna co najwyżej 34 cm",
+        ),
+        (
+            "fit",
+            "Zmierzona szerokość zewnętrzna ma 341 mm. Czy to pozwala potwierdzić dopasowanie?",
+            "341 mm przekracza limit 34 cm",
+        ),
+        (
+            "draft",
+            "Teraz odpowiadam jako autorka. Wyrażam zgodę na sobotni odczyt wyłącznie w czytelni i bez rejestracji. Napisz odpowiedź w moim imieniu.",
+            "Wyrażam zgodę na sobotni odczyt wyłącznie w czytelni i bez rejestracji.",
+        ),
+    ]
+    drafts = [
+        {"role": "user", "content": "Napisz krótką prośbę do pani Moniki o odczyt."},
+        {"role": "assistant", "content": "Pani Moniko, proszę o zgodę."},
+    ]
+    with TestClient(application(store)) as client:
+        for session, question, expected in checks:
+            history = (
+                [
+                    {"role": item["role"], "content": item["content"]}
+                    for item in store.get_history(session)
+                ]
+                if session == "fit"
+                else drafts
+            )
+            response = client.post(
+                "/api/v1/llm/simple/stream",
+                json={"content": question, "session_id": session, "history": history},
+            )
+            assert response.status_code == 200
+            done = next(
+                packet
+                for packet in response.text.split("\n\n")
+                if packet.startswith("event: done")
+            )
+            assert json.loads(done.split("data: ", 1)[1]) == {
+                "response_source": "direct_policy"
+            }
+            saved = SessionStore(path).get_history(session)[-1]
+            assert expected in saved["content"] and "tool_result" not in saved
+            if session == "draft":
+                assert saved["content"] == expected
+            elif "w limicie" in expected or "przekracza" in expected:
+                assert "co najmniej 31 cm" in saved["content"]
+
+    fit_reply = llm_simple_service.fit_bounds_reply(
+        "Szerokość na zewnątrz wynosi 340\tmm. Czy skrzynka będzie pasująca?",
+        SimpleChatRequest(
+            content="Sprawdź",
+            history=[
+                {"role": "user", "content": checks[0][1]},
+                {"role": "user", "content": checks[1][1]},
+            ],
+        ).history,
+    )
+    assert fit_reply and "mieści się w limicie 34 cm" in fit_reply
+    assert (
+        llm_simple_service.role_consent_reply(
+            "Teraz jestem autorką. Nie zgadzam się na odczyt. Napisz odpowiedź w moim imieniu."
+        )
+        is None
+    )
+    assert (
+        llm_simple_service.role_consent_reply(
+            "Teraz jestem autorką. Zgadzam się na «odczyt». Napisz odpowiedź w moim imieniu."
+        )
+        is None
+    )
+
+
+def test_fit_check_observes_scope_and_recent_user_constraints():
+    from venom_core.api.schemas.llm_simple import HistoryMessage
+    from venom_core.services.chat_policy.qualified_chat_fit import fit_bounds_reply
+
+    history = [
+        HistoryMessage(
+            role="user",
+            content="Minimalna szerokość wewnątrz to 20 cm. Maksymalna szerokość na zewnątrz to 27 cm.",
+        ),
+        HistoryMessage(role="assistant", content="Szerokość to 900 cm."),
+        HistoryMessage(
+            role="user",
+            content="Korekta: maksimum zewnętrzne to 260 mm szerokości. Napisz, co zmierzyć.",
+        ),
+    ]
+    measured = "Zmierzona szerokość zewnętrzna 25 cm. Czy to wystarczy do dopasowania?"
+    answer = fit_bounds_reply(measured, history)
+    assert (
+        answer
+        and "w limicie 260 mm" in answer
+        and "20 cm" in answer
+        and "900 cm" not in answer
+    )
+    assert fit_bounds_reply(measured.replace("szerokość", "wysokość"), history) is None
+    assert fit_bounds_reply(f"{measured} Opisz politykę sklepu.", history) is None
+    history.append(
+        HistoryMessage(role="user", content="Zmieniam temat. Dobieramy inny pojemnik.")
+    )
+    assert fit_bounds_reply(measured, history) is None

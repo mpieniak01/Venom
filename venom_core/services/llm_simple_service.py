@@ -29,7 +29,10 @@ from venom_core.services.chat_policy.direct_calculator import (
     execute_calculator,
     plan_calculator,
 )
-from venom_core.services.chat_policy.direct_drafts import short_message_hint
+from venom_core.services.chat_policy.direct_drafts import (
+    role_consent_reply,
+    short_message_hint,
+)
 from venom_core.services.chat_policy.direct_text import (
     prepare_omni_history,
     simple_system_prompt,
@@ -42,7 +45,11 @@ from venom_core.services.chat_policy.qualified_chat import (
     prepare_studio_reply,
 )
 from venom_core.services.chat_policy.qualified_chat_explanations import explanation_hint
-from venom_core.services.chat_policy.qualified_chat_fit import fit_bounds_hint, fit_hint
+from venom_core.services.chat_policy.qualified_chat_fit import (
+    fit_bounds_hint,
+    fit_bounds_reply,
+    fit_hint,
+)
 from venom_core.services.chat_policy.qualified_chat_options import (
     CountRequirement,
     requested_count,
@@ -1641,19 +1648,13 @@ def _stream_non_openrouter_response(
     )
 
 
-def _direct_calculator_response(
+def _local_direct_stream(
     request: SimpleChatRequest,
     runtime: LLMRuntimeInfo,
     model_name: str,
     request_id: UUID,
-    system_context: str,
-) -> StreamingResponse | None:
-    if request.studio_normal or system_context or not _plain_text_request(request):
-        return None
-    history = [turn.model_dump(include={"role", "content"}) for turn in request.history]
-    plan = plan_calculator(request.content, history)
-    if plan is None or not is_host_ollama(runtime):
-        return None
+    reply: Callable[[], dict[str, Any]],
+) -> StreamingResponse:
     _plain_request_history(request, runtime, "", request.content)
 
     async def chunks() -> AsyncIterator[str]:
@@ -1662,7 +1663,7 @@ def _direct_calculator_response(
             provider=runtime.provider,
             model=model_name,
         ):
-            result = execute_calculator(plan)
+            result = reply()
             text = result.pop("text")
             yield _SSE_EVENT_START
             yield (
@@ -1679,6 +1680,57 @@ def _direct_calculator_response(
     )
 
 
+def _direct_calculator_response(
+    request: SimpleChatRequest,
+    runtime: LLMRuntimeInfo,
+    model_name: str,
+    request_id: UUID,
+    system_context: str,
+) -> StreamingResponse | None:
+    if request.studio_normal or system_context or not _plain_text_request(request):
+        return None
+    history = [turn.model_dump(include={"role", "content"}) for turn in request.history]
+    plan = plan_calculator(request.content, history)
+    if plan is None or not is_host_ollama(runtime):
+        return None
+    return _local_direct_stream(
+        request, runtime, model_name, request_id, lambda: execute_calculator(plan)
+    )
+
+
+def _direct_policy_response(
+    request: SimpleChatRequest,
+    runtime: LLMRuntimeInfo,
+    model_name: str,
+    request_id: UUID,
+    system_context: str,
+) -> StreamingResponse | None:
+    configured = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    if (
+        request.studio_normal
+        or system_context
+        or configured not in ("", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT)
+        or not _plain_text_request(request)
+    ):
+        return None
+    text = role_consent_reply(request.content) or fit_bounds_reply(
+        request.content, request.history
+    )
+    if (
+        text is None
+        or not is_host_ollama(runtime)
+        or _prepare_qualified_reply(request, runtime, model_name) is not None
+    ):
+        return None
+    return _local_direct_stream(
+        request,
+        runtime,
+        model_name,
+        request_id,
+        lambda: {"text": text, "response_source": "direct_policy"},
+    )
+
+
 async def _stream_non_openrouter_chat(
     request: SimpleChatRequest, *, system_context: str = ""
 ):
@@ -1691,6 +1743,11 @@ async def _stream_non_openrouter_chat(
     )
     if calculator is not None:
         return calculator
+    policy = _direct_policy_response(
+        request, runtime, model_name, request_id, system_context
+    )
+    if policy is not None:
+        return policy
     _trace_simple_request(request_id, request, runtime, model_name)
     request, system_prompt, qualified_reply, complete_reply = _qualified_stream_prompt(
         request, runtime, model_name, system_context

@@ -329,15 +329,16 @@ def _source_context_state(
     scope_reply = plan.scope_reply
     if plan.explicit_rss and not headlines:
         scope_reply = _RSS_NOT_READ
+    if not source_context:
+        return source_context, headlines, scope_reply, None
     evidence = None
-    if not setup.local_qualification or not source_context:
-        return source_context, headlines, scope_reply, evidence
     if isinstance(source_context, PublicSourceContext):
         evidence = source_context.evidence
-        local_reply = source_context.reply
-        if evidence.scope == "wiki" and local_reply is not None:
-            local_reply = _wiki_local_reply(request.content, local_reply)
-        scope_reply = scope_reply or local_reply
+        if setup.local_qualification:
+            local_reply = source_context.reply
+            if evidence.scope == "wiki" and local_reply is not None:
+                local_reply = _wiki_local_reply(request.content, local_reply)
+            scope_reply = scope_reply or local_reply
     elif isinstance(source_context, PublicSourceUnavailable):
         evidence = PublicSourceEvidence("unavailable")
         source_context = "\nW tej turze nie udało się odczytać publicznego źródła."
@@ -405,6 +406,13 @@ async def prepare_studio_normal(
         evidence,
         setup.remaining,
     )
+    if plan.prior_context and len(plan.prior_context) <= setup.remaining:
+        evidence = evidence or plan.retained_evidence
+    if scope_reply and not setup.local_qualification:
+        system_context += (
+            "\n\nPodaj zakres poprzedniego odczytu na podstawie tego zapisu aplikacji: "
+            + scope_reply
+        )
     budget = setup.budget - len(system_context)
     if budget < 0:
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})

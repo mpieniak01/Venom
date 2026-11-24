@@ -37,6 +37,8 @@ _SCOPE_QUESTION = re.compile(
     r"(?:(?:tylko|wyłącznie|same)\s+)?(?:nagłów\w*|(?:cały|pełny)\s+artykuł)\b"
     r"|\bczy\s+(?:wtedy|wcześniej|poprzednio|w poprzedniej turze)\s+"
     r"korzysta(?:łeś|łaś|no)\s+z\s+(?:całego|pełnego)\s+artykułu\b"
+    r"|^\s*(?:(?:napisz|powiedz|podaj),?\s+)?czy źródłem\s+"
+    r"(?:tej|poprzedniej|powyższej) (?:informacji|odpowiedzi) był(?:a|o)?\b"
     r"|^\s*czy (?:odczytałeś|odczytałaś|przeczytałeś|przeczytałaś) "
     r"(?:także |również )?(?:cały |pełny |ten )?artykuł\b",
     re.I,
@@ -46,7 +48,8 @@ _PREVIOUS_FACT = re.compile(
     r"|\b(?:według|na podstawie) (?:tej|tego|poprzedni(?:ej|ego)|powyższ(?:ej|ego)|wcześniejsz(?:ej|ego)) "
     r"(?:rozmowy|odpowiedzi|wyjaśnienia|definicji|źródła|hasła|odczytu)\b"
     r"|\bna podstawie tego,\s+co (?:już )?(?:odczytali|sprawdzili)[śs]my\b"
-    r"|\bz (?:tej|wcześniejszej|poprzedniej|powyższej) odpowiedzi\b",
+    r"|\bz (?:tej|wcześniejszej|poprzedniej|powyższej) odpowiedzi\b"
+    r"|^\s*(?:podaj (?:tę|tą) samą informację|skróć (?:tę |tą )?odpowiedź)\b",
     re.I,
 )
 _CHANGE_OF_TOPIC = re.compile(r"\b(?:zmieniam temat|inny temat|nowe pytanie)\b", re.I)
@@ -174,12 +177,17 @@ def previous_public_fact_context(
     visible = without_quotes(question)
     if (
         evidence is None
-        or evidence.scope != "wiki"
-        or not evidence.excerpt
         or _CHANGE_OF_TOPIC.search(visible)
         or explicit_lookup_allowed(question)
         or not _PREVIOUS_FACT.search(visible)
     ):
+        return ""
+    if evidence.scope == "unavailable":
+        return (
+            "\n\nPoprzedni odczyt nie dostarczył podstawy do odpowiedzi. "
+            "Powiedz po polsku, że nie możesz potwierdzić faktu. Nie zgaduj."
+        )
+    if evidence.scope != "wiki" or not evidence.excerpt:
         return ""
     excerpt = json.dumps({"treść": evidence.excerpt}, ensure_ascii=False)
     excerpt = excerpt.replace("[", r"\u005b").replace("]", r"\u005d")

@@ -161,9 +161,9 @@ class _SectionText(HTMLParser):
 
 
 async def search_wikipedia_section(
-    source: WikipediaSource, headings: Sequence[str]
+    source: WikipediaSource, headings: Sequence[str], *, intro: bool = False
 ) -> WikipediaSource | None:
-    """Read one named section from the same Polish Wikipedia article."""
+    """Read the intro (including infobox) or one named section of the same article."""
 
     headers = {"User-Agent": WIKIPEDIA_USER_AGENT}
     params = {
@@ -189,15 +189,19 @@ async def search_wikipedia_section(
             if type(revision) is not int or revision <= 0:
                 return None
             sections = revision_data.get("sections", [])
-            index = next(
-                (
-                    section["index"]
-                    for section in sections
-                    if isinstance(section, dict)
-                    and str(section.get("line", "")).strip().casefold() in wanted
-                    and re.fullmatch(r"[1-9]\d{0,2}", str(section.get("index", "")))
-                ),
-                None,
+            index = (
+                "0"
+                if intro
+                else next(
+                    (
+                        section["index"]
+                        for section in sections
+                        if isinstance(section, dict)
+                        and str(section.get("line", "")).strip().casefold() in wanted
+                        and re.fullmatch(r"[1-9]\d{0,2}", str(section.get("index", "")))
+                    ),
+                    None,
+                )
             )
             if index is None:
                 return None

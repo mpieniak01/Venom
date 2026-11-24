@@ -1341,3 +1341,118 @@ async def test_news_with_publisher_and_topic_does_not_fall_back_to_general_rss(
     )
     assert result is None
     read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("question", "topic", "extract", "expected"),
+    [
+        (
+            "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę Mostu Grunwaldzkiego we Wrocławiu. Dołącz odnośnik.",
+            "Mostu Grunwaldzkiego we Wrocławiu",
+            "Data budowy\n1908–1910\nData remontu\n2005",
+            "Rok rozpoczęcia budowy: 1908",
+        ),
+        (
+            "Korzystając z polskiej Wikipedii, podaj w jakim województwie leży Zamek w Niedzicy. Podaj link.",
+            "Zamek w Niedzicy",
+            "Państwo\nPolska\nWojewództwo\nmałopolskie\nMiejscowość\nNiedzica-Zamek",
+            "Województwo: małopolskie",
+        ),
+        (
+            "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę Mostu Grunwaldzkiego we Wrocławiu.",
+            "Mostu Grunwaldzkiego we Wrocławiu",
+            "Data remontu\n2005",
+            None,
+        ),
+    ],
+)
+async def test_wikipedia_field_uses_only_attributed_infobox(
+    monkeypatch, question, topic, extract, expected
+):
+    source = chat_grounding.WikipediaSource(
+        "Przykład", "https://pl.wikipedia.org/wiki/Przykład", "Wstęp", "today"
+    )
+    page = chat_grounding.WikipediaSource(
+        source.title, source.url, extract, source.retrieved_at
+    )
+    fetch = AsyncMock(return_value=[source])
+    section = AsyncMock(return_value=page)
+    monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", fetch)
+    monkeypatch.setattr(chat_grounding, "search_wikipedia_section", section)
+    context = await chat_grounding.current_chat_context(question)
+    fetch.assert_awaited_once_with(topic, limit=1)
+    section.assert_awaited_once_with(source, (), intro=True)
+    if expected is None:
+        assert context is chat_grounding.PublicSourceUnavailable.WIKIPEDIA
+    else:
+        assert expected in context.evidence.excerpt
+        assert source.url in context.evidence.excerpt
+        assert "Data remontu" not in context.evidence.excerpt
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", [None, "Województwo: małopolskie"])
+async def test_studio_keeps_wiki_outcome_in_normal_chat_without_academy(
+    monkeypatch, outcome
+):
+    monkeypatch.setattr(studio_normal_chat.SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(
+        studio_normal_chat.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False
+    )
+    if outcome is None:
+        first = chat_grounding.PublicSourceUnavailable.WIKIPEDIA
+    else:
+        evidence = chat_grounding.PublicSourceEvidence("wiki", excerpt=outcome)
+        first = chat_grounding.PublicSourceContext(
+            "Publiczny fragment: " + outcome, evidence
+        )
+    reader = AsyncMock(return_value=first)
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", reader)
+    history = []
+    store = SimpleNamespace(get_history=lambda _: history)
+
+    async def prepare(text):
+        request = SimpleChatRequest(
+            content=text, session_id="studio", studio_normal=True
+        )
+        return await studio_normal_chat.prepare_studio_normal(
+            request, store, AsyncMock()
+        )
+
+    async def turn(utterance):
+        prepared, context = await prepare(utterance)
+        history.extend(
+            (
+                {"request_id": utterance, "role": "user", "content": utterance},
+                {
+                    "request_id": utterance,
+                    "role": "assistant",
+                    "status": "COMPLETED",
+                    "content": "Tekst odpowiedzi.",
+                    "public_source_evidence": prepared._studio_public_source_evidence,
+                },
+            )
+        )
+        return prepared, context
+
+    prepared, context = await turn("Korzystając z Wikipedii, podaj województwo zamku.")
+    expected = "wiki" if outcome else "unavailable"
+    assert prepared._studio_public_source_evidence["scope"] == expected
+    if outcome is None:
+        assert "nie udało się odczytać" in context
+    second, context = await turn(
+        "Podaj tę samą informację w jednym zdaniu, bez wyszukiwania ponownie."
+    )
+    assert (
+        second._studio_public_source_evidence == prepared._studio_public_source_evidence
+    )
+    assert (outcome or "nie dostarczył podstawy") in context
+    third, context = await prepare(
+        "Napisz, czy źródłem tej informacji był artykuł Wikipedii."
+    )
+    assert third._studio_public_scope_reply in context
+    assert (
+        "fragment hasła Wikipedii" if outcome else "nie udało się odczytać"
+    ) in context
+    assert reader.await_count == 1

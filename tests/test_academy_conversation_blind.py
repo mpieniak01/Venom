@@ -170,6 +170,20 @@ def input_data(tmp_path, request):
         )
         parent_answers["checkpoint-145", "C003-1"] = "Chmury pod Lupą\nKlub Podniebny"
         candidate_answers["checkpoint-21", "C003-1"] = "Obserwacja Chmur, Klub Chmury"
+    elif scenario == "prose":
+        cases[8]["text_check"] = {"criterion": "content", "kind": "evaporation"}
+        cases[12]["text_check"] = {"criterion": "content", "kind": "single_draft"}
+        parent_answers["checkpoint-145", "C002-1"] = (
+            "Wiatr usuwa wilgotną warstwę przy tkaninie, więc woda szybciej paruje."
+        )
+        candidate_answers["checkpoint-21", "C002-1"] = (
+            "Wiatr przyspiesza schnięcie, ponieważ doprowadza wilgotne powietrze."
+        )
+        body = "Dzień dobry, proszę o zgodę na ustawienie gabloty przy wejściu w najbliższą sobotę. Czy mogę liczyć na odpowiedź do czwartku?"
+        parent_answers["checkpoint-145", "C003-1"] = body
+        candidate_answers["checkpoint-21", "C003-1"] = (
+            f"Prośba\n\n{body}\n\nSzkic\n\n{body}"
+        )
     dataset = tmp_path / "data.jsonl"
     dataset.write_text("".join(json.dumps(row) + "\n" for row in cases))
     parent = {
@@ -641,6 +655,100 @@ def test_operator_review_targets_known_content_criteria(markers):
     }
     with pytest.raises(ValueError, match="operator_criteria_invalid"):
         _operator_criteria(case)
+
+
+@pytest.mark.parametrize("input_data", ["prose"], indirect=True)
+def test_prose_evidence_distinguishes_wrong_cause_and_repeated_draft(
+    issued_review, tmp_path
+):
+    pending, output, submission, private = issued_review
+    _fill_review(submission)
+    package = read_json(output / "reviewer.json")
+    for row_id, critical in (("C002", True), ("C003", False)):
+        views = package["conversations"][row_id]["turns"]["T1"]["answers"]
+        for alias, arm in private["aliases"][row_id].items():
+            proof = views[alias].get("text_proof")
+            if arm == "p13":
+                assert proof is None
+            else:
+                assert proof["critical"] is critical
+                assert len(proof["quotes"]) == (1 if critical else 2)
+                assert all(quote in views[alias]["text"] for quote in proof["quotes"])
+
+    receipt = register_blind_review(
+        tmp_path / "experiments", pending, output, submission
+    )
+    assert receipt["status"] == "STOP"
+    assert receipt["failures"] == ["critical_error", "parent_conversation_lost"]
+
+
+@pytest.mark.parametrize(
+    "text, finish, has_proof",
+    [
+        ("Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.", "stop", True),
+        (
+            "Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.",
+            "length",
+            False,
+        ),
+        (
+            "Wiatr przyspiesza parowanie, bo usuwa wilgotne powietrze znad parującej powierzchni.",
+            "stop",
+            False,
+        ),
+        (
+            "Nie jest prawdą, że wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.",
+            "stop",
+            False,
+        ),
+        (
+            "Woda z wilgotnej szmatki nie paruje szybciej, gdy wiatr doprowadza wilgotne powietrze, co przyspiesza schnięcie.",
+            "stop",
+            False,
+        ),
+        (
+            "Mit. Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.",
+            "stop",
+            False,
+        ),
+        (
+            "Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze. Jest ono jednak mniej wilgotne niż warstwa przy szkle.",
+            "stop",
+            False,
+        ),
+        (
+            "„Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.”",
+            "stop",
+            False,
+        ),
+    ],
+)
+def test_evaporation_proof_checks_only_explicit_affirmative_claims(
+    text, finish, has_proof
+):
+    from venom_core.services.training_experiments.conversation_text import text_proof
+
+    rule = {"criterion": "mechanism", "kind": "evaporation"}
+    assert (text_proof({"text": text, "finish": finish}, rule) is not None) is has_proof
+
+
+def test_draft_proof_does_not_treat_greetings_as_repeated_body():
+    from venom_core.services.training_experiments.conversation_text import (
+        text_expectation,
+        text_proof,
+    )
+
+    case = {"criteria": [{"id": "draft", "kind": "content"}]}
+    assert text_expectation(case) is None
+    with pytest.raises(ValueError, match="text_rule_invalid"):
+        text_expectation(
+            {**case, "text_check": {"criterion": "typo", "kind": "single_draft"}}
+        )
+    rule = text_expectation(
+        {**case, "text_check": {"criterion": "draft", "kind": "single_draft"}}
+    )
+    reply = "Dzień dobry,\n\nProszę o spotkanie w sprawie zwrotu kluczy, najlepiej w środę po południu.\n\nDzień dobry,"
+    assert text_proof({"text": reply}, rule) is None
 
 
 def _store_checkpoint(experiments, dataset, generation, binding):

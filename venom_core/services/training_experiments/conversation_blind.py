@@ -29,6 +29,10 @@ from venom_core.services.training_experiments.conversation_review import (
     register_review_request,
     score,
 )
+from venom_core.services.training_experiments.conversation_text import (
+    text_expectation,
+    text_proof,
+)
 from venom_core.services.training_experiments.profiles import (
     digest,
     read_json,
@@ -210,6 +214,7 @@ def _render_blind_package(
             case = cases_by_id[record_id]
             expected = numeric_expectation(case)
             fee = fee_expectation(case)
+            text_rule = text_expectation(case)
             operator_criteria = _operator_criteria(case)
             views = {}
             for alias, arm in mapping[conversation].items():
@@ -219,6 +224,8 @@ def _render_blind_package(
                     view["numeric_contradiction"] = proof
                 if omission := fee_omission(view, fee):
                     view["fee_omission"] = omission
+                if proof := text_proof(view, text_rule):
+                    view["text_proof"] = proof
                 views[alias] = view
             turns[turn] = {
                 "criteria": spec["turns"][turn],
@@ -453,13 +460,17 @@ def _valid_operator_evidence(item: object, answer: str) -> bool:
 def _apply_review_evidence(verdict: dict, criteria: list[str], answer: dict) -> dict:
     failed = {
         answer[key]["criterion"]: False
-        for key in ("numeric_contradiction", "fee_omission")
+        for key in ("numeric_contradiction", "fee_omission", "text_proof")
         if key in answer
     }
     if not failed or not _valid_verdict(verdict, criteria):
         return verdict
     return {
-        "critical": verdict["critical"] or "numeric_contradiction" in answer,
+        "critical": (
+            verdict["critical"]
+            or "numeric_contradiction" in answer
+            or answer.get("text_proof", {}).get("critical", False)
+        ),
         "criteria": {**verdict["criteria"], **failed},
     }
 

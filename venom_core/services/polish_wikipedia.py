@@ -240,6 +240,13 @@ async def search_wikipedia_section(
             if excerpt
             else None
         )
-    except (AttributeError, TypeError, ValueError, OSError, httpx.HTTPError) as exc:
+    except (
+        AttributeError,
+        TypeError,
+        ValueError,
+        OSError,
+        RuntimeError,
+        httpx.HTTPError,
+    ) as exc:
         logger.warning("Polish Wikipedia section lookup failed: %s", exc)
         return None

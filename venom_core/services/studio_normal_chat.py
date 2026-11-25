@@ -321,6 +321,13 @@ def _is_wikipedia_result(source: Any) -> bool:
     return source is PublicSourceUnavailable.WIKIPEDIA
 
 
+def _qualified_source_reply(message: str, context: PublicSourceContext) -> str | None:
+    reply = context.reply
+    if context.evidence.scope == "wiki" and reply is not None:
+        return _wiki_local_reply(message, reply)
+    return reply
+
+
 def _source_context_state(
     request: SimpleChatRequest,
     source_context: Any,
@@ -343,10 +350,9 @@ def _source_context_state(
     if isinstance(source_context, PublicSourceContext):
         evidence = source_context.evidence
         if setup.local_qualification:
-            local_reply = source_context.reply
-            if evidence.scope == "wiki" and local_reply is not None:
-                local_reply = _wiki_local_reply(request.content, local_reply)
-            scope_reply = scope_reply or local_reply
+            scope_reply = scope_reply or _qualified_source_reply(
+                request.content, source_context
+            )
     elif isinstance(source_context, PublicSourceUnavailable):
         evidence = PublicSourceEvidence("unavailable")
         source_context = "\nW tej turze nie udało się odczytać publicznego źródła."

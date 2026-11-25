@@ -112,9 +112,15 @@ _WIKI_ENTRY_TERMS = re.compile(
     re.I,
 )
 _WIKI_FIELD_QUESTION = re.compile(
-    r"^\s*(?:korzystając z (?:polskiej )?Wikipedii,?\s*)?(?:podaj,?\s+)?"
-    r"(?:w (?:którym|jakim) roku (?:rozpoczęto|zaczęto) budowę\s+(?P<start>[^.!?\n]+)"
-    r"|w (?:którym|jakim) województwie (?:leży|znajduje się)\s+(?P<region>[^.!?\n]+))",
+    r"(?:korzystając z (?:polskiej )?Wikipedii,?\s*)?(?:podaj,?\s+)?"
+    r"(?:w (?:którym|jakim) roku (?:rozpoczęto|zaczęto) budowę\s+(?P<start>[^,.!?;\n]+)"
+    r"|w (?:którym|jakim) województwie (?:leży|znajduje się)\s+(?P<region>[^,.!?;\n]+))"
+    r"(?:[.!?]\s+(?:dołącz|podaj)\s+(?:link|odnośnik))?[.!?]?",
+    re.I,
+)
+_WIKI_FIELD_EXTRA = re.compile(
+    r"\b(?:oraz|a także|podaj|wymień|wyjaśnij|opisz|kiedy|ile|"
+    r"zakończono|ukończono|w (?:którym|jakim))\b",
     re.I,
 )
 _WIKI_START_FIELD = re.compile(
@@ -517,8 +523,10 @@ async def _wiki_question_field(question: re.Match[str], policy: str) -> str:
 
 
 async def _wiki_context(message: str, policy: str) -> str:
-    field_question = _WIKI_FIELD_QUESTION.match(message)
-    if field_question is not None:
+    field_question = _WIKI_FIELD_QUESTION.fullmatch(message.strip())
+    if field_question is not None and not _WIKI_FIELD_EXTRA.search(
+        field_question["start"] or field_question["region"]
+    ):
         return await _wiki_question_field(field_question, policy)
     topic = message
     if prefix := _WIKI_TOPIC_PREFIX.match(message):

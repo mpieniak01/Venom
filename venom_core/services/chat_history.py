@@ -74,6 +74,22 @@ class DirectHistory:
         return terminal
 
     def _observe(self, kind: str, value: dict[str, Any]) -> str | None:
+        self._observe_metadata(kind, value)
+        if kind == "start":
+            self.started = True
+        elif kind == "content":
+            self._content(value.get("text"))
+        elif kind in {"done", "error"}:
+            self.terminal = True
+            self.length_limited = (
+                self.mode == "studio_normal"
+                and kind == "done"
+                and value.get("finish_reason") == "length"
+            )
+            return "COMPLETED" if kind == "done" else "FAILED"
+        return None
+
+    def _observe_metadata(self, kind: str, value: dict[str, Any]) -> None:
         identity = value.get("model_identity")
         if (
             isinstance(identity, dict)
@@ -106,19 +122,6 @@ class DirectHistory:
         charge = value if kind == "cost" else value.get("cost")
         if isinstance(charge, dict):
             self.cost = _cost_snapshot(charge)
-        if kind == "start":
-            self.started = True
-        elif kind == "content":
-            self._content(value.get("text"))
-        elif kind in {"done", "error"}:
-            self.terminal = True
-            self.length_limited = (
-                self.mode == "studio_normal"
-                and kind == "done"
-                and value.get("finish_reason") == "length"
-            )
-            return "COMPLETED" if kind == "done" else "FAILED"
-        return None
 
     def _content(self, text: Any) -> None:
         if not isinstance(text, str):

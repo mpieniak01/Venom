@@ -132,8 +132,14 @@ uruchamia odczytu ogólnych nagłówków.
 Ustawienie `ACADEMY_QUALIFIED_CHAT_ENABLED` na True włącza sprawdzanie
 odpowiedzi Academy w Studio oraz weryfikowany zapis do kalendarza.
 Domyślna wartość to False. Po wyłączeniu flagi Studio działa w zwykłym
-trybie czatu. Po jej włączeniu Studio zapisuje `public_source_evidence` w
-historii zakończonych i nieuciętych odpowiedzi. Samodzielne Studio pod
+trybie czatu. Studio zapisuje zweryfikowane dane z Wikipedii w historii sesji
+także przy wyłączonej fladze, jeśli odpowiedź zawiera tekst, zakończyła się
+i nie została ucięta. Przy wyłączonych notatkach pytanie o ten sam fakt lub
+jego źródło może użyć danych z bezpośrednio poprzedniej zakończonej tury.
+Studio może przenieść te dane do kolejnej tury, jeśli mieszczą się w kontekście,
+i ponowić wyszukiwanie na prośbę użytkownika. Włączenie flagi pozwala również
+zapisywać dane z innych źródeł publicznych dla zakończonych i nieuciętych
+odpowiedzi. Samodzielne Studio pod
 adresem /chat2 oferuje zwykły czat z wyłączonym selektorem natywnego tekstu.
 
 Weryfikowany zapis do kalendarza zwraca sukces po potwierdzeniu parametrów

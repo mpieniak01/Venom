@@ -11,7 +11,12 @@ import httpx
 import pytest
 
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
-from venom_core.services import chat_grounding, studio_normal_chat, verified_web
+from venom_core.services import (
+    chat_grounding,
+    polish_wikipedia,
+    studio_normal_chat,
+    verified_web,
+)
 from venom_core.services.chat_public_sources import load_public_sources
 
 
@@ -1389,6 +1394,62 @@ async def test_wikipedia_field_uses_only_attributed_infobox(
         assert expected in context.evidence.excerpt
         assert source.url in context.evidence.excerpt
         assert "Data remontu" not in context.evidence.excerpt
+
+
+@pytest.mark.asyncio
+async def test_wikipedia_field_reports_traffic_control_failure(monkeypatch):
+    source = chat_grounding.WikipediaSource(
+        "Most Grunwaldzki",
+        "https://pl.wikipedia.org/wiki/Most_Grunwaldzki",
+        "Opis",
+        "today",
+    )
+    monkeypatch.setattr(
+        chat_grounding, "search_polish_wikipedia", AsyncMock(return_value=[source])
+    )
+    headers = httpx.Response(200, json={"parse": {"revid": 7}})
+    get = AsyncMock(side_effect=[headers, RuntimeError("Outbound request blocked")])
+    monkeypatch.setattr(polish_wikipedia.TrafficControlledHttpClient, "aget", get)
+
+    result = await chat_grounding.current_chat_context(
+        "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę Mostu Grunwaldzkiego."
+    )
+
+    assert result is chat_grounding.PublicSourceUnavailable.WIKIPEDIA
+    assert get.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        ". Podaj też rok zakończenia budowy.",
+        " i kiedy zakończono budowę?",
+    ],
+)
+async def test_wikipedia_field_leaves_multi_part_questions_on_general_path(
+    monkeypatch, suffix
+):
+    source = chat_grounding.WikipediaSource(
+        "Most Grunwaldzki",
+        "https://pl.wikipedia.org/wiki/Most_Grunwaldzki",
+        "Budowa trwała od 1908 do 1910 roku.",
+        "today",
+    )
+    fetch = AsyncMock(return_value=[source])
+    section = AsyncMock()
+    monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", fetch)
+    monkeypatch.setattr(chat_grounding, "search_wikipedia_section", section)
+    question = (
+        "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę "
+        "Mostu Grunwaldzkiego" + suffix
+    )
+
+    result = await chat_grounding.current_chat_context(question)
+
+    fetch.assert_awaited_once_with(question, limit=2)
+    section.assert_not_awaited()
+    assert source.extract in result.evidence.excerpt
 
 
 @pytest.mark.asyncio

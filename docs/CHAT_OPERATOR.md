@@ -130,8 +130,14 @@ names a news topic, missing articles do not trigger a generic headline fallback.
 
 Set `ACADEMY_QUALIFIED_CHAT_ENABLED` to True to enable Academy reply checks in
 Studio and the verified calendar path. The default is False. With the flag
-off, Studio uses the ordinary chat path. With the flag on, Studio stores
-`public_source_evidence` in chat history for completed, untruncated answers.
+off, Studio uses the ordinary chat path. Studio saves verified Wikipedia
+evidence in session history even with this flag off, provided the response
+completed, contains text, and was not truncated. With notes disabled, a
+follow-up that asks about the same fact or where it came from can use the
+evidence from the immediately preceding completed turn. Studio can carry
+that evidence forward when it fits in the context and can run a fresh search
+when the user asks for one. With the flag on, completed, untruncated answers
+can also save evidence from other public sources.
 Standalone Studio at /chat2 uses the ordinary chat controls with the native
 text selector disabled.
 

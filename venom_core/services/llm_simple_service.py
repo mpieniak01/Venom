@@ -25,6 +25,14 @@ from venom_core.services.chat_grounding import (
     PUBLIC_SOURCE_BLOCK,
     is_current_news_request,
 )
+from venom_core.services.chat_policy.direct_calculator import (
+    execute_calculator,
+    plan_calculator,
+)
+from venom_core.services.chat_policy.direct_drafts import (
+    role_consent_reply,
+    short_message_hint,
+)
 from venom_core.services.chat_policy.direct_text import (
     prepare_omni_history,
     simple_system_prompt,
@@ -37,7 +45,11 @@ from venom_core.services.chat_policy.qualified_chat import (
     prepare_studio_reply,
 )
 from venom_core.services.chat_policy.qualified_chat_explanations import explanation_hint
-from venom_core.services.chat_policy.qualified_chat_fit import fit_hint
+from venom_core.services.chat_policy.qualified_chat_fit import (
+    fit_bounds_hint,
+    fit_bounds_reply,
+    fit_hint,
+)
 from venom_core.services.chat_policy.qualified_chat_options import (
     CountRequirement,
     requested_count,
@@ -153,6 +165,7 @@ _RESPONSE_PREVIEW_MAX_CHARS = 4000
 _VAST_RUNTIME_PREFIX = "ollama@vast:"
 _SSE_EVENT_START = "event: start\ndata: {}\n\n"
 _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
+_SSE_CONTENT_PREFIX = "event: content\ndata: "
 _SSE_MEDIA_TYPE = "text/event-stream"
 _NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
 httpx = llm_simple_transport.httpx_module()
@@ -1172,7 +1185,7 @@ async def _stream_simple_chunks_non_stream(
             content = qualified_reply.local_text
             _trace_first_chunk(request_id, stream_start, content)
             _trace_stream_completion(request_id, content, 1, stream_start)
-            yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+            yield _SSE_CONTENT_PREFIX + json.dumps({"text": content}) + "\n\n"
             yield _SSE_EVENT_DONE
             return
         try:
@@ -1235,7 +1248,7 @@ async def _stream_simple_chunks_non_stream(
             if content:
                 chunks.append(content)
                 _trace_first_chunk(request_id, stream_start, content)
-                yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+                yield _SSE_CONTENT_PREFIX + json.dumps({"text": content}) + "\n\n"
 
             _trace_stream_completion(
                 request_id, "".join(chunks), len(chunks), stream_start
@@ -1389,19 +1402,25 @@ def _prepare_local_direct_prompt(
     )
 
 
-def _qualified_request(request: SimpleChatRequest, runtime: LLMRuntimeInfo) -> bool:
+def _plain_text_request(request: SimpleChatRequest) -> bool:
     from venom_core.services.chat_material_payload import has_materials
 
     return (
-        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
-        and is_host_ollama(runtime)
-        and not has_materials(request)
+        not has_materials(request)
         and request.tools is None
         and request.tool_choice is None
         and request.format is None
         and request.response_format is None
         and not request.logprobs
         and request.top_logprobs is None
+    )
+
+
+def _qualified_request(request: SimpleChatRequest, runtime: LLMRuntimeInfo) -> bool:
+    return (
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        and is_host_ollama(runtime)
+        and _plain_text_request(request)
     )
 
 
@@ -1539,6 +1558,17 @@ def _qualified_stream_prompt(
     system_prompt = _apply_studio_prompt_hints(
         request, runtime, model_name, system_context, system_prompt, complete_reply
     )
+    if (
+        qualified_reply is None
+        and not request.studio_normal
+        and not system_context
+        and _plain_text_request(request)
+    ):
+        hint = short_message_hint(request.content, request.history) or fit_bounds_hint(
+            request.content, request.history
+        )
+        if hint and is_host_ollama(runtime):
+            system_prompt = "\n\n".join(filter(None, (system_prompt, hint)))
     return request, system_prompt, qualified_reply, complete_reply
 
 
@@ -1619,6 +1649,96 @@ def _stream_non_openrouter_response(
     )
 
 
+def _local_direct_stream(
+    request: SimpleChatRequest,
+    runtime: LLMRuntimeInfo,
+    model_name: str,
+    request_id: UUID,
+    reply: Callable[[], dict[str, Any]],
+) -> StreamingResponse:
+    _plain_request_history(request, runtime, "", request.content)
+
+    async def chunks() -> AsyncIterator[str]:
+        async with runtime_request_guard(
+            request_kind="simple_chat_stream",
+            provider=runtime.provider,
+            model=model_name,
+            runtime_identity=runtime.runtime_id,
+        ):
+            result = reply()
+        # Synchronous local work has finished before any stream yield can be cancelled.
+        text = result.pop("text")
+        yield _SSE_EVENT_START
+        yield (
+            _SSE_CONTENT_PREFIX
+            + json.dumps({"text": text}, ensure_ascii=False)
+            + "\n\n"
+        )
+        yield "event: done\ndata: " + json.dumps(result) + "\n\n"
+
+    return StreamingResponse(
+        chunks(),
+        media_type=_SSE_MEDIA_TYPE,
+        headers=_build_streaming_headers(str(request_id), request.session_id or ""),
+    )
+
+
+def _allows_local_direct_reply(request: SimpleChatRequest, system_context: str) -> bool:
+    configured = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    return (
+        not request.studio_normal
+        and not system_context
+        and request.max_tokens is None
+        and configured in ("", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT)
+        and _plain_text_request(request)
+    )
+
+
+def _direct_calculator_response(
+    request: SimpleChatRequest,
+    runtime: LLMRuntimeInfo,
+    model_name: str,
+    request_id: UUID,
+    system_context: str,
+) -> StreamingResponse | None:
+    if not _allows_local_direct_reply(request, system_context):
+        return None
+    history = [turn.model_dump(include={"role", "content"}) for turn in request.history]
+    plan = plan_calculator(request.content, history)
+    if plan is None or not is_host_ollama(runtime):
+        return None
+    return _local_direct_stream(
+        request, runtime, model_name, request_id, lambda: execute_calculator(plan)
+    )
+
+
+def _direct_policy_response(
+    request: SimpleChatRequest,
+    runtime: LLMRuntimeInfo,
+    model_name: str,
+    request_id: UUID,
+    system_context: str,
+) -> StreamingResponse | None:
+    if not _allows_local_direct_reply(request, system_context):
+        return None
+    text = role_consent_reply(request.content) or fit_bounds_reply(
+        request.content, request.history
+    )
+    if (
+        text is None
+        or not is_host_ollama(runtime)
+        or _prepare_qualified_reply(request, runtime, model_name) is not None
+    ):
+        return None
+    return _local_direct_stream(
+        request,
+        runtime,
+        model_name,
+        request_id,
+        lambda: {"text": text, "response_source": "direct_policy"},
+    )
+
+
 async def _stream_non_openrouter_chat(
     request: SimpleChatRequest, *, system_context: str = ""
 ):
@@ -1626,6 +1746,16 @@ async def _stream_non_openrouter_chat(
         request
     )
     request_id: UUID = uuid4()
+    calculator = _direct_calculator_response(
+        request, runtime, model_name, request_id, system_context
+    )
+    if calculator is not None:
+        return calculator
+    policy = _direct_policy_response(
+        request, runtime, model_name, request_id, system_context
+    )
+    if policy is not None:
+        return policy
     _trace_simple_request(request_id, request, runtime, model_name)
     request, system_prompt, qualified_reply, complete_reply = _qualified_stream_prompt(
         request, runtime, model_name, system_context

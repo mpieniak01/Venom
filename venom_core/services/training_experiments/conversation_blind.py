@@ -15,12 +15,23 @@ from venom_core.services.training_experiments.checkpoint_evaluation import (
     read_generation,
     verify_generation_pair,
 )
+from venom_core.services.training_experiments.conversation_numeric import (
+    fee_expectation,
+    fee_omission,
+    numeric_contradiction,
+    numeric_expectation,
+)
 from venom_core.services.training_experiments.conversation_review import (
+    _valid_verdict,
     _validate_panel,
     payload_sha,
     prepare_checkpoint_review,
     register_review_request,
     score,
+)
+from venom_core.services.training_experiments.conversation_text import (
+    text_expectation,
+    text_proof,
 )
 from venom_core.services.training_experiments.profiles import (
     digest,
@@ -167,6 +178,44 @@ def prepare_blind_package(
     )
 
 
+def _operator_criteria(case: dict) -> list[str]:
+    """Read selectively required operator judgments from the bound dataset."""
+    marked = case.get("operator_criteria", [])
+    if not isinstance(marked, list) or any(not isinstance(key, str) for key in marked):
+        raise ValueError("conversation_review_operator_criteria_invalid")
+    content = {item["id"] for item in case["criteria"] if item.get("kind") == "content"}
+    if len(marked) != len(set(marked)) or not set(marked) <= content:
+        raise ValueError("conversation_review_operator_criteria_invalid")
+    return marked
+
+
+def _blind_turn(
+    case: dict, criteria: list[str], answers: dict, *, allow_cutoff: bool
+) -> dict:
+    expected = numeric_expectation(case)
+    fee = fee_expectation(case)
+    text_rule = text_expectation(case)
+    operator_criteria = _operator_criteria(case)
+    views = {}
+    for alias, answer in answers.items():
+        view = _review_answer(answer, allow_cutoff=allow_cutoff)
+        if proof := numeric_contradiction(view, expected):
+            view["numeric_contradiction"] = proof
+        if omission := fee_omission(view, fee):
+            view["fee_omission"] = omission
+        if proof := text_proof(view, text_rule):
+            view["text_proof"] = proof
+        views[alias] = view
+    return {
+        "criteria": criteria,
+        "criterion_descriptions": {
+            criterion["id"]: criterion["description"] for criterion in case["criteria"]
+        },
+        "answers": views,
+        **({"operator_criteria": operator_criteria} if operator_criteria else {}),
+    }
+
+
 def _render_blind_package(
     panel: dict,
     cases: list[dict],
@@ -189,18 +238,16 @@ def _render_blind_package(
         turns = {}
         for turn in sorted(spec["turns"]):
             record_id = index[conversation, turn]
-            views = {}
-            for alias, arm in mapping[conversation].items():
-                answer = (parent if arm == "p13" else candidate)[record_id]["answer"]
-                views[alias] = _review_answer(answer, allow_cutoff=allow_cutoff)
-            turns[turn] = {
-                "criteria": spec["turns"][turn],
-                "criterion_descriptions": {
-                    criterion["id"]: criterion["description"]
-                    for criterion in cases_by_id[record_id]["criteria"]
-                },
-                "answers": views,
+            answers = {
+                alias: (parent if arm == "p13" else candidate)[record_id]["answer"]
+                for alias, arm in mapping[conversation].items()
             }
+            turns[turn] = _blind_turn(
+                cases_by_id[record_id],
+                spec["turns"][turn],
+                answers,
+                allow_cutoff=allow_cutoff,
+            )
         reviewer[conversation] = {"group": spec["group"], "turns": turns}
     package = {
         "panel_sha256": payload_sha(panel),
@@ -262,18 +309,21 @@ def _judgments_template(package: dict) -> dict:
         "reviewer_note": "",
         "judgments": {
             conversation: {
-                turn: {
-                    alias: {
-                        "criteria": dict.fromkeys(row["criteria"]),
-                        "critical": None,
-                    }
-                    for alias in row["answers"]
-                }
+                turn: {alias: _turn_judgment_template(row) for alias in row["answers"]}
                 for turn, row in spec["turns"].items()
             }
             for conversation, spec in package["conversations"].items()
         },
     }
+
+
+def _turn_judgment_template(row: dict) -> dict:
+    verdict = {"criteria": dict.fromkeys(row["criteria"]), "critical": None}
+    if marked := row.get("operator_criteria"):
+        verdict["operator_evidence"] = {
+            key: {"quote": "", "reason": ""} for key in marked
+        }
+    return verdict
 
 
 def register_blind_review(
@@ -358,7 +408,7 @@ def _decode_judgments(
     _require_keys(judgments, panel)
     _require_keys(aliases, panel)
     arms: dict[str, dict] = {"p13": {}, "candidate": {}}
-    for conversation, spec in panel.items():
+    for conversation, spec in package["conversations"].items():
         for verdicts in arms.values():
             verdicts[conversation] = {}
         _unblind_conversation(arms, conversation, spec, judgments, aliases)
@@ -381,8 +431,56 @@ def _unblind_conversation(
     _require_keys(turns, spec["turns"])
     for turn, verdicts in turns.items():
         _require_keys(verdicts, alias_map)
+        row = spec["turns"][turn]
         for alias, arm in alias_map.items():
-            request[arm][conversation][turn] = verdicts[alias]
+            answer = row["answers"][alias]
+            verdict = _operator_verdict(verdicts[alias], row, answer["text"])
+            request[arm][conversation][turn] = _apply_review_evidence(
+                verdict, row["criteria"], answer
+            )
+
+
+def _operator_verdict(verdict: dict, row: dict, answer: str) -> dict:
+    marked = row.get("operator_criteria")
+    if not marked:
+        return verdict
+    evidence = verdict.get("operator_evidence") if isinstance(verdict, dict) else None
+    if not isinstance(evidence, dict) or evidence.keys() != set(marked):
+        raise ValueError("conversation_review_operator_evidence_required")
+    if any(not _valid_operator_evidence(item, answer) for item in evidence.values()):
+        raise ValueError("conversation_review_operator_evidence_invalid")
+    return {key: value for key, value in verdict.items() if key != "operator_evidence"}
+
+
+def _valid_operator_evidence(item: object, answer: str) -> bool:
+    if not isinstance(item, dict) or item.keys() != {"quote", "reason"}:
+        return False
+    quote, reason = item["quote"], item["reason"]
+    return (
+        isinstance(quote, str)
+        and bool(quote.strip())
+        and quote in answer
+        and isinstance(reason, str)
+        and 1 <= len(reason.strip()) <= 600
+    )
+
+
+def _apply_review_evidence(verdict: dict, criteria: list[str], answer: dict) -> dict:
+    failed = {
+        answer[key]["criterion"]: False
+        for key in ("numeric_contradiction", "fee_omission", "text_proof")
+        if key in answer
+    }
+    if not failed or not _valid_verdict(verdict, criteria):
+        return verdict
+    return {
+        "critical": (
+            verdict["critical"]
+            or "numeric_contradiction" in answer
+            or answer.get("text_proof", {}).get("critical", False)
+        ),
+        "criteria": {**verdict["criteria"], **failed},
+    }
 
 
 def _diagnostic_manifest(run: Path) -> dict:

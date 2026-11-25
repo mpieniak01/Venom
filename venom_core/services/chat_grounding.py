@@ -111,6 +111,23 @@ _WIKI_ENTRY_TERMS = re.compile(
     r"|\badresem\s+(?:użyte|właściwe|wykorzystane)\s+hasło(?=\s*(?:[.!?]|$))",
     re.I,
 )
+_WIKI_FIELD_QUESTION = re.compile(
+    r"(?:korzystając z (?:polskiej )?Wikipedii,?\s*)?(?:podaj,?\s+)?"
+    r"(?:w (?:którym|jakim) roku (?:rozpoczęto|zaczęto) budowę\s+(?P<start>[^,.!?;\n]+)"
+    r"|w (?:którym|jakim) województwie (?:leży|znajduje się)\s+(?P<region>[^,.!?;\n]+))"
+    r"(?:[.!?]\s+(?:dołącz|podaj)\s+(?:link|odnośnik))?[.!?]?",
+    re.I,
+)
+_WIKI_FIELD_EXTRA = re.compile(
+    r"\b(?:i|oraz|a także|podaj|wymień|wyjaśnij|opisz|kiedy|ile|"
+    r"zakończono|ukończono|w (?:którym|jakim))\b",
+    re.I,
+)
+_WIKI_START_FIELD = re.compile(
+    r"^(?:Data budowy|Rozpoczęcie budowy)\n(\d{4})(?:[–—-]\d{4}|\s+r\.?)?$",
+    re.M,
+)
+_WIKI_REGION_FIELD = re.compile(r"^Województwo\n([a-ząćęłńóśźż -]{3,40})$", re.I | re.M)
 _WIKI_TOPIC_PREFIX = re.compile(
     r"^\s*(?:czym jest|co to jest|kim (?:był[ao]?|jest))\s+", re.I
 )
@@ -480,7 +497,37 @@ async def _find_wiki_unit(
     return WikiUnitEvidence(kind), sources
 
 
+async def _wiki_question_field(question: re.Match[str], policy: str) -> str:
+    """Resolve a bounded question using the infobox of the selected article."""
+    topic = (question["start"] or question["region"]).strip(' «»„”"')
+    sources = await search_polish_wikipedia(topic, limit=1)
+    if not sources:
+        return PublicSourceUnavailable.WIKIPEDIA
+    page = await search_wikipedia_section(sources[0], (), intro=True)
+    if page is None:
+        return PublicSourceUnavailable.WIKIPEDIA
+    if question["start"]:
+        match = _WIKI_START_FIELD.search(page.extract)
+        label = "Rok rozpoczęcia budowy"
+    else:
+        match = _WIKI_REGION_FIELD.search(page.extract)
+        label = "Województwo"
+    if match is None:
+        return PublicSourceUnavailable.WIKIPEDIA
+    fact = f"{label}: {match[1]}"
+    excerpt = f"[1] {page.title} | {page.url} | {fact}"
+    return PublicSourceContext(
+        policy + excerpt + "\n[/PUBLIC_SOURCES]",
+        PublicSourceEvidence("wiki", excerpt=excerpt),
+    )
+
+
 async def _wiki_context(message: str, policy: str) -> str:
+    field_question = _WIKI_FIELD_QUESTION.fullmatch(message.strip())
+    if field_question is not None and not _WIKI_FIELD_EXTRA.search(
+        field_question["start"] or field_question["region"]
+    ):
+        return await _wiki_question_field(field_question, policy)
     topic = message
     if prefix := _WIKI_TOPIC_PREFIX.match(message):
         first_question = message[prefix.end() :].split("?", 1)[0].strip()

@@ -11,7 +11,12 @@ import httpx
 import pytest
 
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
-from venom_core.services import chat_grounding, studio_normal_chat, verified_web
+from venom_core.services import (
+    chat_grounding,
+    polish_wikipedia,
+    studio_normal_chat,
+    verified_web,
+)
 from venom_core.services.chat_public_sources import load_public_sources
 
 
@@ -1341,3 +1346,182 @@ async def test_news_with_publisher_and_topic_does_not_fall_back_to_general_rss(
     )
     assert result is None
     read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("question", "topic", "html", "expected"),
+    [
+        (
+            "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę Mostu Grunwaldzkiego we Wrocławiu. Dołącz odnośnik.",
+            "Mostu Grunwaldzkiego we Wrocławiu",
+            "<table><tr><th>Data budowy</th><td>1908–1910</td></tr>"
+            "<tr><th>Data remontu</th><td>2005</td></tr></table>",
+            "Rok rozpoczęcia budowy: 1908",
+        ),
+        (
+            "Korzystając z polskiej Wikipedii, podaj w jakim województwie leży Zamek w Niedzicy. Podaj link.",
+            "Zamek w Niedzicy",
+            "<table><tr><th>Państwo</th><td>Polska</td></tr>"
+            "<tr><th>Województwo</th><td><a>małopolskie</a></td></tr>"
+            "<tr><th>Miejscowość</th><td>Niedzica-Zamek</td></tr></table>",
+            "Województwo: małopolskie",
+        ),
+        (
+            "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę Mostu Grunwaldzkiego we Wrocławiu.",
+            "Mostu Grunwaldzkiego we Wrocławiu",
+            "<table><tr><th>Data remontu</th><td>2005</td></tr></table>",
+            None,
+        ),
+    ],
+)
+async def test_wikipedia_field_uses_only_attributed_infobox(
+    monkeypatch, question, topic, html, expected
+):
+    source = chat_grounding.WikipediaSource(
+        "Przykład", "https://pl.wikipedia.org/wiki/Przykład", "Wstęp", "today"
+    )
+    fetch = AsyncMock(return_value=[source])
+    get = AsyncMock(
+        side_effect=[
+            httpx.Response(200, json={"parse": {"revid": 7}}),
+            httpx.Response(
+                200, json={"parse": {"title": source.title, "revid": 7, "text": html}}
+            ),
+        ]
+    )
+    monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", fetch)
+    monkeypatch.setattr(polish_wikipedia.TrafficControlledHttpClient, "aget", get)
+    context = await chat_grounding.current_chat_context(question)
+    fetch.assert_awaited_once_with(topic, limit=1)
+    assert get.await_count == 2
+    assert get.await_args.kwargs["params"]["section"] == "0"
+    if expected is None:
+        assert context is chat_grounding.PublicSourceUnavailable.WIKIPEDIA
+    else:
+        assert expected in context.evidence.excerpt
+        assert source.url in context.evidence.excerpt
+        assert "Data remontu" not in context.evidence.excerpt
+
+
+@pytest.mark.asyncio
+async def test_wikipedia_field_reports_traffic_control_failure(monkeypatch):
+    source = chat_grounding.WikipediaSource(
+        "Most Grunwaldzki",
+        "https://pl.wikipedia.org/wiki/Most_Grunwaldzki",
+        "Opis",
+        "today",
+    )
+    monkeypatch.setattr(
+        chat_grounding, "search_polish_wikipedia", AsyncMock(return_value=[source])
+    )
+    headers = httpx.Response(200, json={"parse": {"revid": 7}})
+    get = AsyncMock(side_effect=[headers, RuntimeError("Outbound request blocked")])
+    monkeypatch.setattr(polish_wikipedia.TrafficControlledHttpClient, "aget", get)
+
+    result = await chat_grounding.current_chat_context(
+        "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę Mostu Grunwaldzkiego."
+    )
+
+    assert result is chat_grounding.PublicSourceUnavailable.WIKIPEDIA
+    assert get.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        ". Podaj też rok zakończenia budowy.",
+        " i kiedy zakończono budowę?",
+    ],
+)
+async def test_wikipedia_field_leaves_multi_part_questions_on_general_path(
+    monkeypatch, suffix
+):
+    source = chat_grounding.WikipediaSource(
+        "Most Grunwaldzki",
+        "https://pl.wikipedia.org/wiki/Most_Grunwaldzki",
+        "Budowa trwała od 1908 do 1910 roku.",
+        "today",
+    )
+    fetch = AsyncMock(return_value=[source])
+    section = AsyncMock()
+    monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", fetch)
+    monkeypatch.setattr(chat_grounding, "search_wikipedia_section", section)
+    question = (
+        "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę "
+        "Mostu Grunwaldzkiego" + suffix
+    )
+
+    result = await chat_grounding.current_chat_context(question)
+
+    fetch.assert_awaited_once_with(question, limit=2)
+    section.assert_not_awaited()
+    assert source.extract in result.evidence.excerpt
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", [None, "Województwo: małopolskie"])
+async def test_studio_keeps_wiki_outcome_in_normal_chat_without_academy(
+    monkeypatch, outcome
+):
+    monkeypatch.setattr(studio_normal_chat.SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(
+        studio_normal_chat.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False
+    )
+    if outcome is None:
+        first = chat_grounding.PublicSourceUnavailable.WIKIPEDIA
+    else:
+        evidence = chat_grounding.PublicSourceEvidence("wiki", excerpt=outcome)
+        first = chat_grounding.PublicSourceContext(
+            "Publiczny fragment: " + outcome, evidence
+        )
+    reader = AsyncMock(return_value=first)
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", reader)
+    history = []
+    store = SimpleNamespace(get_history=lambda _: history)
+
+    async def prepare(text):
+        request = SimpleChatRequest(
+            content=text, session_id="studio", studio_normal=True
+        )
+        return await studio_normal_chat.prepare_studio_normal(
+            request, store, AsyncMock()
+        )
+
+    async def turn(utterance):
+        prepared, context = await prepare(utterance)
+        history.extend(
+            (
+                {"request_id": utterance, "role": "user", "content": utterance},
+                {
+                    "request_id": utterance,
+                    "role": "assistant",
+                    "status": "COMPLETED",
+                    "content": "Tekst odpowiedzi.",
+                    "public_source_evidence": prepared._studio_public_source_evidence,
+                },
+            )
+        )
+        return prepared, context
+
+    prepared, context = await turn("Korzystając z Wikipedii, podaj województwo zamku.")
+    expected = "wiki" if outcome else "unavailable"
+    assert prepared._studio_public_source_evidence["scope"] == expected
+    if outcome is None:
+        assert "nie udało się odczytać" in context
+    second, context = await turn(
+        "Podaj tę samą informację w jednym zdaniu, bez wyszukiwania ponownie."
+    )
+    assert (
+        second._studio_public_source_evidence == prepared._studio_public_source_evidence
+    )
+    assert (outcome or "nie dostarczył podstawy") in context
+    third, context = await prepare(
+        "Napisz, czy źródłem tej informacji był artykuł Wikipedii."
+    )
+    assert third._studio_public_scope_reply in context
+    assert (
+        "fragment hasła Wikipedii" if outcome else "nie udało się odczytać"
+    ) in context
+    assert reader.await_count == 1

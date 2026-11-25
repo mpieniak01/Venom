@@ -5,12 +5,15 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from typing import Any
 
 from venom_core.services.chat_policy.direct_distance import (
     DistanceCalculation,
     DistanceClarification,
+    execute_distance,
     plan_distance,
 )
+from venom_core.services.grounded_calculator import result_with_unit
 
 _PREFIX = re.compile(
     r"(?:oblicz|policz|użyj kalkulatora)(?:[ \t]*:[ \t]*|[ \t]+|(?=[.!]?$))",
@@ -119,3 +122,28 @@ def plan_calculator(
         if isinstance(distance, DistanceCalculation)
         else None
     )
+
+
+def execute_calculator(
+    plan: CalculatorRequest | DistanceCalculation | DistanceClarification,
+) -> dict[str, Any]:
+    """Execute and format a bounded calculation for any Direct runtime."""
+    if isinstance(plan, DistanceCalculation):
+        return execute_distance(plan)
+    if isinstance(plan, DistanceClarification):
+        return {"text": plan.text, "response_source": "calculator_clarification"}
+    receipt = result_with_unit(plan.expression, plan.unit)
+    value = receipt["value"]
+    if value is not None:
+        text = value.replace(".", ",")
+        if plan.unit:
+            text += f" {plan.unit}"
+    elif receipt["status"] == "missing_expression":
+        text = "Jakie wyrażenie mam obliczyć? Możesz też podać jednostkę."
+    else:
+        text = "Nie udało się obliczyć wyniku. Sprawdź liczby i znaki działania."
+    return {
+        "text": text,
+        "response_source": "calculator",
+        "tool_result": {"tool": "calculator", **receipt, "recomputed": plan.repeat},
+    }

@@ -30,6 +30,7 @@ class StudioSourcePlan:
     explicit_rss: bool
     scope_reply: str | None
     prior_context: str
+    retained_evidence: PublicSourceEvidence | None
 
 
 def _previous_evidence(history: list[dict[str, object]]) -> PublicSourceEvidence | None:
@@ -63,9 +64,7 @@ def plan_studio_source(
     query: str | None = grounding_follow_up(
         lookup_text_outside_quoted_task(message), previous
     )
-    prior_evidence = (
-        _previous_evidence(history_records) if local_qualification else None
-    )
+    prior_evidence = _previous_evidence(history_records) if not use_notes else None
     explicit_rss = (
         local_qualification and query is not None and is_rss_read_request(query)
     )
@@ -85,7 +84,13 @@ def plan_studio_source(
         query = rss_editorial_query(query)
     if query is not None and grounding_kind(query, use_notes=use_notes) is None:
         query = None
-    return StudioSourcePlan(query, explicit_rss, scope_reply, prior_context)
+    return StudioSourcePlan(
+        query,
+        explicit_rss,
+        scope_reply,
+        prior_context,
+        prior_evidence if prior_context else None,
+    )
 
 
 def _previous_source_context(
@@ -95,7 +100,7 @@ def _previous_source_context(
     explicit_rss: bool,
 ) -> tuple[str | None, str]:
     scope_reply = None
-    if local_qualification and asks_about_previous_scope(message) and not explicit_rss:
+    if asks_about_previous_scope(message) and not explicit_rss:
         scope_reply = previous_scope_reply(prior_evidence)
     if local_qualification and not explicit_rss and scope_reply is None:
         scope_reply = previous_verified_fact_reply(message, prior_evidence)

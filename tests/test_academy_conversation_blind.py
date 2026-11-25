@@ -32,7 +32,7 @@ def _write(path, obj):
     path.write_text(json.dumps(obj), encoding="utf-8")
 
 
-def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=()):
+def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=(), answers=None):
     path.mkdir()
     tag = f"checkpoint-{step}"
     models = {
@@ -42,6 +42,7 @@ def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=()):
             "adapter_model.safetensors": identity["weights_sha256"],
         },
     }
+    overrides = answers or {}
     mapping = blind_mapping(cases, list(models))
     raw, blind = [], []
     histories = {model: DialogueHistory() for model in models}
@@ -55,7 +56,9 @@ def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=()):
                 "model": model,
                 "label": label,
                 "response": {
-                    "text": f"Answer {model}",
+                    "text": overrides.get(
+                        (model, case["record_id"]), f"Answer {model}"
+                    ),
                     "finish": "length"
                     if model == tag and case["record_id"] in cutoffs
                     else "stop",
@@ -100,7 +103,7 @@ def _generation(path, cases, dataset_hash, identity, step, *, cutoffs=()):
 
 
 @pytest.fixture
-def input_data(tmp_path):
+def input_data(tmp_path, request):
     panel, cases = {}, []
     for i in range(96):
         conversation, group = f"C{i:03}", "SKWR"[i % 4]
@@ -123,6 +126,64 @@ def input_data(tmp_path):
                     ],
                 }
             )
+    scenario = getattr(request, "param", None)
+    parent_answers, candidate_answers = {}, {}
+    if scenario == "numeric":
+        first_numeric = cases[8]
+        first_numeric["messages"][0]["content"] = (
+            "Mam 9 arkuszy, kupuję 7, zużywam 4. Ile zostaje?"
+        )
+        first_numeric["numeric_claim"] = {
+            "criterion": "content",
+            "expression": "9 + 7 - 4",
+            "role": "remaining",
+            "unit": "arkuszy",
+        }
+        parent_answers["checkpoint-145", "C002-1"] = "Zostało 12 arkuszy."
+        candidate_answers["checkpoint-21", "C002-1"] = "Zostało 2 arkusze."
+    elif scenario == "fee":
+        cases[4]["messages"][0]["content"] = (
+            "Opłata wynosi 19 zł za komplet materiałów."
+        )
+        cases[5]["messages"][0]["content"] = (
+            "Proponuję 26 zł za komplet, ale jeszcze nie zatwierdzam. Ile obowiązuje?"
+        )
+        cases[5]["fee_state"] = {
+            "criterion": "content",
+            "binding": "19",
+            "proposed": "26",
+        }
+        parent_answers["checkpoint-145", "C001-2"] = (
+            "Obowiązuje 19 zł. Kwota 26 zł to propozycja."
+        )
+        candidate_answers["checkpoint-21", "C001-2"] = (
+            "Obowiązuje opłata 19 zł za komplet materiałów."
+        )
+    elif scenario == "operator":
+        cases[3]["operator_criteria"] = ["content"]
+        cases[12]["operator_criteria"] = ["content"]
+        parent_answers["checkpoint-145", "C000-4"] = (
+            "Pokaz „Szkło i Światło” zaczyna się o 17:40, a wstęp kosztuje 16 zł."
+        )
+        candidate_answers["checkpoint-21", "C000-4"] = (
+            "Start do Skło i Światła o 17:40 kosztuje 16 zł."
+        )
+        parent_answers["checkpoint-145", "C003-1"] = "Chmury pod Lupą\nKlub Podniebny"
+        candidate_answers["checkpoint-21", "C003-1"] = "Obserwacja Chmur, Klub Chmury"
+    elif scenario == "prose":
+        cases[8]["text_check"] = {"criterion": "content", "kind": "evaporation"}
+        cases[12]["text_check"] = {"criterion": "content", "kind": "single_draft"}
+        parent_answers["checkpoint-145", "C002-1"] = (
+            "Wiatr usuwa wilgotną warstwę przy tkaninie, więc woda szybciej paruje."
+        )
+        candidate_answers["checkpoint-21", "C002-1"] = (
+            "Wiatr przyspiesza schnięcie, ponieważ doprowadza wilgotne powietrze."
+        )
+        body = "Dzień dobry, proszę o zgodę na ustawienie gabloty przy wejściu w najbliższą sobotę. Czy mogę liczyć na odpowiedź do czwartku?"
+        parent_answers["checkpoint-145", "C003-1"] = body
+        candidate_answers["checkpoint-21", "C003-1"] = (
+            f"Prośba\n\n{body}\n\nSzkic\n\n{body}"
+        )
     dataset = tmp_path / "data.jsonl"
     dataset.write_text("".join(json.dumps(row) + "\n" for row in cases))
     parent = {
@@ -133,8 +194,22 @@ def input_data(tmp_path):
     }
     candidate = {**parent, "weights_sha256": sha256(b"candidate").hexdigest()}
     pdir, cdir = tmp_path / "parent", tmp_path / "candidate"
-    pseal = _generation(pdir, cases, digest(dataset), parent, 145)
-    _generation(cdir, cases, digest(dataset), candidate, 21)
+    pseal = _generation(
+        pdir,
+        cases,
+        digest(dataset),
+        parent,
+        145,
+        answers=parent_answers,
+    )
+    _generation(
+        cdir,
+        cases,
+        digest(dataset),
+        candidate,
+        21,
+        answers=candidate_answers,
+    )
     _write(
         cdir / "result.json",
         {
@@ -327,6 +402,359 @@ def _fill_review(submission):
         for arms in turns.values():
             for verdict in arms.values():
                 verdict.update(criteria={"content": True}, critical=False)
+
+
+@pytest.mark.parametrize("input_data", ["numeric"], indirect=True)
+def test_numeric_contradiction_blocks_blind_promotion(issued_review, tmp_path):
+    pending, output, submission, private = issued_review
+    _fill_review(submission)
+    aliases = private["aliases"]["C002"]
+    answers = read_json(output / "reviewer.json")["conversations"]["C002"]["turns"][
+        "T1"
+    ]["answers"]
+    candidate = next(alias for alias, arm in aliases.items() if arm == "candidate")
+    parent = next(alias for alias, arm in aliases.items() if arm == "p13")
+    assert answers[candidate]["numeric_contradiction"]["quote"] == "Zostało 2 arkusze."
+    assert answers[candidate]["numeric_contradiction"]["expected_value"] == "12"
+    assert "numeric_contradiction" not in answers[parent]
+
+    receipt = register_blind_review(
+        tmp_path / "experiments", pending, output, submission
+    )
+    assert receipt["status"] == "STOP"
+    assert "critical_error" in receipt["failures"]
+
+
+@pytest.mark.parametrize(
+    "text, finish, contradicted",
+    [
+        ("Razem 2,25 km.", None, False),
+        ("Łącznie 2\\u202f250 m.", None, False),
+        ("Razem 1,75 km.", None, True),
+        ("Razem 2250 zł.", None, True),
+        ("Brakuje 180 m.", None, False),
+        ("„Razem 1,75 km.”", None, False),
+        ("Razem 1,75 km. Lub 2,25 km.", None, False),
+        ("Razem 1,75 km.", "length", False),
+    ],
+)
+def test_numeric_proof_requires_complete_claim_in_the_expected_role(
+    text, finish, contradicted
+):
+    from venom_core.services.training_experiments.conversation_numeric import (
+        numeric_contradiction,
+        numeric_expectation,
+    )
+
+    case = {
+        "criteria": [{"id": "total", "kind": "content"}],
+        "numeric_claim": {
+            "criterion": "total",
+            "expression": "1400 + 850",
+            "role": "total",
+            "unit": "m",
+        },
+    }
+    expected = numeric_expectation(case)
+    assert (
+        numeric_contradiction({"text": text, "finish": finish}, expected) is not None
+    ) is contradicted
+
+
+@pytest.mark.parametrize(
+    "text, allow_bare, contradiction",
+    [
+        ("79 metrów.", True, True),
+        ("80 metrów.", True, False),
+        ("79 metrów.", False, False),
+        ("Brakuje 79 metrów.", False, True),
+        ("Razem 79 metrów.", True, False),
+        ("8 000 centymetrów.", True, False),
+        ("79 metrów. Lub 80 metrów.", True, False),
+    ],
+)
+def test_numeric_gate_binds_bare_value_only_when_rubric_allows_it(
+    text, allow_bare, contradiction
+):
+    from venom_core.services.training_experiments.conversation_numeric import (
+        numeric_contradiction,
+        numeric_expectation,
+    )
+
+    case = {
+        "criteria": [{"id": "gap", "kind": "content"}],
+        "numeric_claim": {
+            "criterion": "gap",
+            "expression": "900 - (600 + 220)",
+            "unit": "m",
+            "role": "gap",
+            "allow_bare": allow_bare,
+        },
+    }
+    assert (
+        numeric_contradiction({"text": text}, numeric_expectation(case)) is not None
+    ) is contradiction
+    case["numeric_claim"]["allow_bare"] = "true"
+    with pytest.raises(ValueError, match="numeric_rule_invalid"):
+        numeric_expectation(case)
+
+
+def test_numeric_proof_rejects_unknown_criterion():
+    from venom_core.services.training_experiments.conversation_numeric import (
+        numeric_expectation,
+    )
+
+    case = {
+        "criteria": [{"id": "total", "kind": "content"}],
+        "numeric_claim": {
+            "criterion": "other",
+            "expression": "1400 + 850",
+            "role": "total",
+            "unit": "m",
+        },
+    }
+    with pytest.raises(ValueError, match="numeric_rule_invalid"):
+        numeric_expectation(case)
+    with pytest.raises(ValueError, match="numeric_rule_invalid"):
+        numeric_expectation({**case, "numeric_claim": None})
+
+
+@pytest.mark.parametrize("input_data", ["fee"], indirect=True)
+def test_missing_fee_proposal_fails_criterion_without_raising_critical(
+    issued_review, tmp_path
+):
+    pending, output, submission, private = issued_review
+    _fill_review(submission)
+    aliases = private["aliases"]["C001"]
+    answers = read_json(output / "reviewer.json")["conversations"]["C001"]["turns"][
+        "T2"
+    ]["answers"]
+    candidate = next(alias for alias, arm in aliases.items() if arm == "candidate")
+    parent = next(alias for alias, arm in aliases.items() if arm == "p13")
+    assert answers[candidate]["fee_omission"] == {
+        "criterion": "content",
+        "present_binding_pln": "19",
+        "missing_proposed_pln": "26",
+        "quote": "Obowiązuje opłata 19 zł za komplet materiałów.",
+    }
+    assert "fee_omission" not in answers[parent]
+
+    receipt = register_blind_review(
+        tmp_path / "experiments", pending, output, submission
+    )
+    assert receipt["status"] == "STOP"
+    assert receipt["failures"] == ["parent_conversation_lost"]
+
+
+@pytest.mark.parametrize(
+    "text, finish, has_proof",
+    [
+        ("Aktualna opłata wynosi 19,00 PLN.", None, True),
+        ("Obowiązuje nadal 19 złotych.", None, True),
+        ("Obowiązuje 19 zł, a 26 zł czeka na akceptację.", None, False),
+        (
+            "Obowiązuje 19 zł. Nowa propozycja to dwadzieścia sześć złotych.",
+            None,
+            False,
+        ),
+        ("Obowiązuje 19 zł.", "length", False),
+        ("„Obowiązuje 19 zł.”", None, False),
+        ("Obowiązuje 26 zł.", None, False),
+    ],
+)
+def test_fee_omission_requires_unambiguous_binding_only_reply(text, finish, has_proof):
+    from venom_core.services.training_experiments.conversation_numeric import (
+        fee_expectation,
+        fee_omission,
+    )
+
+    rule = {"criterion": "state", "binding": "19", "proposed": "26"}
+    case = {"criteria": [{"id": "state", "kind": "content"}], "fee_state": rule}
+    expected = fee_expectation(case)
+    assert (
+        fee_omission({"text": text, "finish": finish}, expected) is not None
+    ) is has_proof
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        None,
+        {"criterion": "other", "binding": "19", "proposed": "26"},
+        {"criterion": "state", "binding": "19", "proposed": "19,00"},
+        {"criterion": "state", "binding": "-19", "proposed": "26"},
+    ],
+)
+def test_fee_proof_rejects_invalid_rule(rule):
+    from venom_core.services.training_experiments.conversation_numeric import (
+        fee_expectation,
+    )
+
+    case = {"criteria": [{"id": "state", "kind": "content"}], "fee_state": rule}
+    with pytest.raises(ValueError, match="fee_rule_invalid"):
+        fee_expectation(case)
+
+
+@pytest.mark.parametrize("input_data", ["operator"], indirect=True)
+def test_qualitative_turn_needs_operator_evidence_before_promotion(
+    issued_review, tmp_path
+):
+    pending, package_dir, submission, private = issued_review
+    _fill_review(submission)
+    package = read_json(package_dir / "reviewer.json")
+    root = tmp_path / "experiments"
+    for dialogue, turn in (("C000", "T4"), ("C003", "T1")):
+        row = package["conversations"][dialogue]["turns"][turn]
+        assert row["operator_criteria"] == ["content"]
+        for alias, arm in private["aliases"][dialogue].items():
+            verdict = submission["judgments"][dialogue][turn][alias]
+            assert verdict["operator_evidence"] == {
+                "content": {"quote": "", "reason": ""}
+            }
+            verdict["operator_evidence"]["content"] = {
+                "quote": row["answers"][alias]["text"],
+                "reason": "Użycie nazwy lub opłaty ocenione w kontekście odpowiedzi.",
+            }
+            verdict["criteria"]["content"] = arm == "p13"
+
+    alias = next(
+        label for label, arm in private["aliases"]["C003"].items() if arm == "candidate"
+    )
+    verdict = submission["judgments"]["C003"]["T1"][alias]
+    evidence = verdict.pop("operator_evidence")
+    verdict["criteria"]["content"] = True
+    with pytest.raises(ValueError, match="operator_evidence_required"):
+        register_blind_review(root, pending, package_dir, submission)
+    assert not list(root.rglob("receipt.json"))
+
+    verdict["operator_evidence"] = {
+        "content": {"quote": "Brak w odpowiedzi", "reason": "Fałszywy cytat."}
+    }
+    with pytest.raises(ValueError, match="operator_evidence_invalid"):
+        register_blind_review(root, pending, package_dir, submission)
+
+    verdict["operator_evidence"] = evidence
+    verdict["criteria"]["content"] = False
+    receipt = register_blind_review(root, pending, package_dir, submission)
+    assert receipt["status"] == "STOP"
+    assert receipt["failures"] == ["parent_conversation_lost"]
+    assert register_blind_review(root, pending, package_dir, submission) == receipt
+
+
+@pytest.mark.parametrize(
+    "markers", ["content", ["content", "content"], ["missing"], [None]]
+)
+def test_operator_review_targets_known_content_criteria(markers):
+    from venom_core.services.training_experiments.conversation_blind import (
+        _operator_criteria,
+    )
+
+    case = {
+        "criteria": [{"id": "content", "kind": "content"}],
+        "operator_criteria": markers,
+    }
+    with pytest.raises(ValueError, match="operator_criteria_invalid"):
+        _operator_criteria(case)
+
+
+@pytest.mark.parametrize("input_data", ["prose"], indirect=True)
+def test_prose_evidence_distinguishes_wrong_cause_and_repeated_draft(
+    issued_review, tmp_path
+):
+    pending, output, submission, private = issued_review
+    _fill_review(submission)
+    package = read_json(output / "reviewer.json")
+    for row_id, critical in (("C002", True), ("C003", False)):
+        views = package["conversations"][row_id]["turns"]["T1"]["answers"]
+        for alias, arm in private["aliases"][row_id].items():
+            proof = views[alias].get("text_proof")
+            if arm == "p13":
+                assert proof is None
+            else:
+                assert proof["critical"] is critical
+                assert len(proof["quotes"]) == (1 if critical else 2)
+                assert all(quote in views[alias]["text"] for quote in proof["quotes"])
+
+    receipt = register_blind_review(
+        tmp_path / "experiments", pending, output, submission
+    )
+    assert receipt["status"] == "STOP"
+    assert receipt["failures"] == ["critical_error", "parent_conversation_lost"]
+
+
+@pytest.mark.parametrize(
+    "text, finish, has_proof",
+    [
+        ("Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.", "stop", True),
+        (
+            "Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.",
+            "length",
+            False,
+        ),
+        (
+            "Wiatr przyspiesza parowanie, bo usuwa wilgotne powietrze znad parującej powierzchni.",
+            "stop",
+            False,
+        ),
+        (
+            "Nie jest prawdą, że wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.",
+            "stop",
+            False,
+        ),
+        (
+            "Woda z wilgotnej szmatki nie paruje szybciej, gdy wiatr doprowadza wilgotne powietrze, co przyspiesza schnięcie.",
+            "stop",
+            False,
+        ),
+        (
+            "Mit. Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.",
+            "stop",
+            False,
+        ),
+        (
+            "Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze. Jest ono jednak mniej wilgotne niż warstwa przy szkle.",
+            "stop",
+            False,
+        ),
+        (
+            "Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze. "
+            "Powyższe zdanie jest błędne. Wiatr usuwa wilgotne powietrze znad tkaniny.",
+            "stop",
+            False,
+        ),
+        (
+            "„Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.”",
+            "stop",
+            False,
+        ),
+    ],
+)
+def test_evaporation_proof_checks_only_explicit_affirmative_claims(
+    text, finish, has_proof
+):
+    from venom_core.services.training_experiments.conversation_text import text_proof
+
+    rule = {"criterion": "mechanism", "kind": "evaporation"}
+    assert (text_proof({"text": text, "finish": finish}, rule) is not None) is has_proof
+
+
+def test_draft_proof_does_not_treat_greetings_as_repeated_body():
+    from venom_core.services.training_experiments.conversation_text import (
+        text_expectation,
+        text_proof,
+    )
+
+    case = {"criteria": [{"id": "draft", "kind": "content"}]}
+    assert text_expectation(case) is None
+    with pytest.raises(ValueError, match="text_rule_invalid"):
+        text_expectation(
+            {**case, "text_check": {"criterion": "typo", "kind": "single_draft"}}
+        )
+    rule = text_expectation(
+        {**case, "text_check": {"criterion": "draft", "kind": "single_draft"}}
+    )
+    reply = "Dzień dobry,\n\nProszę o spotkanie w sprawie zwrotu kluczy, najlepiej w środę po południu.\n\nDzień dobry,"
+    assert text_proof({"text": reply}, rule) is None
 
 
 def _store_checkpoint(experiments, dataset, generation, binding):

@@ -30,7 +30,7 @@ _SEGMENT = re.compile(
     rf"(?<!\w){_QUANTITY}",
     re.I,
 )
-_TARGET = re.compile(rf"\bdo\s+{_QUANTITY}", re.I)
+_TARGET = re.compile(rf"\bdo\s+(?:celu\s+)?{_QUANTITY}", re.I)
 _SCOPE = re.compile(rf"\b{_SUBJECT}\s+[a-z]\b", re.I)
 _TOTAL = re.compile(
     r"\b(?:ile (?:to )?(?:razem|łącznie)|jaka (?:jest )?(?:suma|łączna długość)|"

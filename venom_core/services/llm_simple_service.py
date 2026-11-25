@@ -1663,21 +1663,34 @@ def _local_direct_stream(
             request_kind="simple_chat_stream",
             provider=runtime.provider,
             model=model_name,
+            runtime_identity=runtime.runtime_id,
         ):
             result = reply()
-            text = result.pop("text")
-            yield _SSE_EVENT_START
-            yield (
-                _SSE_CONTENT_PREFIX
-                + json.dumps({"text": text}, ensure_ascii=False)
-                + "\n\n"
-            )
-            yield "event: done\ndata: " + json.dumps(result) + "\n\n"
+        # Synchronous local work has finished before any stream yield can be cancelled.
+        text = result.pop("text")
+        yield _SSE_EVENT_START
+        yield (
+            _SSE_CONTENT_PREFIX
+            + json.dumps({"text": text}, ensure_ascii=False)
+            + "\n\n"
+        )
+        yield "event: done\ndata: " + json.dumps(result) + "\n\n"
 
     return StreamingResponse(
         chunks(),
         media_type=_SSE_MEDIA_TYPE,
         headers=_build_streaming_headers(str(request_id), request.session_id or ""),
+    )
+
+
+def _allows_local_direct_reply(request: SimpleChatRequest, system_context: str) -> bool:
+    configured = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    return (
+        not request.studio_normal
+        and not system_context
+        and request.max_tokens is None
+        and configured in ("", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT)
+        and _plain_text_request(request)
     )
 
 
@@ -1688,12 +1701,7 @@ def _direct_calculator_response(
     request_id: UUID,
     system_context: str,
 ) -> StreamingResponse | None:
-    if (
-        request.studio_normal
-        or system_context
-        or request.max_tokens is not None
-        or not _plain_text_request(request)
-    ):
+    if not _allows_local_direct_reply(request, system_context):
         return None
     history = [turn.model_dump(include={"role", "content"}) for turn in request.history]
     plan = plan_calculator(request.content, history)
@@ -1711,14 +1719,7 @@ def _direct_policy_response(
     request_id: UUID,
     system_context: str,
 ) -> StreamingResponse | None:
-    configured = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
-    if (
-        request.studio_normal
-        or system_context
-        or request.max_tokens is not None
-        or configured not in ("", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT)
-        or not _plain_text_request(request)
-    ):
+    if not _allows_local_direct_reply(request, system_context):
         return None
     text = role_consent_reply(request.content) or fit_bounds_reply(
         request.content, request.history

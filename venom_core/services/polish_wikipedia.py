@@ -148,7 +148,19 @@ class _SectionText(HTMLParser):
             if tag == "sup":
                 # Preserve exponent syntax so 10<sup>3</sup> cannot become 10.
                 self.parts.append("^")
-            elif tag in {"p", "li", "div", "br", "h2", "h3", "dt", "dd", "tr"}:
+            elif tag in {
+                "p",
+                "li",
+                "div",
+                "br",
+                "h2",
+                "h3",
+                "dt",
+                "dd",
+                "tr",
+                "th",
+                "td",
+            }:
                 self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:

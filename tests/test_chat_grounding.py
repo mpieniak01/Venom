@@ -1350,44 +1350,52 @@ async def test_news_with_publisher_and_topic_does_not_fall_back_to_general_rss(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("question", "topic", "extract", "expected"),
+    ("question", "topic", "html", "expected"),
     [
         (
             "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę Mostu Grunwaldzkiego we Wrocławiu. Dołącz odnośnik.",
             "Mostu Grunwaldzkiego we Wrocławiu",
-            "Data budowy\n1908–1910\nData remontu\n2005",
+            "<table><tr><th>Data budowy</th><td>1908–1910</td></tr>"
+            "<tr><th>Data remontu</th><td>2005</td></tr></table>",
             "Rok rozpoczęcia budowy: 1908",
         ),
         (
             "Korzystając z polskiej Wikipedii, podaj w jakim województwie leży Zamek w Niedzicy. Podaj link.",
             "Zamek w Niedzicy",
-            "Państwo\nPolska\nWojewództwo\nmałopolskie\nMiejscowość\nNiedzica-Zamek",
+            "<table><tr><th>Państwo</th><td>Polska</td></tr>"
+            "<tr><th>Województwo</th><td><a>małopolskie</a></td></tr>"
+            "<tr><th>Miejscowość</th><td>Niedzica-Zamek</td></tr></table>",
             "Województwo: małopolskie",
         ),
         (
             "Korzystając z polskiej Wikipedii, podaj w którym roku rozpoczęto budowę Mostu Grunwaldzkiego we Wrocławiu.",
             "Mostu Grunwaldzkiego we Wrocławiu",
-            "Data remontu\n2005",
+            "<table><tr><th>Data remontu</th><td>2005</td></tr></table>",
             None,
         ),
     ],
 )
 async def test_wikipedia_field_uses_only_attributed_infobox(
-    monkeypatch, question, topic, extract, expected
+    monkeypatch, question, topic, html, expected
 ):
     source = chat_grounding.WikipediaSource(
         "Przykład", "https://pl.wikipedia.org/wiki/Przykład", "Wstęp", "today"
     )
-    page = chat_grounding.WikipediaSource(
-        source.title, source.url, extract, source.retrieved_at
-    )
     fetch = AsyncMock(return_value=[source])
-    section = AsyncMock(return_value=page)
+    get = AsyncMock(
+        side_effect=[
+            httpx.Response(200, json={"parse": {"revid": 7}}),
+            httpx.Response(
+                200, json={"parse": {"title": source.title, "revid": 7, "text": html}}
+            ),
+        ]
+    )
     monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", fetch)
-    monkeypatch.setattr(chat_grounding, "search_wikipedia_section", section)
+    monkeypatch.setattr(polish_wikipedia.TrafficControlledHttpClient, "aget", get)
     context = await chat_grounding.current_chat_context(question)
     fetch.assert_awaited_once_with(topic, limit=1)
-    section.assert_awaited_once_with(source, (), intro=True)
+    assert get.await_count == 2
+    assert get.await_args.kwargs["params"]["section"] == "0"
     if expected is None:
         assert context is chat_grounding.PublicSourceUnavailable.WIKIPEDIA
     else:

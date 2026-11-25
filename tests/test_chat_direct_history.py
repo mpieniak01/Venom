@@ -1241,7 +1241,15 @@ def test_studio_keeps_link_only_history_when_the_assistant_url_is_omitted(tmp_pa
 def test_ollama_direct_calculator_persists_verified_receipt_without_academy(
     monkeypatch, tmp_path
 ):
+    from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT
+
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS,
+        "SIMPLE_MODE_SYSTEM_PROMPT",
+        DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT,
+    )
     runtime = SimpleNamespace(
+        runtime_id="ollama-test",
         provider="ollama",
         model_name="gemma4:12b-it-q4_K_M",
         endpoint="http://127.0.0.1:11434/v1",
@@ -1504,6 +1512,7 @@ def test_local_direct_verifies_limits_and_renders_the_explicit_role_switch(
     from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT
 
     runtime = SimpleNamespace(
+        runtime_id="ollama-test",
         provider="ollama",
         model_name="local-model",
         endpoint="http://127.0.0.1:11434/v1",
@@ -1698,8 +1707,9 @@ def test_fit_hint_requests_one_dimension_only_for_a_standalone_request():
         ),
     ],
 )
-def test_direct_fast_paths_preserve_explicit_provider_token_limit(
-    monkeypatch, tmp_path, content
+@pytest.mark.parametrize("custom_prompt", [None, "Answer every question in English."])
+def test_direct_fast_paths_respect_explicit_model_settings(
+    monkeypatch, tmp_path, content, custom_prompt
 ):
     from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT
 
@@ -1723,8 +1733,9 @@ def test_direct_fast_paths_preserve_explicit_provider_token_limit(
     monkeypatch.setattr(
         llm_simple_service.SETTINGS,
         "SIMPLE_MODE_SYSTEM_PROMPT",
-        DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT,
+        custom_prompt or DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT,
     )
+    settings = {} if custom_prompt else {"max_tokens": 1}
     sent = []
 
     async def provider_stream(*, payload, **kwargs):
@@ -1737,9 +1748,38 @@ def test_direct_fast_paths_preserve_explicit_provider_token_limit(
     store = SessionStore(str(tmp_path / "direct-token-limit.json"))
     with TestClient(application(store)) as client:
         response = client.post(
-            "/api/v1/llm/simple/stream", json={"content": content, "max_tokens": 1}
+            "/api/v1/llm/simple/stream", json={"content": content, **settings}
         )
     assert response.status_code == 200
     assert len(sent) == 1
-    assert sent[0]["max_tokens"] == 1
+    if custom_prompt:
+        assert custom_prompt in sent[0]["messages"][0]["content"]
+    else:
+        assert sent[0]["max_tokens"] == 1
     assert event("content", {"text": "OK"}) in response.text
+
+
+@pytest.mark.asyncio
+async def test_closing_a_local_direct_stream_releases_runtime_admission(monkeypatch):
+    from venom_core.services.runtime_admission import get_runtime_admission
+
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "RUNTIME_ADMISSION_ENABLED", True)
+    admission = get_runtime_admission()
+    runtime = SimpleNamespace(provider="ollama", runtime_id="ollama-test")
+
+    def reply():
+        assert admission.snapshot()["active_operations"] == 1
+        return {"text": "126", "response_source": "calculator"}
+
+    response = llm_simple_service._local_direct_stream(
+        SimpleChatRequest(content="Oblicz 14 × 9"), runtime, "gemma", uuid4(), reply
+    )
+    iterator = response.body_iterator
+    try:
+        assert await anext(iterator) == event("start", {})
+        assert await anext(iterator) == event("content", {"text": "126"})
+    finally:
+        await iterator.aclose()
+    assert admission.snapshot()["status"] == "available"
+    assert admission.snapshot()["active_operations"] == 0
+    admission.assert_host_available()

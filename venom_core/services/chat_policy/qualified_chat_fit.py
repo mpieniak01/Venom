@@ -20,7 +20,7 @@ _DIMENSIONS = re.compile(
     re.I,
 )
 _LENGTH = re.compile(rf"(?<![\w.,+\-]){_NUMBER}\s*{_UNIT}", re.I)
-_SPLIT_NUMBER = re.compile(r"[0-9][ \t\u00a0\u202f]+[0-9]")
+_SPLIT_NUMBER = re.compile(r"\d[ \t\u00a0\u202f]+\d", re.ASCII)
 _THIRD_AXIS = re.compile(rf"\s*(?:na\b|[×x])\s*{_NUMBER}", re.I)
 _SIDE = re.compile(
     rf"\b(?P<side>dłuższ|krótsz)y\s+bok\s+(?:ma|mierzy|wynosi|to)\s+"
@@ -169,9 +169,7 @@ _MAXIMUM = re.compile(r"\b(?:co najwyżej|maksimum|maksymaln\w*|najwyżej)\b", r
 _INTERNAL = re.compile(r"\b(?:wewnątrz|wewnętrzn\w*|w środku)\b", re.I)
 _AXIS_STEM = r"długo|szeroko|wysoko|głęboko"
 _AXIS = re.compile(rf"\b({_AXIS_STEM})(?:ść|ści)\b", re.I)
-_CLAUSE_END = re.compile(
-    r"[;!?\n]|\.(?=\s|$)|(?:,\s*|(?<!\s)\s+)(?:a|natomiast)\s+", re.I
-)
+_CLAUSE_END = re.compile(r"[;!?\n]|\.(?!\S)|(?<=[,\s])(?:a|natomiast)(?=\s)", re.I)
 _BOUND_CORRECTION = re.compile(r"^\s*(?:korekta|poprawka|zmiana)\s*:", re.I)
 _EXTERIOR_MEASURE = re.compile(
     rf"(?:(?P<question>czy)\s+(?:sam[ao]?\s+)?)?"
@@ -230,32 +228,30 @@ def _axis_labels(text: str) -> set[str]:
     return {_AXIS_LABELS[axis.casefold()] for axis in _AXIS.findall(text)}
 
 
-def _literal_bound(clause: str) -> Bound | None:
+def _bound_from_clause(clause: str) -> Bounds | None:
+    minimum = _MINIMUM.search(clause) and _INTERNAL.search(clause)
+    maximum = _MAXIMUM.search(clause) and _EXTERNAL.search(clause)
+    if not (minimum or maximum):
+        return {}
+    if (minimum and maximum) or _NON_LITERAL_BOUND.search(clause):
+        return None
+    if _CARRY_BOUND.search(clause) and not _LENGTH.search(clause):
+        return {}
     axes = _axis_labels(clause)
     length = _one_measurement(_LENGTH, clause)
     if length is None or len(axes) != 1:
         return None
-    return axes.pop(), length[0]
+    side = "minimum" if minimum else "maximum"
+    return {side: (axes.pop(), length[0])}
 
 
 def _fit_bounds(text: str) -> Bounds | None:
     bounds: Bounds = {}
     for clause in _CLAUSE_END.split(text):
-        minimum = bool(_MINIMUM.search(clause) and _INTERNAL.search(clause))
-        maximum = bool(_MAXIMUM.search(clause) and _EXTERNAL.search(clause))
-        if minimum and maximum:
+        parsed = _bound_from_clause(clause)
+        if parsed is None or bounds.keys() & parsed.keys():
             return None
-        if not (minimum or maximum):
-            continue
-        if _NON_LITERAL_BOUND.search(clause):
-            return None
-        if _CARRY_BOUND.search(clause) and not _LENGTH.search(clause):
-            continue
-        side = "minimum" if minimum else "maximum"
-        bound = _literal_bound(clause)
-        if bound is None or side in bounds:
-            return None
-        bounds[side] = bound
+        bounds.update(parsed)
     return bounds
 
 
@@ -267,7 +263,8 @@ def _visible_bounds(text: str) -> Bounds | None:
     ):
         return None
     for clause in _CLAUSE_END.split(text):
-        if _EXTRA_TASK.search(clause) and not _FIT_COMMAND.fullmatch(clause):
+        command = clause.rstrip().removesuffix(",")
+        if _EXTRA_TASK.search(clause) and not _FIT_COMMAND.fullmatch(command):
             return None
         if _CANCEL_BOUND.search(clause) and (
             any(

@@ -635,8 +635,10 @@ def test_bolt_session_stops_before_loading_when_gpu_memory_is_too_small(
 
 
 def test_attention_implementation_is_selected_by_model_variant():
-    assert training_worker._attention_implementation(E4B_MODEL) == {
+    e4b_attention = {
         "": "sdpa",
         "audio_config": "eager",
     }
-    assert training_worker._attention_implementation(BOLT_MODEL) == "sdpa"
+    assert training_worker._attention_implementation(E4B_MODEL) == e4b_attention
+    assert training_worker._attention_implementation(BOLT_MODEL) == e4b_attention
+    assert training_worker._attention_implementation(MODEL) == "sdpa"

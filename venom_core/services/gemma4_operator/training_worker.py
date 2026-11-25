@@ -237,7 +237,7 @@ def _validate_gpu_memory(profile: GemmaTrainingRecipe, hardware: dict) -> None:
 
 
 def _attention_implementation(model: str) -> dict[str, str] | str:
-    if model == E4B_MODEL:
+    if model in {E4B_MODEL, BOLT_MODEL}:
         return {"": "sdpa", "audio_config": "eager"}
     return "sdpa"
 
@@ -291,7 +291,7 @@ class GemmaSession(Session):
                 trust_remote_code=False,
                 dtype=torch.bfloat16,
                 device_map={"": 0},
-                # The E4B architecture's audio tower rejects SDPA for text-only training.
+                # Both E4B variants expose an audio config that rejects SDPA.
                 # Unified 12B keeps its native SDPA configuration.
                 attn_implementation=_attention_implementation(profile.model),
                 **kwargs,

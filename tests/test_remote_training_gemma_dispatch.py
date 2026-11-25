@@ -1,12 +1,25 @@
 """Common remote dispatch contracts without a GPU, provider or child execution."""
 
+import hashlib
 import json
+import sys
+from contextlib import nullcontext
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from venom_core.services.gemma4_operator import training
-from venom_core.services.gemma4_operator.profile import E4B_MODEL, MODEL
+from venom_core.services.gemma4_operator import training, training_worker
+from venom_core.services.gemma4_operator.profile import (
+    BOLT_MODEL,
+    BOLT_SNAPSHOT_FILES,
+    BOLT_WEIGHT_BYTES,
+    E4B_MODEL,
+    MODEL,
+    MODEL_LOADERS,
+    PINNED_REVISIONS,
+    GemmaProfile,
+)
 from venom_core.services.granite_operator import engine
 from venom_core.services.granite_operator.contract import (
     TrainingProfile,
@@ -17,11 +30,45 @@ from venom_core.services.granite_operator.contract import (
 from venom_core.services.remote_training import artifacts, host, worker, worker_support
 
 GRANITE = "ibm-granite/granite-4.2-3b"
-GEMMA_MODELS = (MODEL, E4B_MODEL)
+GEMMA_MODELS = (MODEL, E4B_MODEL, BOLT_MODEL)
 
 
 def fail_granite(*args, **kwargs):
     pytest.fail("Gemma flow incorrectly selected a Granite-only contract")
+
+
+def _bolt_recipe():
+    return training.GemmaTrainingRecipe(
+        model=BOLT_MODEL,
+        revision=PINNED_REVISIONS[BOLT_MODEL],
+        context=512,
+        quantization="bf16",
+    )
+
+
+def _bolt_profile_snapshot(snapshot: Path) -> GemmaProfile:
+    snapshot.mkdir()
+    contents = dict.fromkeys(BOLT_SNAPSHOT_FILES, "{}")
+    contents["chat_template.jinja"] = "fixture template"
+    contents["config.json"] = json.dumps(
+        {
+            "architectures": [MODEL_LOADERS[BOLT_MODEL]],
+            "text_config": {"max_position_embeddings": 512},
+        }
+    )
+    for name, content in contents.items():
+        (snapshot / name).write_text(content)
+    return GemmaProfile(
+        model=BOLT_MODEL,
+        revision=PINNED_REVISIONS[BOLT_MODEL],
+        loader=MODEL_LOADERS[BOLT_MODEL],
+        context=512,
+        enable_thinking=False,
+        files={
+            name: hashlib.sha256(content.encode()).hexdigest()
+            for name, content in contents.items()
+        },
+    )
 
 
 def smoke_evidence(root):
@@ -150,8 +197,9 @@ def test_proof_reuse_checks_real_gemma_artifacts_and_rejects_changed_model(
 
 
 @pytest.mark.parametrize("model", (*GEMMA_MODELS, GRANITE))
+@pytest.mark.parametrize("execution", ("local", "remote"))
 def test_run_stage_selects_actual_module_with_offline_environment_and_parent_lease(
-    tmp_path, monkeypatch, model
+    tmp_path, monkeypatch, model, execution
 ):
     result = tmp_path / "result"
     (result / "logs").mkdir(parents=True)
@@ -163,6 +211,7 @@ def test_run_stage_selects_actual_module_with_offline_environment_and_parent_lea
         "worker_python": "/qualified/bin/python",
         "admission_db": "/operator/admission.sqlite3",
         "code_root": "/reviewed/source",
+        "execution": execution,
     }
     request = {
         "stage": "smoke-first",
@@ -180,6 +229,7 @@ def test_run_stage_selects_actual_module_with_offline_environment_and_parent_lea
             return 0
 
     monkeypatch.setenv("REMOTE_TRAINING_GPU_LOCK_FD", "23")
+    monkeypatch.setenv("VENOM_GEMMA_LOCAL_NF4", "inherited")
     monkeypatch.setattr(worker.subprocess, "Popen", Child)
     children = []
     actual = worker.run_stage(
@@ -206,9 +256,24 @@ def test_run_stage_selects_actual_module_with_offline_environment_and_parent_lea
     assert kwargs["pass_fds"] == (23,)
     assert kwargs["env"]["HF_HUB_OFFLINE"] == "1"
     assert kwargs["env"]["TRANSFORMERS_OFFLINE"] == "1"
+    assert kwargs["env"]["VENOM_GEMMA_LOCAL_NF4"] == (
+        "1" if execution == "local" else "0"
+    )
     assert kwargs["env"]["VENOM_GRANITE_RUN_ID"] == "job-1"
     assert kwargs["env"]["PYTHONPATH"] == host_config["code_root"]
     assert json.loads((result / "smoke-first.request.json").read_text()) == request
+
+
+def test_local_nf4_preparation_applies_only_to_gemma_12b(monkeypatch):
+    monkeypatch.setenv("VENOM_GEMMA_LOCAL_NF4", "1")
+    for model in GEMMA_MODELS:
+        for precision in ("nf4", "bf16"):
+            recipe = training.GemmaTrainingRecipe(model=model, quantization=precision)
+            assert training_worker._local_nf4_memory(recipe) == (
+                model == MODEL and precision == "nf4"
+            )
+    monkeypatch.setenv("VENOM_GEMMA_LOCAL_NF4", "0")
+    assert not training_worker._local_nf4_memory(training.GemmaTrainingRecipe())
 
 
 @pytest.mark.parametrize("model", GEMMA_MODELS)
@@ -373,3 +438,207 @@ def test_result_inspection_accepts_large_encoded_manifest(tmp_path):
     result = _document(tmp_path, path.name, errors)
     assert len(result["data"]) == 65 * 1024**2
     assert errors == []
+
+
+def test_bolt_execution_identity_uses_pinned_weight_hashes(tmp_path, monkeypatch):
+    snapshot = tmp_path / PINNED_REVISIONS[BOLT_MODEL]
+    profile = _bolt_profile_snapshot(snapshot)
+    recipe = training.GemmaTrainingRecipe.for_profile(profile)
+    hashes = {"model-00001-of-00001.safetensors": "a" * 64}
+    monkeypatch.setattr(training, "snapshot_weight_hashes", lambda path, model: hashes)
+    monkeypatch.setattr(training, "inspect_dependencies", lambda: {"status": "PASS"})
+
+    identity = training.execution_identity(
+        profile,
+        recipe,
+        {"encoded_release_sha256": "b" * 64},
+        snapshot,
+    )
+
+    assert identity["weights"] == hashes
+    assert identity["model_profile"]["model"] == BOLT_MODEL
+
+
+def test_bolt_snapshot_rejects_unpinned_weight_shards(tmp_path):
+    first = "model-00001-of-00001.safetensors"
+    second = "model-frozen-shared-kv.safetensors"
+    (tmp_path / first).write_bytes(b"unqualified weights")
+    (tmp_path / second).write_bytes(b"unqualified shared weights")
+    (tmp_path / "model.safetensors.index.json").write_text(
+        json.dumps({"weight_map": {"first": first, "shared": second}})
+    )
+
+    with pytest.raises(ValueError, match="bolt_training_shard_hash_mismatch"):
+        training.snapshot_weight_hashes(tmp_path, BOLT_MODEL)
+
+
+def test_bolt_structure_inspection_uses_native_loader_and_meta_tensors(monkeypatch):
+    class FakeParameter:
+        def __init__(self, requires_grad=False):
+            self.device = SimpleNamespace(type="meta")
+            self.requires_grad = requires_grad
+
+        def numel(self):
+            return 8
+
+    module_names = [
+        f"model.language_model.layers.0.self_attn.{name}"
+        for name in ("q_proj", "k_proj", "v_proj", "o_proj")
+    ]
+
+    class FakeModel:
+        def __init__(self, config):
+            self.config = config
+            self.base_parameter = FakeParameter()
+
+        def named_modules(self):
+            return [(name, self) for name in module_names]
+
+        def parameters(self):
+            return [self.base_parameter]
+
+    class FakeAdapted:
+        def __init__(self, model):
+            self.model = model
+            self.lora_parameter = FakeParameter(requires_grad=True)
+
+        def parameters(self):
+            return [self.model.base_parameter, self.lora_parameter]
+
+        def named_parameters(self):
+            return [
+                ("base.weight", self.model.base_parameter),
+                ("base.lora_A", self.lora_parameter),
+            ]
+
+    config = SimpleNamespace(
+        architectures=[MODEL_LOADERS[BOLT_MODEL]],
+        text_config=SimpleNamespace(num_hidden_layers=1),
+    )
+    transformers = ModuleType("transformers")
+    transformers.AutoConfig = SimpleNamespace(
+        from_pretrained=lambda *args, **kwargs: config
+    )
+    transformers.Gemma4ForConditionalGeneration = FakeModel
+    peft = ModuleType("peft")
+    peft.LoraConfig = lambda **kwargs: kwargs
+    peft.get_peft_model = lambda model, config: FakeAdapted(model)
+    accelerate = ModuleType("accelerate")
+    accelerate.init_empty_weights = lambda **kwargs: nullcontext()
+    monkeypatch.setitem(sys.modules, "transformers", transformers)
+    monkeypatch.setitem(sys.modules, "peft", peft)
+    monkeypatch.setitem(sys.modules, "accelerate", accelerate)
+
+    result = training_worker.inspect_structure(Path("snapshot"), _bolt_recipe())
+
+    assert result["loader"] == "FakeModel"
+    assert result["target_modules"] == sorted(module_names)
+    assert result["parameter_count"] == 8
+    assert result["model_weights_loaded"] is False
+    assert result["meta_lora_rank"] == _bolt_recipe().rank
+    assert result["gpu_qualified"] is False
+
+
+def test_local_nf4_weight_reader_rewrites_only_the_pinned_file_and_restores(
+    tmp_path, monkeypatch
+):
+    modeling_utils = SimpleNamespace(
+        safe_open=lambda filename, *args, **kwargs: kwargs["backend"]
+    )
+    transformers = ModuleType("transformers")
+    transformers.modeling_utils = modeling_utils
+    monkeypatch.setitem(sys.modules, "transformers", transformers)
+    target = tmp_path / "model.safetensors"
+    other = tmp_path / "other.safetensors"
+    original = modeling_utils.safe_open
+
+    with training_worker._pread_local_weights(tmp_path):
+        assert modeling_utils.safe_open(target, backend="mmap") == "pread"
+        assert modeling_utils.safe_open(other, backend="mmap") == "mmap"
+        assert modeling_utils.safe_open(target, backend="pread") == "pread"
+    assert modeling_utils.safe_open is original
+
+    def fail_during_read():
+        with training_worker._pread_local_weights(tmp_path):
+            raise RuntimeError("restore")
+
+    with pytest.raises(RuntimeError, match="restore"):
+        fail_during_read()
+    assert modeling_utils.safe_open is original
+
+
+def test_local_nf4_preparation_freezes_base_and_checks_architecture():
+    class FakeBase:
+        is_loaded_in_4bit = True
+        config = SimpleNamespace(
+            text_config=SimpleNamespace(model_type="gemma4_unified_text")
+        )
+
+        def __init__(self):
+            self.gradient_options = None
+            self.requires_grad_value = None
+
+        def requires_grad_(self, value):
+            self.requires_grad_value = value
+
+        def gradient_checkpointing_enable(self, **kwargs):
+            self.gradient_options = kwargs
+
+    base = FakeBase()
+    training_worker._prepare_local_nf4(base, gradient_checkpointing=True)
+    assert base.requires_grad_value is False
+    assert base.gradient_options == {
+        "gradient_checkpointing_kwargs": {"use_reentrant": False}
+    }
+
+    without_checkpointing = FakeBase()
+    training_worker._prepare_local_nf4(
+        without_checkpointing, gradient_checkpointing=False
+    )
+    assert without_checkpointing.gradient_options is None
+
+    invalid = FakeBase()
+    invalid.is_loaded_in_4bit = False
+    with pytest.raises(RuntimeError, match="gemma_local_nf4_model_mismatch"):
+        training_worker._prepare_local_nf4(invalid, gradient_checkpointing=False)
+
+
+def test_bolt_session_stops_before_loading_when_gpu_memory_is_too_small(
+    tmp_path, monkeypatch
+):
+    torch = ModuleType("torch")
+    torch.manual_seed = lambda seed: None
+    torch.cuda = SimpleNamespace(manual_seed_all=lambda seed: None)
+    torch.bfloat16 = object()
+    peft = ModuleType("peft")
+    peft.PeftModel = object
+    peft.get_peft_model = lambda *args, **kwargs: None
+    peft.prepare_model_for_kbit_training = lambda *args, **kwargs: None
+    transformers = ModuleType("transformers")
+    transformers.AutoTokenizer = object
+    transformers.BitsAndBytesConfig = object
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "peft", peft)
+    monkeypatch.setitem(sys.modules, "transformers", transformers)
+    monkeypatch.setattr(training_worker, "require_owner", lambda: None)
+    monkeypatch.setattr(
+        training_worker,
+        "probe_runtime",
+        lambda: {"gpu_memory": BOLT_WEIGHT_BYTES - 1},
+    )
+    recipe = _bolt_recipe()
+
+    with pytest.raises(
+        RuntimeError, match="bolt_training_gpu_memory_below_weight_size"
+    ):
+        training_worker.GemmaSession(recipe, tmp_path)
+
+
+def test_attention_implementation_is_selected_by_model_variant():
+    e4b_attention = {
+        "": "sdpa",
+        "audio_config": "eager",
+    }
+    assert training_worker._attention_implementation(E4B_MODEL) == e4b_attention
+    assert training_worker._attention_implementation(BOLT_MODEL) == e4b_attention
+    assert training_worker._attention_implementation(MODEL) == "sdpa"

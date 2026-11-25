@@ -18,6 +18,10 @@ from venom_core.services.gemma4_operator.identity import (
 )
 from venom_core.services.gemma4_operator.material import digest, prepare_material
 from venom_core.services.gemma4_operator.profile import (
+    BOLT_MODEL,
+    BOLT_SNAPSHOT_FILES,
+    E4B_MODEL,
+    MODEL,
     MODEL_LOADERS,
     PINNED_REVISIONS,
     SNAPSHOT_FILES,
@@ -121,7 +125,7 @@ def _encoded(prepared, profile):
     return result
 
 
-@pytest.fixture(params=sorted(MODEL_LOADERS))
+@pytest.fixture(params=sorted((MODEL, E4B_MODEL)))
 def inputs(request, tmp_path, monkeypatch):
     monkeypatch.setenv("GEMMA_OPERATOR_DATA_ROOT", str(tmp_path))
     model = request.param
@@ -535,3 +539,114 @@ def test_evaluation_pack_race_cannot_publish_a_ready_report(inputs, monkeypatch)
     with pytest.raises(ValueError, match="changed_during_pack"):
         _run(inputs, evaluation_cases=path)
     assert not (inputs["tmp"] / "session/preflight.json").exists()
+
+
+def test_bolt_smoke_has_reviewed_bf16_identity_without_ollama(tmp_path, monkeypatch):
+    monkeypatch.setenv("GEMMA_OPERATOR_DATA_ROOT", str(tmp_path))
+    revision = PINNED_REVISIONS[BOLT_MODEL]
+    snapshot = tmp_path / revision
+    snapshot.mkdir()
+    contents = dict.fromkeys(BOLT_SNAPSHOT_FILES, "{}")
+    contents["chat_template.jinja"] = "fixture template"
+    contents["config.json"] = json.dumps(
+        {
+            "architectures": [MODEL_LOADERS[BOLT_MODEL]],
+            "text_config": {"max_position_embeddings": 512},
+        }
+    )
+    for name, value in contents.items():
+        (snapshot / name).write_text(value)
+    profile = GemmaProfile(
+        model=BOLT_MODEL,
+        revision=revision,
+        loader=MODEL_LOADERS[BOLT_MODEL],
+        context=512,
+        enable_thinking=False,
+        files={
+            name: hashlib.sha256(value.encode()).hexdigest()
+            for name, value in contents.items()
+        },
+    )
+    prepared = prepare_material(
+        {split: [_canonical(split)] for split in ("train", "validation", "holdout")}
+    )
+    encoded = tmp_path / "bolt-encoded.json"
+    _write(encoded, _encoded(prepared, profile))
+    with pytest.raises(ValueError, match="bolt_training_bf16_required"):
+        GemmaTrainingRecipe.for_profile(profile, quantization="nf4")
+    with pytest.raises(ValueError, match="gemma_binding_model_unqualified"):
+        bind_ollama(profile, {}, {})
+    output = tmp_path / "smoke"
+    report = preparation.prepare_bolt_smoke(
+        encoded,
+        profile,
+        output,
+        snapshot=snapshot,
+        run_id="bolt-smoke",
+        max_seconds=1200,
+    )
+    recipe = json.loads((output / "input/profile.json").read_text())
+    assert recipe["model"] == BOLT_MODEL
+    assert recipe["quantization"] == "bf16"
+    assert report["status"] == "SMOKE_PACKAGE_PREPARED"
+    assert not report["gpu_qualified"]
+    assert not report["training_started"]
+    assert "ollama_binding_sha256" not in report["identity"]
+    archive = output / "input.zip"
+    manifest = verify_bundle(
+        archive, expected_identity=report["identity"], expected_run_id="bolt-smoke"
+    )
+    assert set(manifest["files"]) == {"profile.json", "data-manifest.json"}
+    with zipfile.ZipFile(archive) as packed:
+        assert all(
+            CANARY.encode() not in packed.read(name) for name in packed.namelist()
+        )
+    (snapshot / "model.safetensors.index.json").write_text("changed")
+    with pytest.raises(ValueError, match="gemma_snapshot_hash_mismatch"):
+        preparation.prepare_bolt_smoke(
+            encoded,
+            profile,
+            tmp_path / "invalid",
+            snapshot=snapshot,
+            run_id="bolt-smoke",
+            max_seconds=1200,
+        )
+    assert not (tmp_path / "invalid").exists()
+
+
+def test_bolt_smoke_rejects_another_model_before_preparation(inputs, tmp_path):
+    with pytest.raises(ValueError, match="bolt_smoke_profile_required"):
+        preparation.prepare_bolt_smoke(
+            inputs["encoded_path"],
+            inputs["profile"],
+            tmp_path / "wrong-model",
+            snapshot=inputs["snapshot"],
+            run_id="bolt-smoke",
+            max_seconds=1200,
+        )
+
+
+def test_bolt_smoke_rejects_snapshot_revision_before_reading_encoded_data(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("GEMMA_OPERATOR_DATA_ROOT", str(tmp_path))
+    profile = GemmaProfile(
+        model=BOLT_MODEL,
+        revision=PINNED_REVISIONS[BOLT_MODEL],
+        loader=MODEL_LOADERS[BOLT_MODEL],
+        context=512,
+        enable_thinking=False,
+        files={name: "0" * 64 for name in BOLT_SNAPSHOT_FILES},
+    )
+    snapshot = tmp_path / "wrong-revision"
+    snapshot.mkdir()
+
+    with pytest.raises(ValueError, match="snapshot_revision_mismatch"):
+        preparation.prepare_bolt_smoke(
+            tmp_path / "missing-encoded.json",
+            profile,
+            tmp_path / "wrong-revision-output",
+            snapshot=snapshot,
+            run_id="bolt-smoke",
+            max_seconds=1200,
+        )

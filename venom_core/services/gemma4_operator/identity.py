@@ -24,7 +24,9 @@ def bind_ollama(
     profile.validate()
     if not isinstance(model, dict) or not isinstance(observed, dict):
         raise ValueError("gemma_binding_metadata_invalid")
-    tag = MODEL_TAGS[profile.model]
+    tag = MODEL_TAGS.get(profile.model)
+    if tag is None:
+        raise ValueError("gemma_binding_model_unqualified")
     if model.get("name") != tag:
         raise ValueError("gemma_binding_explicit_variant_tag_required")
     raw_digest = model.get("digest")

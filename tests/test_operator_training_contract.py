@@ -176,7 +176,7 @@ def prepared(monkeypatch, tmp_path, profile):
     monkeypatch.setattr(
         worker,
         "inspect_structure",
-        lambda path: {
+        lambda path, selected_recipe: {
             "loader": profile.loader,
             "model_weights_loaded": False,
         },

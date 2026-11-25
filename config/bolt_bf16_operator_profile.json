@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "model": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16",
+  "revision": "49843eed8db1f1c616c47af75cfd36e07aec0667",
+  "loader": "Gemma4ForConditionalGeneration",
+  "context": 512,
+  "enable_thinking": false,
+  "files": {
+    "chat_template.jinja": "35b7d0641b6fb4ee41c3bc623e85bdb7d583c40f6ae9f24514ae58a9d57119f3",
+    "config.json": "6f7a13f1d5fc3295e682616f937a4a573756f59cb9a1700cd4801fef08ad6546",
+    "generation_config.json": "d4226bbe3117d2d253ba4609720ba82c6c4ce4627a9a6ae05387c78983ac03de",
+    "model.safetensors.index.json": "301d69227420fb020ff34bb3d096384ed9cc27a1ce0f6ae915dfa67b1e37c979",
+    "processor_config.json": "32bdf45d2ad4cc29a0822ddd157a182de76644f0419a6228d151495256e9813c",
+    "tokenizer.json": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f",
+    "tokenizer_config.json": "b3da1b7227c5d35fd905ad13200a08be63cb346b2d1bd4f6d58878c9783d5de1"
+  }
+}

@@ -27,12 +27,13 @@ from .encoding import validate_encoded_release
 from .identity import bind_ollama
 from .material import digest, prepare_material
 from .paths import checked_directory, checked_file
-from .profile import GemmaProfile
+from .profile import BOLT_MODEL, GemmaProfile
 from .training import GemmaTrainingRecipe
 
 Json = dict[str, Any]
 MAX_METADATA_BYTES = 64 * 1024 * 1024
-INPUT_FILES = ("profile.json", "data-manifest.json", "ollama-binding.json")
+NATIVE_INPUT_FILES = ("profile.json", "data-manifest.json")
+INPUT_FILES = (*NATIVE_INPUT_FILES, "ollama-binding.json")
 INPUT_ARCHIVE = "input.zip"
 
 
@@ -146,7 +147,7 @@ def _identity(
     profile: GemmaProfile,
     recipe: GemmaTrainingRecipe,
     encoded: Json,
-    binding: Json,
+    binding: Json | None,
     snapshot: Path,
     limits: Json,
 ) -> Json:
@@ -163,7 +164,7 @@ def _identity(
             "code_sha256": code_identity(root, model=profile.model),
             "dependencies_sha256": dependencies_identity(root, model=profile.model),
             "encoding_sha256": encoded["encoded_release_sha256"],
-            "ollama_binding_sha256": binding["binding_sha256"],
+            **({"ollama_binding_sha256": binding["binding_sha256"]} if binding else {}),
             "dataset": "domain",
             "limits": limits,
         }
@@ -389,6 +390,71 @@ def prepare_session(
         "model_loaded": False,
         "gpu_qualified": False,
         "training_started": False,
+        "activation_authorized": False,
+    }
+    _publish(output / "preflight.json", report)
+    return report
+
+
+def prepare_bolt_smoke(
+    encoded_path: Path,
+    profile: GemmaProfile,
+    destination: Path,
+    *,
+    snapshot: Path,
+    run_id: str,
+    max_seconds: int,
+) -> Json:
+    """Package a BF16 training smoke without asserting an Ollama variant binding."""
+    if profile.model != BOLT_MODEL:
+        raise ValueError("bolt_smoke_profile_required")
+    smoke_updates = 20  # The native coordinator runs 16 updates and resumes for 4.
+    _budget(run_id, smoke_updates, max_seconds)
+    snapshot = checked_directory(snapshot)
+    if snapshot.name != profile.revision:
+        raise ValueError("gemma_training_snapshot_revision_mismatch")
+    profile.validate_snapshot(snapshot)
+    recipe = GemmaTrainingRecipe.for_profile(profile)
+    encoded = _read(encoded_path)
+    validate_encoded_release(encoded, profile)
+    identity = _identity(
+        profile,
+        recipe,
+        encoded,
+        None,
+        snapshot,
+        {"max_updates": smoke_updates, "max_seconds": max_seconds},
+    )
+    output = checked_directory(destination.parent) / destination.name
+    output.mkdir(mode=0o700, exist_ok=False)
+    staging = output / "input"
+    staging.mkdir(mode=0o700)
+    names = NATIVE_INPUT_FILES
+    for name, document in zip(names, (recipe.identity(), encoded), strict=True):
+        _publish(staging / name, document)
+    archive = output / INPUT_ARCHIVE
+    manifest = create_bundle(
+        staging,
+        names,
+        archive,
+        run_id=run_id,
+        identity=identity,
+        max_bytes=MAX_METADATA_BYTES,
+    )
+    report = {
+        "schema_version": 1,
+        "kind": "bolt_bf16_native_smoke_package",
+        "status": "SMOKE_PACKAGE_PREPARED",
+        "run_id": run_id,
+        "identity": identity,
+        "input_files": list(names),
+        "transfer_archive": INPUT_ARCHIVE,
+        "transfer_sha256": sha256(archive),
+        "bundle_manifest_sha256": manifest["manifest_sha256"],
+        "model_execution_policy": {"gpu_required": True, "cpu_fallback": False},
+        "weights_verified": False,
+        "training_started": False,
+        "gpu_qualified": False,
         "activation_authorized": False,
     }
     _publish(output / "preflight.json", report)

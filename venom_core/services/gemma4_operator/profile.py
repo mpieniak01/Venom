@@ -18,8 +18,21 @@ REVISION = "43c9d014b231474fa7212dbb48a762566c2b255d"
 E4B_MODEL = "google/gemma-4-E4B-it"
 E4B_LOADER = "Gemma4ForConditionalGeneration"
 E4B_REVISION = "ee0ef6023621cff504d758262d4e04895a5af4a2"
-MODEL_LOADERS = MappingProxyType({MODEL: LOADER, E4B_MODEL: E4B_LOADER})
-PINNED_REVISIONS = MappingProxyType({MODEL: REVISION, E4B_MODEL: E4B_REVISION})
+BOLT_MODEL = "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16"
+BOLT_REVISION = "49843eed8db1f1c616c47af75cfd36e07aec0667"
+BOLT_WEIGHT_BYTES = 15_992_612_746
+BOLT_WEIGHT_SHA256 = MappingProxyType(
+    {
+        "model-00001-of-00001.safetensors": "15006dbbfc99dbde9cc3fb5742b08976837b6ddc9db05b1ceb8b223de8cfc520",
+        "model-frozen-shared-kv.safetensors": "32aaa38402af5a51c6d6b27aeb8a26d3e6964e5590330f0e7b2f546608da4023",
+    }
+)
+MODEL_LOADERS = MappingProxyType(
+    {MODEL: LOADER, E4B_MODEL: E4B_LOADER, BOLT_MODEL: E4B_LOADER}
+)
+PINNED_REVISIONS = MappingProxyType(
+    {MODEL: REVISION, E4B_MODEL: E4B_REVISION, BOLT_MODEL: BOLT_REVISION}
+)
 SNAPSHOT_FILES = frozenset(
     {
         "config.json",
@@ -29,6 +42,10 @@ SNAPSHOT_FILES = frozenset(
         "processor_config.json",
     }
 )
+BOLT_SNAPSHOT_FILES = SNAPSHOT_FILES | {
+    "generation_config.json",
+    "model.safetensors.index.json",
+}
 _SHA = re.compile(r"[0-9a-f]{64}")
 _REVISION = re.compile(r"[0-9a-f]{40}")
 
@@ -80,7 +97,10 @@ class GemmaProfile:
             raise ValueError("gemma_profile_context_invalid")
         if type(self.enable_thinking) is not bool:
             raise ValueError("gemma_profile_thinking_invalid")
-        if set(self.files) != SNAPSHOT_FILES or any(
+        required_files = (
+            BOLT_SNAPSHOT_FILES if self.model == BOLT_MODEL else SNAPSHOT_FILES
+        )
+        if set(self.files) != required_files or any(
             not isinstance(value, str) or not _SHA.fullmatch(value)
             for value in self.files.values()
         ):

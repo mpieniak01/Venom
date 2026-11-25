@@ -13,6 +13,8 @@ import os
 import re
 import sqlite3
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager, nullcontext
 from dataclasses import fields
 from pathlib import Path
 from typing import Any, Callable
@@ -31,10 +33,10 @@ from venom_core.services.granite_operator.engine import (
 from venom_core.services.remote_training.paths import operator_path
 
 from .profile import (
+    BOLT_MODEL,
+    BOLT_WEIGHT_BYTES,
     E4B_MODEL,
     MODEL,
-    MODEL_LOADERS,
-    PINNED_REVISIONS,
     GemmaProfile,
     loader_for_model,
 )
@@ -144,8 +146,9 @@ def lora_config(recipe: GemmaTrainingRecipe) -> Any:
     )
 
 
-def inspect_structure(snapshot: Path) -> dict[str, Any]:
-    """Verify real Gemma/PEFT attachment on meta tensors, without weights/CUDA."""
+def inspect_structure(snapshot: Path, recipe: GemmaTrainingRecipe) -> dict[str, Any]:
+    """Verify the pinned loader and PEFT targets on meta tensors without loading weights."""
+    recipe.validate()
     init_empty_weights = importlib.import_module("accelerate").init_empty_weights
     from peft import get_peft_model
     from transformers import AutoConfig
@@ -155,20 +158,13 @@ def inspect_structure(snapshot: Path) -> dict[str, Any]:
         local_files_only=True,
         trust_remote_code=False,
     )
-    architectures = config.architectures
-    selected = next(
-        (name for name, loader in MODEL_LOADERS.items() if architectures == [loader]),
-        None,
-    )
-    if selected is None:
+    loader_name = loader_for_model(recipe.model)
+    if config.architectures != [loader_name]:
         raise ValueError("gemma_training_loader_unqualified")
-    loader = getattr(
-        importlib.import_module("transformers"), loader_for_model(selected)
-    )
-    recipe = GemmaTrainingRecipe(model=selected, revision=PINNED_REVISIONS[selected])
+    loader = getattr(importlib.import_module("transformers"), loader_name)
     with init_empty_weights(include_buffers=True):
         model = loader(config)
-        targets = matched_targets(model, selected)
+        targets = matched_targets(model, recipe.model)
         parameter_count = sum(parameter.numel() for parameter in model.parameters())
         adapted = get_peft_model(model, lora_config(recipe))
     if any(parameter.device.type != "meta" for parameter in adapted.parameters()):
@@ -187,10 +183,63 @@ def inspect_structure(snapshot: Path) -> dict[str, Any]:
         "parameter_count": parameter_count,
         "model_weights_loaded": False,
         "peft_wrapper": type(adapted).__name__,
-        "meta_lora_rank": 16,
+        "meta_lora_rank": recipe.rank,
         "meta_lora_trainable_tensors": len(trainable),
         "gpu_qualified": False,
     }
+
+
+def _local_nf4_memory(recipe: GemmaTrainingRecipe) -> bool:
+    return (
+        os.environ.get("VENOM_GEMMA_LOCAL_NF4") == "1"
+        and recipe.model == MODEL
+        and recipe.quantization == "nf4"
+    )
+
+
+@contextmanager
+def _pread_local_weights(snapshot: Path) -> Iterator[None]:
+    """Read the large, pinned Gemma shard incrementally during local model loading."""
+    from transformers import modeling_utils
+
+    target = snapshot / "model.safetensors"
+    original = modeling_utils.safe_open
+
+    def open_weight(filename: str | Path, *args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("backend") == "mmap" and Path(filename).resolve() == target:
+            kwargs["backend"] = "pread"
+        return original(filename, *args, **kwargs)
+
+    modeling_utils.safe_open = open_weight
+    try:
+        yield
+    finally:
+        modeling_utils.safe_open = original
+
+
+def _prepare_local_nf4(base: Any, *, gradient_checkpointing: bool) -> None:
+    """Keep non-quantized frozen parameters in the BF16 precision used to load."""
+    if (
+        not base.is_loaded_in_4bit
+        or base.config.text_config.model_type != "gemma4_unified_text"
+    ):
+        raise RuntimeError("gemma_local_nf4_model_mismatch")
+    base.requires_grad_(False)
+    if gradient_checkpointing:
+        base.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False},
+        )
+
+
+def _validate_gpu_memory(profile: GemmaTrainingRecipe, hardware: dict) -> None:
+    if profile.model == BOLT_MODEL and hardware["gpu_memory"] < BOLT_WEIGHT_BYTES:
+        raise RuntimeError("bolt_training_gpu_memory_below_weight_size")
+
+
+def _attention_implementation(model: str) -> dict[str, str] | str:
+    if model in {E4B_MODEL, BOLT_MODEL}:
+        return {"": "sdpa", "audio_config": "eager"}
+    return "sdpa"
 
 
 class GemmaSession(Session):
@@ -209,7 +258,8 @@ class GemmaSession(Session):
         from peft import PeftModel, get_peft_model, prepare_model_for_kbit_training
         from transformers import AutoTokenizer, BitsAndBytesConfig
 
-        probe_runtime()
+        hardware = probe_runtime()
+        _validate_gpu_memory(profile, hardware)
         torch.manual_seed(profile.seed)
         torch.cuda.manual_seed_all(profile.seed)
         self.torch = torch
@@ -228,28 +278,33 @@ class GemmaSession(Session):
                 bnb_4bit_compute_dtype=torch.bfloat16,
             )
         started = time.monotonic()
-        loader = getattr(
-            importlib.import_module("transformers"), loader_for_model(profile.model)
+        loader_name = loader_for_model(profile.model)
+        loader = getattr(importlib.import_module("transformers"), loader_name)
+        use_local_memory = _local_nf4_memory(profile)
+        read_context = (
+            _pread_local_weights(snapshot) if use_local_memory else nullcontext()
         )
-        base = loader.from_pretrained(
-            snapshot,
-            local_files_only=True,
-            trust_remote_code=False,
-            dtype=torch.bfloat16,
-            device_map={"": 0},
-            # E4B's audio tower rejects SDPA even for text-only training.
-            # Unified 12B keeps its native SDPA configuration.
-            attn_implementation=(
-                {"": "sdpa", "audio_config": "eager"}
-                if profile.model == E4B_MODEL
-                else "sdpa"
-            ),
-            **kwargs,
-        )
+        with read_context:
+            base = loader.from_pretrained(
+                snapshot,
+                local_files_only=True,
+                trust_remote_code=False,
+                dtype=torch.bfloat16,
+                device_map={"": 0},
+                # Both E4B variants expose an audio config that rejects SDPA.
+                # Unified 12B keeps its native SDPA configuration.
+                attn_implementation=_attention_implementation(profile.model),
+                **kwargs,
+            )
         require_cuda_placement(base)
         self.target_modules = matched_targets(base, profile.model)
         base.config.use_cache = False
-        if profile.quantization == "nf4":
+        if use_local_memory:
+            _prepare_local_nf4(
+                base,
+                gradient_checkpointing=profile.gradient_checkpointing,
+            )
+        elif profile.quantization == "nf4":
             base = prepare_model_for_kbit_training(
                 base,
                 use_gradient_checkpointing=profile.gradient_checkpointing,
@@ -531,10 +586,15 @@ def run(
     snapshot = operator_path(request["snapshot"])
     document, records = load_encoded(request["encoded_release"], profile)
     identity = execution_identity(profile, recipe, document, snapshot)
+    if _local_nf4_memory(recipe):
+        identity["local_preparation"] = {
+            "frozen_unquantized_dtype": "bfloat16",
+            "weight_read": "pread",
+        }
     dependencies = identity["environment"]
     if dependencies["status"] != "PASS":
         raise ValueError("gemma_training_dependencies_unqualified")
-    identity["structure"] = inspect_structure(snapshot)
+    identity["structure"] = inspect_structure(snapshot, recipe)
     # Admission is required even for a CUDA probe: no local or CI GPU surprises.
     owner_check()
     hardware = runtime_probe()

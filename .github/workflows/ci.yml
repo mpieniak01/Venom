@@ -458,25 +458,23 @@ jobs:
 
       - name: SonarCloud Scan (configpath)
         if: ${{ steps.sonar_guard.outputs.enabled == 'true' && !(github.event_name == 'workflow_dispatch' && github.event.inputs.sonar_architecture_mode == 'noconfig') }}
-        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+        uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16 # v8.5.1
         with:
           args: >
             -Dsonar.newCode.referenceBranch=main
             -Dsonar.projectVersion=${{ steps.release_version.outputs.version }}
         env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: SonarCloud Scan (noconfig)
         if: ${{ steps.sonar_guard.outputs.enabled == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.sonar_architecture_mode == 'noconfig' }}
-        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+        uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16 # v8.5.1
         with:
           args: >
             -Dsonar.newCode.referenceBranch=main
             -Dsonar.projectVersion=${{ steps.release_version.outputs.version }}
             -Dsonar.architecture.noconfig=true
         env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

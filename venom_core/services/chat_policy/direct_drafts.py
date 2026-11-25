@@ -45,9 +45,8 @@ _OTHER_FORMAT = re.compile(
     r"porównaj|przetłumacz|oprócz tego|przy okazji|zmień temat|zmieniam temat)\b",
     re.I,
 )
-_CONSENT = re.compile(
-    r"(?:^|(?<=[.!?])\s+)(?:zgadzam się|udzielam zgody|wyrażam zgodę)\b", re.I
-)
+_CONSENT = re.compile(r"(?:zgadzam się|udzielam zgody|wyrażam zgodę)\b", re.I)
+_SENTENCE_BREAK = re.compile(r"[.!?]\s+")
 _ROLE_REPLY = re.compile(
     r"(?:Teraz\s+(?:jestem|piszę jako|odpowiadam jako|wypowiadam się jako)"
     r"\s+[^.!?\n:]{2,100})\.\s*"
@@ -56,7 +55,7 @@ _ROLE_REPLY = re.compile(
     r"(?:Napisz|Ułóż|Przygotuj)\s+(?:krótką\s+)?odpowiedź\s+w moim imieniu[.!]?",
     re.I,
 )
-_ADDRESSEE = re.compile(r"(?i:\bdo\s+(?:pani|pana))\s+([A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]{1,40})\b")
+_ADDRESSEE = re.compile(r"\bdo\s+pan[ai]\s+[^\W\d_]{2,41}\b", re.I)
 _END_WITH_QUESTION = re.compile(r"\bzakończ\s+pytaniem\b", re.I)
 _DRAFT_OPENING = "Zwróć wyłącznie jedną krótką, gotową do użycia treść wiadomości. "
 _USE_OF_RECIPIENT_WORK = re.compile(
@@ -93,6 +92,36 @@ def role_consent_reply(text: str) -> str | None:
     return f"{match['consent']}." if match else None
 
 
+def _message_hints(candidate: str, visible: str) -> str:
+    hints = [_DRAFT_OPENING + _MESSAGE_BODY]
+    if any(_CONSENT.match(sentence) for sentence in _SENTENCE_BREAK.split(visible)):
+        hints.extend(
+            [
+                _CONSENT_HINT,
+                "Zacznij od samej zgody, chyba że użytkownik wymaga zwrotu do odbiorcy.",
+            ]
+        )
+    elif _ADDRESSEE.search(candidate):
+        hints.append(
+            "Jeśli podano imię adresata, użyj go w zwrocie na początku. Użyj poprawnej odmiany imienia."
+        )
+        if _USE_OF_RECIPIENT_WORK.search(candidate) and (
+            _PENDING_CONSENT.search(candidate) or _OFFER_TO_PRESENT.search(visible)
+        ):
+            hints.append(
+                "Nadawca prosi odbiorcę o zgodę, aby sam mógł wykonać czynność "
+                "opisaną w prośbie. Zapytaj, czy nadawca może to zrobić. "
+                "Nie proś odbiorcy o wykonanie tej czynności."
+            )
+    else:
+        hints.append(
+            "Zacznij od treści wiadomości. Uwzględnij zwrot do odbiorcy, jeśli użytkownik go wymaga."
+        )
+    if _END_WITH_QUESTION.search(visible):
+        hints.append(_QUESTION_HINT)
+    return " ".join(hints)
+
+
 def short_message_hint(text: str, history: Sequence[HistoryMessage]) -> str:
     """Carry the requested draft form through a contiguous sequence of edits."""
     visible = without_quotes(text).strip()
@@ -107,37 +136,7 @@ def short_message_hint(text: str, history: Sequence[HistoryMessage]) -> str:
         if _OTHER_FORMAT.search(candidate):
             break
         if _SHORT_MESSAGE.search(candidate):
-            consent = _CONSENT.search(visible)
-            if consent:
-                hints = [
-                    _DRAFT_OPENING + _MESSAGE_BODY,
-                    _CONSENT_HINT,
-                    "Zacznij od samej zgody, bez zwrotu do odbiorcy.",
-                ]
-            elif _ADDRESSEE.search(candidate):
-                hints = [
-                    _DRAFT_OPENING
-                    + "Jeśli podano imię adresata, użyj go w zwrocie na początku. "
-                    + _MESSAGE_BODY
-                    + " Użyj poprawnej odmiany imienia."
-                ]
-                if _USE_OF_RECIPIENT_WORK.search(candidate) and (
-                    _PENDING_CONSENT.search(candidate)
-                    or _OFFER_TO_PRESENT.search(visible)
-                ):
-                    hints.append(
-                        "Nadawca prosi odbiorcę o zgodę, aby sam mógł wykonać czynność "
-                        "opisaną w prośbie. Zapytaj, czy nadawca może to zrobić. "
-                        "Nie proś odbiorcy o wykonanie tej czynności."
-                    )
-            else:
-                hints = [
-                    _DRAFT_OPENING + _MESSAGE_BODY,
-                    "Zacznij od treści bez imion i bez zwrotu do odbiorcy.",
-                ]
-            if _END_WITH_QUESTION.search(visible):
-                hints.append(_QUESTION_HINT)
-            return " ".join(hints)
+            return _message_hints(candidate, visible)
         if not _DRAFT_EDIT.match(candidate):
             break
     return ""

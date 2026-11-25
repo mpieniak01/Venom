@@ -717,6 +717,12 @@ def test_prose_evidence_distinguishes_wrong_cause_and_repeated_draft(
             False,
         ),
         (
+            "Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze. "
+            "Powyższe zdanie jest błędne. Wiatr usuwa wilgotne powietrze znad tkaniny.",
+            "stop",
+            False,
+        ),
+        (
             "„Wiatr przyspiesza parowanie, bo nawiewa wilgotne powietrze.”",
             "stop",
             False,

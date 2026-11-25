@@ -119,7 +119,7 @@ _WIKI_FIELD_QUESTION = re.compile(
     re.I,
 )
 _WIKI_FIELD_EXTRA = re.compile(
-    r"\b(?:oraz|a także|podaj|wymień|wyjaśnij|opisz|kiedy|ile|"
+    r"\b(?:i|oraz|a także|podaj|wymień|wyjaśnij|opisz|kiedy|ile|"
     r"zakończono|ukończono|w (?:którym|jakim))\b",
     re.I,
 )

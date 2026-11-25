@@ -165,6 +165,7 @@ _RESPONSE_PREVIEW_MAX_CHARS = 4000
 _VAST_RUNTIME_PREFIX = "ollama@vast:"
 _SSE_EVENT_START = "event: start\ndata: {}\n\n"
 _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
+_SSE_CONTENT_PREFIX = "event: content\ndata: "
 _SSE_MEDIA_TYPE = "text/event-stream"
 _NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
 httpx = llm_simple_transport.httpx_module()
@@ -1184,7 +1185,7 @@ async def _stream_simple_chunks_non_stream(
             content = qualified_reply.local_text
             _trace_first_chunk(request_id, stream_start, content)
             _trace_stream_completion(request_id, content, 1, stream_start)
-            yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+            yield _SSE_CONTENT_PREFIX + json.dumps({"text": content}) + "\n\n"
             yield _SSE_EVENT_DONE
             return
         try:
@@ -1247,7 +1248,7 @@ async def _stream_simple_chunks_non_stream(
             if content:
                 chunks.append(content)
                 _trace_first_chunk(request_id, stream_start, content)
-                yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+                yield _SSE_CONTENT_PREFIX + json.dumps({"text": content}) + "\n\n"
 
             _trace_stream_completion(
                 request_id, "".join(chunks), len(chunks), stream_start
@@ -1667,7 +1668,7 @@ def _local_direct_stream(
             text = result.pop("text")
             yield _SSE_EVENT_START
             yield (
-                "event: content\ndata: "
+                _SSE_CONTENT_PREFIX
                 + json.dumps({"text": text}, ensure_ascii=False)
                 + "\n\n"
             )
@@ -1687,7 +1688,12 @@ def _direct_calculator_response(
     request_id: UUID,
     system_context: str,
 ) -> StreamingResponse | None:
-    if request.studio_normal or system_context or not _plain_text_request(request):
+    if (
+        request.studio_normal
+        or system_context
+        or request.max_tokens is not None
+        or not _plain_text_request(request)
+    ):
         return None
     history = [turn.model_dump(include={"role", "content"}) for turn in request.history]
     plan = plan_calculator(request.content, history)
@@ -1709,6 +1715,7 @@ def _direct_policy_response(
     if (
         request.studio_normal
         or system_context
+        or request.max_tokens is not None
         or configured not in ("", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT)
         or not _plain_text_request(request)
     ):

@@ -189,6 +189,33 @@ def _operator_criteria(case: dict) -> list[str]:
     return marked
 
 
+def _blind_turn(
+    case: dict, criteria: list[str], answers: dict, *, allow_cutoff: bool
+) -> dict:
+    expected = numeric_expectation(case)
+    fee = fee_expectation(case)
+    text_rule = text_expectation(case)
+    operator_criteria = _operator_criteria(case)
+    views = {}
+    for alias, answer in answers.items():
+        view = _review_answer(answer, allow_cutoff=allow_cutoff)
+        if proof := numeric_contradiction(view, expected):
+            view["numeric_contradiction"] = proof
+        if omission := fee_omission(view, fee):
+            view["fee_omission"] = omission
+        if proof := text_proof(view, text_rule):
+            view["text_proof"] = proof
+        views[alias] = view
+    return {
+        "criteria": criteria,
+        "criterion_descriptions": {
+            criterion["id"]: criterion["description"] for criterion in case["criteria"]
+        },
+        "answers": views,
+        **({"operator_criteria": operator_criteria} if operator_criteria else {}),
+    }
+
+
 def _render_blind_package(
     panel: dict,
     cases: list[dict],
@@ -211,35 +238,16 @@ def _render_blind_package(
         turns = {}
         for turn in sorted(spec["turns"]):
             record_id = index[conversation, turn]
-            case = cases_by_id[record_id]
-            expected = numeric_expectation(case)
-            fee = fee_expectation(case)
-            text_rule = text_expectation(case)
-            operator_criteria = _operator_criteria(case)
-            views = {}
-            for alias, arm in mapping[conversation].items():
-                answer = (parent if arm == "p13" else candidate)[record_id]["answer"]
-                view = _review_answer(answer, allow_cutoff=allow_cutoff)
-                if proof := numeric_contradiction(view, expected):
-                    view["numeric_contradiction"] = proof
-                if omission := fee_omission(view, fee):
-                    view["fee_omission"] = omission
-                if proof := text_proof(view, text_rule):
-                    view["text_proof"] = proof
-                views[alias] = view
-            turns[turn] = {
-                "criteria": spec["turns"][turn],
-                "criterion_descriptions": {
-                    criterion["id"]: criterion["description"]
-                    for criterion in case["criteria"]
-                },
-                "answers": views,
-                **(
-                    {"operator_criteria": operator_criteria}
-                    if operator_criteria
-                    else {}
-                ),
+            answers = {
+                alias: (parent if arm == "p13" else candidate)[record_id]["answer"]
+                for alias, arm in mapping[conversation].items()
             }
+            turns[turn] = _blind_turn(
+                cases_by_id[record_id],
+                spec["turns"][turn],
+                answers,
+                allow_cutoff=allow_cutoff,
+            )
         reviewer[conversation] = {"group": spec["group"], "turns": turns}
     package = {
         "panel_sha256": payload_sha(panel),

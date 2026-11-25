@@ -3,7 +3,6 @@
 import re
 
 _PARAGRAPH = re.compile(r"\n[ \t]*\n")
-_SENTENCE = re.compile(r"(?<=[.!?])\s+")
 _HUMID_FLOW = (
     r"wiatr (?:dostarcza|doprowadza|nawiewa)"
     r"(?: do niej| do tkaniny| przy tkaninie| nad powierzchnię)? wilgotn[ey] powietrze"
@@ -59,14 +58,9 @@ def _repeated_body(text: str) -> list[str]:
 
 
 def _wrong_evaporation(text: str) -> list[str]:
-    if _QUALIFIED.search(text):
+    if len(text) > 240 or _QUALIFIED.search(text):
         return []
-    quotes = [
-        sentence
-        for sentence in _SENTENCE.split(text)
-        if len(sentence) <= 240 and _BAD_MECHANISM.fullmatch(sentence)
-    ]
-    return quotes[:1]
+    return [text] if _BAD_MECHANISM.fullmatch(text) else []
 
 
 def text_proof(answer: dict, expected: dict | None) -> dict | None:

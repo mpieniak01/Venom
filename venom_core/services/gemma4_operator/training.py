@@ -20,7 +20,14 @@ from venom_core.services.granite_operator.contract import (
 from venom_core.services.remote_training.paths import operator_path
 
 from .material import digest
-from .profile import MODEL, PINNED_REVISIONS, GemmaProfile, loader_for_model
+from .profile import (
+    BOLT_MODEL,
+    BOLT_WEIGHT_SHA256,
+    MODEL,
+    PINNED_REVISIONS,
+    GemmaProfile,
+    loader_for_model,
+)
 
 REVISION = "43c9d014b231474fa7212dbb48a762566c2b255d"
 TARGET_MODULES = (
@@ -74,6 +81,8 @@ class GemmaTrainingRecipe(TrainingProfile):
             raise ValueError("gemma_training_base_mismatch")
         if self.quantization not in {"bf16", "nf4"}:
             raise ValueError("gemma_training_precision_invalid")
+        if self.model == BOLT_MODEL and self.quantization != "bf16":
+            raise ValueError("bolt_training_bf16_required")
         if self.row_order != "family_epoch_v1":
             raise ValueError("gemma_training_row_order_invalid")
         for name, maximum in (
@@ -95,6 +104,8 @@ class GemmaTrainingRecipe(TrainingProfile):
         cls, profile: GemmaProfile, **parameters: Any
     ) -> GemmaTrainingRecipe:
         profile.validate()
+        if profile.model == BOLT_MODEL:
+            parameters.setdefault("quantization", "bf16")
         recipe = cls(
             model=profile.model,
             revision=profile.revision,
@@ -126,7 +137,7 @@ class GemmaTrainingRecipe(TrainingProfile):
 
 
 def target_modules_for(model: str) -> str:
-    """Both actual architectures are qualified against this text-only path."""
+    """Select language attention modules that exist in the native architecture."""
     loader_for_model(model)
     return TARGET_MODULES
 
@@ -234,6 +245,13 @@ def snapshot_weights(snapshot: Path) -> list[Path]:
     return weights
 
 
+def snapshot_weight_hashes(snapshot: Path, model: str) -> dict[str, str]:
+    weights = {path.name: file_digest(path) for path in snapshot_weights(snapshot)}
+    if model == BOLT_MODEL and weights != BOLT_WEIGHT_SHA256:
+        raise ValueError("bolt_training_shard_hash_mismatch")
+    return weights
+
+
 def execution_identity(
     profile: GemmaProfile,
     recipe: GemmaTrainingRecipe,
@@ -243,7 +261,7 @@ def execution_identity(
     """Bind exact source, metadata, weights, labels and installed dependencies."""
     recipe.validate_profile(profile)
     profile.validate_snapshot(snapshot)
-    weights = snapshot_weights(snapshot)
+    weights = snapshot_weight_hashes(snapshot, profile.model)
     sources = list(Path(__file__).parent.glob("*.py"))
     common = Path(__file__).parents[1] / "granite_operator"
     sources += [
@@ -257,7 +275,7 @@ def execution_identity(
         "model_profile": profile.identity(),
         "recipe": recipe.identity(),
         "encoded_release_sha256": encoded_release["encoded_release_sha256"],
-        "weights": {p.name: file_digest(p) for p in weights},
+        "weights": weights,
         "weights_index": file_digest(index) if index.is_file() else None,
         "generation_config_sha256": (
             file_digest(snapshot / "generation_config.json")
@@ -424,6 +442,18 @@ def qualification(metrics: dict, first: dict, artifacts: dict) -> dict:
 def resource_recommendations(model: str = MODEL) -> dict[str, Any]:
     """Recommendations are preparation estimates, never GPU-fit evidence."""
     loader_for_model(model)
+    if model == BOLT_MODEL:
+        return {
+            "bf16_lora": {
+                "gpu_memory_gb": 32,
+                "ram_gb": 48,
+                "disk_gb": 100,
+                "qualification": "fit_unproven_remote_smoke_required",
+            },
+            "full_sft": "not_implemented",
+            "budget_basis": "explicit_updates_and_measured_target_tokens",
+            "historical_125_updates_transferred": False,
+        }
     shared = (
         {"gpu_memory_gb": 48, "ram_gb": 64}
         if model == MODEL

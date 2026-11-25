@@ -11,6 +11,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
+from venom_core.services.gemma4_operator.profile import MODEL_LOADERS
 from venom_core.services.granite_operator.contract import (
     digest,
     file_digest,
@@ -24,7 +25,7 @@ def is_functiongemma_model(model: object) -> bool:
     return model == FUNCTIONGEMMA_MODEL
 
 
-GEMMA_MODELS = frozenset({"google/gemma-4-12B-it", "google/gemma-4-E4B-it"})
+GEMMA_MODELS = frozenset(MODEL_LOADERS)
 
 
 def is_gemma_model(model: object) -> bool:

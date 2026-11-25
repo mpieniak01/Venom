@@ -25,6 +25,60 @@ def test_plan_declares_remote_gates_and_does_not_import_gpu(capsys):
     assert all(s["status"] == "DEFERRED_REMOTE" for s in result["remote_gates"])
 
 
+def test_bolt_smoke_command_dispatches_reviewed_profile(tmp_path, monkeypatch, capsys):
+    from venom_core.services.gemma4_operator import preparation
+    from venom_core.services.gemma4_operator.profile import BOLT_MODEL
+
+    profile = tmp_path / "bolt-profile.json"
+    profile.write_text(
+        (
+            Path(__file__).resolve().parents[1]
+            / "config/bolt_bf16_operator_profile.json"
+        ).read_text()
+    )
+    calls = {}
+
+    def prepare(
+        encoded, selected_profile, destination, *, snapshot, run_id, max_seconds
+    ):
+        calls.update(
+            encoded=encoded,
+            profile=selected_profile,
+            destination=destination,
+            snapshot=snapshot,
+            run_id=run_id,
+            max_seconds=max_seconds,
+        )
+        return {"status": "SMOKE_PACKAGE_PREPARED"}
+
+    monkeypatch.setattr(preparation, "prepare_bolt_smoke", prepare)
+    receipt = tmp_path / "receipt.json"
+    args = [
+        "prepare-bolt-smoke",
+        "--profile",
+        str(profile),
+        "--input",
+        str(tmp_path / "encoded.json"),
+        "--snapshot",
+        str(tmp_path / "snapshot"),
+        "--destination",
+        str(tmp_path / "smoke"),
+        "--run-id",
+        "bolt-smoke",
+        "--max-seconds",
+        "1200",
+        "--output",
+        str(receipt),
+    ]
+
+    assert cli.main(args) == 0
+    assert calls["profile"].model == BOLT_MODEL
+    assert calls["run_id"] == "bolt-smoke"
+    assert calls["max_seconds"] == 1200
+    assert json.loads(receipt.read_text())["status"] == "SMOKE_PACKAGE_PREPARED"
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
 def test_published_plan_is_immutable(tmp_path, capsys):
     output = tmp_path / "plan.json"
     args = ["plan", "--profile", str(PROFILE), "--output", str(output)]

@@ -69,13 +69,13 @@ def execution_backend(model: str):
 
 
 def _validate_gemma_base(adapter_root: Path, snapshot: Path, native, recipe) -> None:
-    from venom_core.services.gemma4_operator.training import snapshot_weights
+    from venom_core.services.gemma4_operator.training import snapshot_weight_hashes
 
     environment = _metadata(adapter_root, "environment.json")
     recorded = environment.get("identity")
     if not isinstance(recorded, dict):
         raise ValueError("remote_training_native_training_identity_missing")
-    actual = {path.name: file_digest(path) for path in snapshot_weights(snapshot)}
+    actual = snapshot_weight_hashes(snapshot, recipe.model)
     if (
         recorded.get("weights") != actual
         or recorded.get("model_profile") != native.identity()
@@ -300,6 +300,9 @@ def verify_local(adapter_root: Path, host_root: Path) -> dict:
                     "HF_HUB_OFFLINE": "1",
                     "TRANSFORMERS_OFFLINE": "1",
                     "TOKENIZERS_PARALLELISM": "false",
+                    "VENOM_GEMMA_LOCAL_NF4": "1"
+                    if host.get("execution") == "local"
+                    else "0",
                     "REMOTE_TRAINING_GPU_LOCK_FD": str(gpu_lock),
                 }
                 with (directory / "reload.log").open("wb") as log:

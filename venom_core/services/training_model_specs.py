@@ -6,7 +6,7 @@ from dataclasses import asdict
 from typing import Any
 
 from scripts.academy.omni_pl_chat_recipe import DEFAULT_RECIPE, LANGUAGE_TARGET_MODULES
-from venom_core.services.gemma4_operator.profile import E4B_MODEL
+from venom_core.services.gemma4_operator.profile import BOLT_MODEL, E4B_MODEL
 from venom_core.services.gemma4_operator.profile import MODEL as GEMMA_12B
 from venom_core.services.gemma4_operator.profile import (
     PINNED_REVISIONS,
@@ -55,8 +55,14 @@ def model_training_specs() -> list[dict[str, Any]]:
         "qualification": "snapshot_data_masks_targets_and_gpu_preflight_per_run",
     }
     gemma: list[dict[str, Any]] = []
-    for model in (E4B_MODEL, GEMMA_12B):
-        recipe = GemmaTrainingRecipe(model=model, revision=PINNED_REVISIONS[model])
+    for model in (E4B_MODEL, GEMMA_12B, BOLT_MODEL):
+        bolt = model == BOLT_MODEL
+        recipe = GemmaTrainingRecipe(
+            model=model,
+            revision=PINNED_REVISIONS[model],
+            quantization="bf16" if bolt else "nf4",
+            context=512 if bolt else 4096,
+        )
         gemma.append(
             {
                 "model": model,
@@ -68,7 +74,9 @@ def model_training_specs() -> list[dict[str, Any]]:
                 ),
                 "loader": loader_for_model(model),
                 "revision": PINNED_REVISIONS[model],
-                "modality": "text_only_lora_or_qlora",
+                "modality": "text_only_bf16_lora"
+                if bolt
+                else "text_only_lora_or_qlora",
                 "target_modules": target_modules_for(model),
                 "target_families": ["q_proj", "k_proj", "v_proj", "o_proj"],
                 "target_policy": "fixed_text_attention_qkvo",

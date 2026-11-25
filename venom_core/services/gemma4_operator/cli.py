@@ -115,6 +115,7 @@ def preparation_plan(profile) -> dict:
             "prepare-corpus",
             "encode-material",
             "prepare-session",
+            "prepare-bolt-smoke",
         ],
         "remote_gates": [
             {"stage": stage, "status": "DEFERRED_REMOTE"}
@@ -196,6 +197,14 @@ def parser() -> argparse.ArgumentParser:
     session.add_argument("--run-id", required=True)
     session.add_argument("--max-updates", type=int, required=True)
     session.add_argument("--max-seconds", type=int, required=True)
+    smoke = _command_parser(
+        sub,
+        "prepare-bolt-smoke",
+        profile=True,
+        inputs=(("input", True), ("snapshot", True), ("destination", True)),
+    )
+    smoke.add_argument("--run-id", required=True)
+    smoke.add_argument("--max-seconds", type=int, required=True)
     return root
 
 
@@ -234,6 +243,17 @@ def _prepare_training_data(args):
     profile = GemmaProfile.load(args.profile)
     if args.command == "prepare-session":
         return _prepare_session(args, profile)
+    if args.command == "prepare-bolt-smoke":
+        from .preparation import prepare_bolt_smoke
+
+        return prepare_bolt_smoke(
+            args.input,
+            profile,
+            args.destination,
+            snapshot=args.snapshot,
+            run_id=args.run_id,
+            max_seconds=args.max_seconds,
+        )
     if args.command == "bind-ollama":
         from .identity import bind_ollama
 
@@ -271,6 +291,7 @@ def dispatch(args: argparse.Namespace) -> Any:
         "prepare-corpus",
         "encode-material",
         "prepare-session",
+        "prepare-bolt-smoke",
     }:
         return _prepare_training_data(args)
     if args.command == "qualify-cases":
@@ -325,7 +346,7 @@ def _validate_output_before_dispatch(args: argparse.Namespace) -> None:
     output = checked_file(args.output, output=True)
     if output.exists():
         raise FileExistsError("gemma_output_already_exists")
-    if args.command in {"prepare-corpus", "prepare-session"}:
+    if args.command in {"prepare-corpus", "prepare-session", "prepare-bolt-smoke"}:
         destination = checked_file(
             args.destination / "preflight.json", output=True
         ).parent

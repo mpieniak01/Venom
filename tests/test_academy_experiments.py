@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
 from scripts.academy.omni_pl_chat_recipe import LANGUAGE_TARGET_MODULES
 from venom_core.api.routes import academy_experiments as routes
-from venom_core.services.gemma4_operator.profile import PINNED_REVISIONS
+from venom_core.services.gemma4_operator.profile import BOLT_MODEL, PINNED_REVISIONS
 from venom_core.services.gemma4_operator.training import target_modules_for
 from venom_core.services.remote_training.lifecycle import atomic_json, process_identity
 from venom_core.services.runtime_admission import RuntimeAdmission
@@ -35,15 +35,19 @@ def write_rows(path: Path, data: list[dict]) -> None:
 
 
 def test_model_specs_follow_trainers() -> None:
-    omni, e4b, twelve_b = model_training_specs()
+    omni, e4b, twelve_b, bolt = model_training_specs()
     assert omni["target_modules"] == list(LANGUAGE_TARGET_MODULES)
     assert set(omni["target_modules"]) >= {"w1", "w2", "w3"}
     assert omni["legacy_recipe_default"] == ["q_proj", "v_proj"]
-    for gemma in (e4b, twelve_b):
+    for gemma in (e4b, twelve_b, bolt):
         assert gemma["revision"] == PINNED_REVISIONS[gemma["model"]]
         assert gemma["target_modules"] == target_modules_for(gemma["model"])
     assert e4b["status"] == "trained_candidate_below_acceptance"
     assert twelve_b["status"] == "remote_gpu_smoke_required"
+    assert bolt["model"] == BOLT_MODEL
+    assert bolt["status"] == "remote_gpu_smoke_required"
+    assert bolt["recipe_defaults"]["quantization"] == "bf16"
+    assert "qlora_candidate" not in bolt["gpu_memory"]
 
 
 def test_model_specs_route(setup) -> None:

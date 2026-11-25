@@ -102,6 +102,7 @@ def run_stage(host, request, result, *, run_id, timeout, children):
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
         "TOKENIZERS_PARALLELISM": "false",
+        "VENOM_GEMMA_LOCAL_NF4": "1" if host.get("execution") == "local" else "0",
         "PYTHONPATH": host["code_root"],
     }
     lock_fd = int(os.environ["REMOTE_TRAINING_GPU_LOCK_FD"])

@@ -295,3 +295,25 @@ def test_sms_question_after_phone_resolves_generic_yes_against_user_evidence():
     )
     assert sent is not None
     assert sent.publish("Tak, możesz to odnotować.") == "Tak, możesz to odnotować."
+
+
+def test_phone_evidence_controls_an_ambiguous_affirmative_after_a_comma():
+    check = prepare_studio_claim_check(
+        "Porozmawiałam przez telefon z Aliną. Czy odnotować, że SMS został wysłany?",
+        _history("Przygotuj SMS do Aliny o rabacie."),
+    )
+    assert check is not None
+    assert "nie potwierdza wysłania" in check.publish(
+        "Tak, warto to odnotować, aby mieć to w notatkach."
+    )
+
+
+def test_inventory_redirects_an_observation_away_from_a_different_unresolved_item():
+    check = prepare_studio_claim_check(_PUT_BACK, _history(_LEDGER))
+    assert check is not None
+    assert check.publish(
+        "Nie potwierdziliśmy statusu kabla HDMI. Kabel jest już na półce."
+    ) == (
+        "Rzutnik: zwrot niepotwierdzony (termin jutro). "
+        "Kabel HDMI jest na półce według Twojej informacji."
+    )

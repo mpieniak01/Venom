@@ -58,8 +58,8 @@ _SMS_RECIPIENT = re.compile(
     re.I,
 )
 _SMS_YES = re.compile(
-    r"^tak(?:[, ]+możesz (?:(?:to|tak) )?(?:zrobić|zapisać|wpisać|odnotować|oznaczyć)"
-    r"(?: (?:to|tak))?)?$",
+    r"^tak(?:[, ]+(?:możesz|warto|należy) (?:(?:to|tak) )?"
+    r"(?:zrobić|zapisać|wpisać|odnotować|oznaczyć)(?: (?:to|tak))?)?(?:$|,)",
     re.I,
 )
 
@@ -211,7 +211,7 @@ class _SmsCheck:
             else self.subject
         )
         return bool(
-            _SENT_CLAIM.search(clause) or _SMS_YES.fullmatch(clause)
+            _SENT_CLAIM.search(clause) or _SMS_YES.match(clause)
         ) and not _supports(self.evidence, claimed_subject, Proof.SENT_SMS)
 
 
@@ -357,7 +357,18 @@ class _InventoryCheck:
 
     def publish(self, draft: str) -> str:
         labels = [entry.subject for entry in self.rows]
-        if not _has_unsupported_location(draft, labels, self.observations, self.place):
+        unresolved = [
+            item.subject
+            for item in self.rows
+            if item.proof != Proof.RETURN_ENTRY
+            and not _supports(self.observations, item.subject, Proof.ON_SHELF)
+        ]
+        if not _has_unsupported_location(
+            draft, labels, self.observations, self.place
+        ) and (
+            not self.observations
+            or set(unresolved).issubset(_mentioned_subjects(draft, labels))
+        ):
             omitted = [
                 item
                 for item in self.observations

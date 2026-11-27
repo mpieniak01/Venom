@@ -125,6 +125,7 @@ def test_studio_topic_sms_preserves_explicit_facts(studio_chat, monkeypatch):
     result = chat(
         "Napisz SMS do Leny o paczce. Jest gotowa do odbioru w aptece po 17.",
         verify_history=True,
+        stream=True,
     )
     assert result == draft
     assert len(sent) == 1 and not replies
@@ -193,3 +194,53 @@ def test_packaging_does_not_infer_size_from_missing_package(studio_chat, monkeyp
         "Czy macie papier ochronny albo pudełka, żeby zabezpieczyć je na czas podróży?"
     )
     assert len(sent) == 1 and not replies
+
+
+@pytest.mark.parametrize(
+    ("flag", "finish", "replacement", "expected"),
+    [
+        (False, "length", None, GENERATION_TRUNCATED),
+        (True, "stop", None, "Zadaszenie chroni przed deszczem."),
+        (True, "length", native("Gotowa informacja."), "Gotowa informacja."),
+        (
+            True,
+            "length",
+            native("Drugi urwany tekst", reason="length"),
+            GENERATION_TRUNCATED,
+        ),
+    ],
+)
+def test_studio_retries_only_truncated_plain_draft_once(
+    studio_chat, monkeypatch, flag, finish, replacement, expected
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", flag
+    )
+    chat, sent, replies = studio_chat
+    replies.append(native("Zadaszenie chroni przed deszczem.", reason=finish))
+    if replacement is not None:
+        replies.append(replacement)
+    prompt = "Czemu zadaszenie się sprawdza przy wejściu? Odpowiedz krótko."
+    assert chat(prompt, verify_history=True, stream=False, max_tokens=160) == expected
+    assert len(sent) == (2 if replacement is not None else 1) and not replies
+    if len(sent) == 2:
+        first, second = (call["payload"] for call in sent)
+        assert first["options"] == second["options"]
+        assert first["messages"][1:] == second["messages"][1:]
+        assert first["messages"][0]["content"] != second["messages"][0]["content"]
+
+
+def test_studio_retries_a_truncated_draft_with_default_transport(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    replies.extend(
+        [native("Urwany szkic", reason="length"), native("Pod dachem jest sucho.")]
+    )
+    assert (
+        chat("Po co jest zadaszenie?", verify_history=True) == "Pod dachem jest sucho."
+    )
+    assert len(sent) == 2 and all(not call["payload"]["stream"] for call in sent)

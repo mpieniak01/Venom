@@ -376,6 +376,7 @@ class QualifiedReply:
     requested_opening: str | None = None
     review_draft: ReviewDraft | None = None
     claim_check: StudioClaimCheck | None = None
+    retry_truncated: bool = False
 
     @property
     def requires_complete_draft(self) -> bool:

@@ -1135,7 +1135,7 @@ def _draft_truncated(data: Any) -> bool:
     return data.get("done") is True and data.get("done_reason") == "length"
 
 
-def _plain_review_response(data: Any) -> bool:
+def _plain_native_response(data: Any) -> bool:
     if not isinstance(data, dict) or data.get("error") is not None:
         return False
     message = data.get("message")
@@ -1158,12 +1158,35 @@ async def _retry_review_draft(
     replacement = await _read_non_stream_data(
         runtime, url, {**payload, "messages": [retry_system, *history]}
     )
-    if not _plain_review_response(replacement):
+    if not _plain_native_response(replacement):
         return None
     if _draft_truncated(replacement):
         return GENERATION_TRUNCATED
     draft = completed_native_draft(replacement)
     return review.publish_retry(draft) if draft.strip() else None
+
+
+async def _retry_truncated_studio_draft(
+    reply: QualifiedReply, runtime: LLMRuntimeInfo, url: str, payload: dict[str, Any]
+) -> str:
+    system, *history = payload["messages"]
+    retry_system = {
+        **system,
+        "content": (
+            f"{system['content']}\n\n"
+            "Podaj krótką, kompletną odpowiedź od razu. Pomiń wstęp i powtórzenia. "
+            "Zachowaj wszystkie wymagane fakty, warunki, korekty i format. "
+            "Oddziel fakty potwierdzone od planów i danych nieznanych. "
+            "Jeżeli liczysz, sprawdź zgodność wyniku z działaniem."
+        ),
+    }
+    replacement = await _read_non_stream_data(
+        runtime, url, {**payload, "messages": [retry_system, *history]}
+    )
+    if not _plain_native_response(replacement) or _draft_truncated(replacement):
+        return GENERATION_TRUNCATED
+    content = completed_native_draft(replacement)
+    return reply.publish(content) if content.strip() else GENERATION_TRUNCATED
 
 
 async def _publish_qualified_draft(
@@ -1175,7 +1198,7 @@ async def _publish_qualified_draft(
 ) -> str | None:
     content = completed_native_draft(data)
     if reply.review_draft is not None:
-        if not _plain_review_response(data):
+        if not _plain_native_response(data):
             return None
         if _draft_truncated(data):
             return await _retry_review_draft(reply.review_draft, runtime, url, payload)
@@ -1188,6 +1211,12 @@ async def _publish_qualified_draft(
     repair = reply.repair(content)
     if repair is None:
         if _draft_truncated(data):
+            if (
+                reply.retry_truncated
+                and reply.schema is None
+                and _plain_native_response(data)
+            ):
+                return await _retry_truncated_studio_draft(reply, runtime, url, payload)
             return GENERATION_TRUNCATED
         if not content.strip():
             return "Nie udało się uzyskać kompletnej odpowiedzi."
@@ -1565,8 +1594,11 @@ def _prepare_qualified_reply(
             ):
                 return replace(original, claim_check=claim_check)
         hint = studio_concise_hint(request.content, original.count is not None)
-        if hint:
-            return replace(original, hint=" ".join(filter(None, (original.hint, hint))))
+        return replace(
+            original,
+            hint=" ".join(filter(None, (original.hint, hint))),
+            retry_truncated=not original.requires_complete_draft,
+        )
     return original
 
 
@@ -1678,6 +1710,13 @@ def _qualified_stream_prompt(
         )
         if hint and is_host_ollama(runtime):
             system_prompt = "\n\n".join(filter(None, (system_prompt, hint)))
+    if (
+        complete_reply is None
+        and qualified_reply is not None
+        and qualified_reply.retry_truncated
+        and request.stream is None
+    ):
+        complete_reply = qualified_reply
     return request, system_prompt, qualified_reply, complete_reply
 
 

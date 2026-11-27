@@ -60,6 +60,14 @@ _PRIVATE = re.compile(
 _WEATHER = re.compile(
     r"\b(pogod[ayę]|prognoz\w*|temperatur[ayę]|deszcz|śnieg|wiatr)\b", re.I
 )
+_WEATHER_LOOKUP = re.compile(
+    r"(?:^|[.!?;]\s*)\s*(?:"
+    r"(?:aktualn\w*\s+|dzisiejsz\w*\s+)?(?:pogod[ayę]|prognoz\w*|temperatur[ayę])\b"
+    r"|(?:sprawdź|podaj|pokaż|jaka|jaką|ile|czy|jak(?:\s+się)?\s+zapowiada)\b"
+    r"[^.!?;]{0,65}\b(?:pogod[ayę]|prognoz\w*|temperatur[ayę]|deszcz|śnieg|wiatr)\b"
+    r")",
+    re.I,
+)
 _FORECAST = re.compile(
     r"\b(?:jutro|pojutrze|prognoz\w*|w weekend|za \d+ d\w*|w przyszł\w*|będzie)\b", re.I
 )
@@ -279,6 +287,7 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> PublicSourceRead
     if (
         not _ENCYCLOPEDIC.search(visible)
         and _WEATHER.search(visible)
+        and _WEATHER_LOOKUP.search(visible)
         and (
             _weather_area(visible)
             or re.search(r"\b(pogod[ayę]|prognoz\w*)\b", visible, re.I)

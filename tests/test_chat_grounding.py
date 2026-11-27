@@ -24,6 +24,13 @@ from venom_core.services.chat_public_sources import load_public_sources
     ("message", "expected"),
     [
         ("Jaka pogoda w Warszawie?", "weather"),
+        ("Prognoza dla Kalisza na sobotę", "weather"),
+        ("Warsztaty będą pod dachem. Sprawdź pogodę w Kaliszu.", "weather"),
+        (
+            "Pokaz pod dachem pasuje na każdą pogodę. Szkicowanie wymaga widocznego "
+            "nieba. Jak je zapowiedzieć w dwóch punktach?",
+            None,
+        ),
         ("Jaka jest teraz temperatura na zewnątrz?", "weather"),
         ("Jaka jest temperatura pieczenia ciasta?", None),
         ("Co to jest temperatura?", "wiki"),

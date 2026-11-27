@@ -315,3 +315,56 @@ def test_current_choice_and_duration_do_not_fill_unstated_facts():
         )
         is None
     )
+
+
+def test_ev_d02_keeps_explicit_top_and_replaces_criterion_in_the_same_session(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, calls, replies = studio_chat
+    session = str(uuid4())
+    assert (
+        chat(
+            "Skrzynki sortuję według rozmiaru, najmniejsze na górze. "
+            "Zaproponuj jeden sposób utrzymania porządku.",
+            session=session,
+            verify_history=True,
+            stream=False,
+        )
+        == "Oznacz półki według rozmiaru i umieszczaj najmniejsze rzeczy na górze."
+    )
+    assert (
+        chat(
+            "Od teraz kieruj się częstością użycia, najczęściej używane na wysokości ręki. "
+            "Podaj jeden sposób.",
+            session=session,
+            verify_history=True,
+            stream=False,
+        )
+        == "Oznacz półki według częstości użycia i umieszczaj najczęściej używane rzeczy na wysokości ręki."
+    )
+    assert not calls and not replies
+
+
+@pytest.mark.parametrize(
+    "placement, expected",
+    [
+        ("najmniejsze na górze", "najmniejsze rzeczy na górze"),
+        ("największe na dole", "największych rzeczy"),
+        ("mniejsze na górze", "mniejsze rzeczy na górze"),
+        ("najmniejsze na wysokości ręki", None),
+        ("najcięższe na górze", None),
+    ],
+)
+def test_sorting_checks_size_and_explicit_placement_together(placement, expected):
+    answer = studio_dialog(
+        f"Torby sortuję według wielkości, {placement}. "
+        "Zaproponuj jeden sposób utrzymania porządku.",
+        [],
+    )
+    if expected is None:
+        assert answer is None
+    else:
+        assert answer is not None and "według rozmiaru" in answer and expected in answer

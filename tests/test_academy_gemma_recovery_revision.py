@@ -370,3 +370,61 @@ def test_removal_accepts_an_independent_surface_and_material():
         studio_revision("Zachowaj prawą ławkę i napisz jeszcze krócej.", history)
         == "Zabrano teczkę z prawej ławki, część dokumentów się zmieściła."
     )
+
+
+@pytest.mark.parametrize(
+    "effect",
+    [
+        "skrzynia dała się otworzyć",
+        "skrzynia nie dała się otworzyć",
+        "skrzynia otworzyła się",
+        "skrzynia nie otworzyła się",
+        "nie dało się otworzyć skrzyni",
+    ],
+)
+def test_removal_of_stool_preserves_opening_modality(effect):
+    original = f"Po zabraniu stołka spod okna {effect}"
+    initial = f"Skróć „{original}”. Podaj jedno zdanie."
+    draft = studio_revision(initial, [])
+    assert draft == f"Zabrano stołek spod okna, a {effect}."
+    history = _history((initial, "Po zabraniu stołka skrzynia się otworzyła."))
+    assert (
+        studio_revision(
+            "Korekta: stołek był pod stołem. Zmień tylko to i podaj jedno zdanie.",
+            history,
+        )
+        == f"Zabrano stołek spod stołu, a {effect}."
+    )
+
+
+@pytest.mark.parametrize(
+    "relation, effect",
+    [
+        ("z", "szafka nie dała się domknąć"),
+        ("spod", "szafka dała się domknąć"),
+        ("spod", "szafka domknęła się"),
+    ],
+)
+def test_relative_correction_changes_only_direction_of_same_place(relation, effect):
+    initial = (
+        f"Skróć „Po zabraniu torby {relation} dolnej ławki {effect}”. Jedna wersja."
+    )
+    draft = studio_revision(initial, [])
+    assert draft == f"Zabrano torbę {relation} dolnej ławki, a {effect}."
+    history = _history((initial, "Po zabraniu torby szafka nie domknęła się."))
+    assert (
+        studio_revision("Korekta: była to górna ławka. Zmień tylko położenie.", history)
+        == f"Zabrano torbę {relation} górnej ławki, a {effect}."
+    )
+    assert (
+        studio_revision("Korekta: była to górna półka. Zmień tylko położenie.", history)
+        is None
+    )
+
+
+def test_removal_preserves_explicit_preposition_when_there_is_no_correction():
+    request = "Skróć „Po zabraniu pudełka ze stołu wieko się zamknęło”. Jedna wersja."
+    assert (
+        studio_revision(request, [])
+        == "Zabrano pudełko ze stołu, a wieko się zamknęło."
+    )

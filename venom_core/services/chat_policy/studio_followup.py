@@ -77,6 +77,21 @@ _DURATION_RESULT_REQUEST = re.compile(
     re.I,
 )
 _DURATION_CLAUSES = re.compile(r"\. |, a (?=trzecia|korekta trzecie)", re.I)
+_OTHER_AMOUNT_TASK = re.compile(
+    rf"(?P<group>[0-9]{{1,3}}) {_MINUTES} to czas "
+    r"(?P<task>[^\W\d_]+(?: [^\W\d_]+){0,7})",
+    re.I,
+)
+_GROUP_AMOUNT_UNCONFIRMED = re.compile(
+    r"(?:nadal )?nie (?:wiem, czy to prawidłowy czas korekt ani jaki jest zakres|"
+    r"znam zakresu (?:dla )?dwóch pierwszych korekt|"
+    r"wiem, ile trwały dwie pierwsze korekty i jaki jest zakres)",
+    re.I,
+)
+_OTHER_AMOUNT_RESULT_REQUEST = re.compile(
+    r"czy (?:można|da się) (?:je )?zsumować z trzecią\?", re.I
+)
+_CORRECTION_TASK = re.compile(r"\b(?:popraw\w*|korekt\w*)\b", re.I)
 _REQUEST_UNCONFIRMED = re.compile(
     r"(?:(?:dostałem|dostałam) prośbę o (?P<received>[\w ]{2,75}), "
     r"ale nie mam potwierdzenia, że to zrobił(?:em|am)\. "
@@ -254,12 +269,38 @@ def _time_update(text: str, pair: re.Match[str]) -> _DurationChange | None:
     return _scope_with_component_revision(text, pair)
 
 
+def _group_amount_invalidated(text: str, pair: re.Match[str]) -> bool:
+    if _pair_scope(pair) is not None:
+        return False
+    clauses = text.split(". ")
+    if len(clauses) != 3:
+        return False
+    first, second, result = clauses
+    origin = _OTHER_AMOUNT_TASK.fullmatch(first)
+    return (
+        origin is not None
+        and int(origin["group"]) == int(pair["a"])
+        and not _CORRECTION_TASK.search(origin["task"])
+        and _GROUP_AMOUNT_UNCONFIRMED.fullmatch(second) is not None
+        and (
+            _DURATION_RESULT_REQUEST.fullmatch(result) is not None
+            or _OTHER_AMOUNT_RESULT_REQUEST.fullmatch(result) is not None
+        )
+    )
+
+
 def _time_followup(
     current: str, previous: str, history: Sequence[HistoryMessage]
 ) -> str | None:
     pair = _duration_pair(previous)
-    if pair is not None and (update := _time_update(current, pair)):
-        return _minutes(pair, update.minutes, scope=update.scope)
+    if pair is not None:
+        if update := _time_update(current, pair):
+            return _minutes(pair, update.minutes, scope=update.scope)
+        if _group_amount_invalidated(current, pair):
+            return (
+                "Podana wartość dotyczy innej czynności. Do obliczenia sumy brakuje "
+                "potwierdzonego czasu dwóch pierwszych korekt i jego zakresu."
+            )
 
     confirmation = _SCOPE_CONFIRMATION.fullmatch(current)
     clarified = _SCOPE_ANSWER.fullmatch(current) or confirmation

@@ -10,7 +10,9 @@ from enum import StrEnum
 from venom_core.api.schemas.llm_simple import HistoryMessage
 
 _TOPIC = r"[\w -]{2,75}"
-_CLAUSE_BREAK = re.compile(r"[.;] |, (?:lecz |ale )| i (?=(?:nadal )?nie wiem,)", re.I)
+_CLAUSE_BREAK = re.compile(
+    r"[.;] |, (?:lecz |ale )| i (?=(?:nadal )?nie (?:wiem|wiadomo),)", re.I
+)
 _STATUS_COMMAND = re.compile(
     r"(?:podaj|zapisz|podsumuj|zaktualizuj) (?:aktualny |krótki )?(?:stan|status)"
     r"(?: w jednym zdaniu)?|jedno zdanie",
@@ -33,9 +35,9 @@ _WITHDRAWN = re.compile(
     re.I,
 )
 _NO_EVIDENCE = re.compile(
-    rf"(?:jeszcze )?nikt nie potwierdził wykonania|"
+    rf"(?:jeszcze )?nikt nie potwierdził wykonania|nie ma potwierdzenia wykonania|"
     rf"nie mam (?:wiadomości, czy to zrobiono|potwierdzenia, że to zrobił(?:em|am))|"
-    rf"(?:nadal )?nie wiem, czy (?P<topic>{_TOPIC}) wykonano",
+    rf"(?:nadal )?nie (?:wiem|wiadomo), czy (?P<topic>{_TOPIC}) wykonano",
     re.I,
 )
 _UNCONFIRMED_END = re.compile(
@@ -44,8 +46,8 @@ _UNCONFIRMED_END = re.compile(
     re.I,
 )
 _EVIDENCE_PREFIX = re.compile(
-    r"(?:wiem (?:tylko|jedynie)|wiadomo tylko|potwierdzam|potwierdzono|"
-    r"przed chwilą rozmówca potwierdził), że ",
+    r"(?:(?P<limited>(?:wiem|wiadomo) (?:tylko|jedynie))|"
+    r"(?:przed chwilą )?(?:potwierdzam|potwierdzono|rozmówca potwierdził)), że ",
     re.I,
 )
 _PHASE_SUBJECT = re.compile(
@@ -78,10 +80,10 @@ _ACTION_FORMS = {
     "skanowania": "skan",
     "sprawdzenia": "sprawdzenie",
     "sprawdzanie": "sprawdzenie",
-    "oględziny": "sprawdzenie",
-    "oględzin": "sprawdzenie",
+    "oględzin": "oględziny",
     "przeglądu": "przegląd",
 }
+_INSPECTION_ACTIONS = {"sprawdzenie", "przegląd", "oględziny"}
 _PLURAL_SCOPE = re.compile(
     r"\b(?:obu|obydwu|dwóch|trzech|czterech|kilku|wszystkich|[2-9]\d*|1\d+)\b",
     re.I,
@@ -89,23 +91,34 @@ _PLURAL_SCOPE = re.compile(
 _SINGULAR_SCOPE = re.compile(r"\b(?:jednej|jednego|1)\b", re.I)
 
 _NAME = r"[^\W\d_]+(?:-[^\W\d_]+)?"
+_PERSON = rf"{_NAME}(?: {_NAME})?"
 _PICKUP = re.compile(
-    rf"(?P<item>[\w -]{{2,65}}) należy do (?P<owner>{_NAME})[,\.] "
-    rf"(?P<delegate>{_NAME}) (?P<assignment>ma (?:ją|go|je) tylko odebrać|"
+    rf"(?P<item>[\w -]{{2,65}}) należy do (?P<owner>{_PERSON})[,\.] "
+    rf"(?P<delegate>{_PERSON}) (?P<assignment>ma (?:ją|go|je) tylko odebrać|"
     r"jest wyznaczon[ya] do odbioru) "
     r"w (?P<possessive>jej|jego|ich) imieniu\. (?:wymień|podaj) (?:obie )?role\.",
     re.I,
 )
+_PICKUP_CLAUSE_BREAK = re.compile(r"[.;] |, a ", re.I)
 _PICKUP_WITHDRAWN = re.compile(
-    rf"(?P<delegate>{_NAME}) (?P<verb>zrezygnował(?:a)?)(?: z odbioru)?[,\.] "
-    r"(?:a )?(?:nikt jeszcze nie potwierdził zastępcy|nie ma potwierdzonego zastępcy|"
-    r"brak potwierdzonego zastępcy)\. "
-    r"(?:powiedz, kto jest właściciel(?:ką|em) i jaki jest stan odbioru|"
-    r"podaj właściciel(?:kę|a) i stan odbioru)\.",
+    rf"(?P<delegate>{_PERSON}) (?P<verb>zrezygnował(?:a)?)(?: z odbioru)?", re.I
+)
+_NO_REPLACEMENT = re.compile(
+    r"nikt jeszcze nie potwierdził zastępcy|(?:nie ma|brak) potwierdzonego zastępcy|"
+    r"nie potwierdzono zastępcy",
+    re.I,
+)
+_PICKUP_STATUS_COMMAND = re.compile(
+    r"powiedz, kto jest właściciel(?:ką|em) i jaki jest stan odbioru|"
+    r"podaj właściciel(?:kę|a) i stan odbioru",
+    re.I,
+)
+_PICKUP_OUTCOME = re.compile(
+    r"potwierdzono, że (?:nie odebrano tego przedmiotu|odebrano ten przedmiot)",
     re.I,
 )
 _PICKUP_REPLACED = re.compile(
-    rf"{_NAME} potwierdza, że (?P<item>[\w -]{{2,65}}) odbierze (?P<delegate>{_NAME})\. "
+    rf"{_PERSON} potwierdza, że (?P<item>[\w -]{{2,65}}) odbierze (?P<delegate>{_PERSON})\. "
     r"własność się nie zmienia\. podaj oba (?:nazwiska lub imiona|imiona) w rolach\.",
     re.I,
 )
@@ -127,6 +140,7 @@ class Phase(StrEnum):
 
 class EvidenceKind(StrEnum):
     OBSERVED = "observed"
+    START_ONLY = "start_only"
     UNCONFIRMED = "unconfirmed"
     END_UNCONFIRMED = "end_unconfirmed"
     RETAIN_COMPLETION = "retain_completion"
@@ -155,6 +169,7 @@ class Evidence:
     statement: str = ""
     topic: str = ""
     pronoun: str = ""
+    inspection: bool = False
 
 
 @dataclass(frozen=True)
@@ -218,29 +233,27 @@ def _observed_execution(clause: str) -> Evidence | None:
     if not (prefix := _EVIDENCE_PREFIX.match(clause)):
         return None
     description = clause[prefix.end() :]
+    bounded_start = (
+        EvidenceKind.START_ONLY if prefix["limited"] else EvidenceKind.OBSERVED
+    )
     if match := _PHASE_SUBJECT.fullmatch(description):
-        return Evidence(
-            EvidenceKind.OBSERVED,
-            _PHASE_BY_VERB[match["verb"].casefold()],
-            description,
-            match["topic"],
-        )
+        phase = _PHASE_BY_VERB[match["verb"].casefold()]
+        kind = bounded_start if phase == Phase.STARTED else EvidenceKind.OBSERVED
+        return Evidence(kind, phase, description, match["topic"])
     if match := _STILL_RUNNING.fullmatch(description):
         return Evidence(
             EvidenceKind.OBSERVED, Phase.ONGOING, description, match["topic"]
         )
     if match := _STARTED_ACTION.fullmatch(description):
         topic = _STARTED_ACTION_TOPICS[match["verb"].casefold()]
-        return Evidence(
-            EvidenceKind.OBSERVED, Phase.STARTED, f"rozpoczęto {topic}", topic
-        )
+        return Evidence(bounded_start, Phase.STARTED, f"rozpoczęto {topic}", topic)
     if match := _LOOKED_AT.fullmatch(description):
         return Evidence(
             EvidenceKind.OBSERVED,
             Phase.INCOMPLETE if match["negated"] else Phase.COMPLETED,
             f"potwierdzono, że {description}",
-            "sprawdzenie",
-            match["pronoun"].casefold(),
+            pronoun=match["pronoun"].casefold(),
+            inspection=True,
         )
     return None
 
@@ -257,7 +270,8 @@ def _execution_clause(clause: str) -> Evidence | None:
     if retained := _RETAIN_DONE.fullmatch(clause):
         return Evidence(
             EvidenceKind.RETAIN_COMPLETION,
-            topic=retained["topic"] or retained["action"],
+            topic=retained["action"] or "",
+            inspection=retained["topic"] is not None,
         )
     return _observed_execution(clause)
 
@@ -285,6 +299,11 @@ def _bind_execution(
     observation: Evidence, topic: str, previous: Evidence
 ) -> Evidence | None:
     if observation.topic and not _same_action(topic, observation.topic):
+        return None
+    if (
+        observation.inspection
+        and _canonical_action(topic)[0] not in _INSPECTION_ACTIONS
+    ):
         return None
     if observation.pronoun in {"go", "ją", "jej"} and _PLURAL_SCOPE.search(topic):
         return None
@@ -347,6 +366,8 @@ def _render_status(state: ActionState, *, one_sentence: bool) -> str:
     execution = state.execution
     if execution.kind == EvidenceKind.UNCONFIRMED:
         return f"{line}, a wykonania nie potwierdzono."
+    if execution.kind == EvidenceKind.START_ONLY:
+        return f"{line}, a {execution.statement}, lecz dalszego przebiegu nie potwierdzono."
     if (
         request.status == RequestStatus.WITHDRAWN
         and execution.kind == EvidenceKind.END_UNCONFIRMED
@@ -401,9 +422,24 @@ def _same_pickup_item(source: str, update: str) -> bool:
     return update.casefold() in forms
 
 
-def _pickup_withdrawal(source: str, correction: re.Match[str]) -> PickupRoles | None:
+def _pickup_withdrawal(text: str) -> tuple[re.Match[str], str] | None:
+    *clauses, instruction = _PICKUP_CLAUSE_BREAK.split(text.removesuffix("."))
+    if len(clauses) not in {2, 3} or not _PICKUP_STATUS_COMMAND.fullmatch(instruction):
+        return None
+    withdrawal = _PICKUP_WITHDRAWN.fullmatch(clauses[0])
+    if withdrawal is None or not _NO_REPLACEMENT.fullmatch(clauses[1]):
+        return None
+    outcome = ""
+    if len(clauses) == 3:
+        if not _PICKUP_OUTCOME.fullmatch(clauses[2]):
+            return None
+        outcome = f" {clauses[2][0].upper()}{clauses[2][1:]}."
+    return withdrawal, outcome
+
+
+def _bind_pickup_delegate(source: str, delegate: str) -> PickupRoles | None:
     roles = _pickup_roles(source)
-    if roles and roles.delegate.casefold() == correction["delegate"].casefold():
+    if roles and roles.delegate.casefold() == delegate.casefold():
         return roles
     return None
 
@@ -416,21 +452,20 @@ def _pickup_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
             f"{assignment} w {roles.possessive} imieniu."
         )
 
-    if (withdrawal := _PICKUP_WITHDRAWN.fullmatch(text)) and (
-        users := _last_users(history, 1)
-    ):
-        if roles := _pickup_withdrawal(users[0], withdrawal):
+    if (change := _pickup_withdrawal(text)) and (users := _last_users(history, 1)):
+        withdrawal, outcome = change
+        if roles := _bind_pickup_delegate(users[0], withdrawal["delegate"]):
             return (
                 f"{roles.item} należy do {roles.owner}. {roles.delegate} "
                 f"{withdrawal['verb'].lower()} z odbioru, "
-                "a zastępcy jeszcze nie potwierdzono."
+                f"a zastępcy jeszcze nie potwierdzono.{outcome}"
             )
 
     if (replacement := _PICKUP_REPLACED.fullmatch(text)) and (
         users := _last_users(history, 2)
     ):
-        if (withdrawal := _PICKUP_WITHDRAWN.fullmatch(users[1])) and (
-            roles := _pickup_withdrawal(users[0], withdrawal)
+        if (change := _pickup_withdrawal(users[1])) and (
+            roles := _bind_pickup_delegate(users[0], change[0]["delegate"])
         ):
             if _same_pickup_item(roles.item, replacement["item"]):
                 _, pronoun, *_ = roles.assignment.split()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from typing import Literal
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
@@ -20,8 +21,8 @@ _OPTIONS = re.compile(
 )
 _AMBIGUOUS_OPTION = re.compile(r"\b(?:i|oraz|albo|lub|ani|czy|nie)\b", re.I)
 _PLACEMENT = (
-    r"(?P<priority>najcięższe|cięższe|największe|większe|najczęściej używane) "
-    r"(?P<position>na dole|na wysokości ręki)"
+    r"(?P<priority>(?:naj)?(?:cięższe|większe|mniejsze)|najczęściej używane) "
+    r"(?P<position>na dole|na górze|na wysokości ręki)"
 )
 _SORTING = re.compile(
     rf"{_PHRASE} (?:układam|sortuję) według "
@@ -36,7 +37,10 @@ _SORTING_CHANGE = re.compile(
     rf"{_PLACEMENT}\. Podaj jeden (?:krótki )?sposób[.!]",
     re.I,
 )
-_SORTING_CRITERION = {
+_SortingCriterion = Literal["ciężaru", "rozmiaru", "częstości użycia"]
+_SortingPosition = Literal["na dole", "na górze", "na wysokości ręki"]
+_SortingPlan = tuple[_SortingCriterion, str, _SortingPosition]
+_SORTING_CRITERION: dict[str, _SortingCriterion] = {
     "ciężaru": "ciężaru",
     "ciężarem": "ciężaru",
     "wagi": "ciężaru",
@@ -50,10 +54,15 @@ _SORTING_CRITERION = {
     "częstości użycia": "częstości użycia",
     "częstością użycia": "częstości użycia",
 }
-_SORTING_PLACEMENTS = {
-    "ciężaru": {("najcięższe", "na dole"), ("cięższe", "na dole")},
-    "rozmiaru": {("największe", "na dole"), ("większe", "na dole")},
-    "częstości użycia": {("najczęściej używane", "na wysokości ręki")},
+_SORTING_PLACEMENTS: dict[_SortingCriterion, dict[str, _SortingPosition]] = {
+    "ciężaru": {"najcięższe": "na dole", "cięższe": "na dole"},
+    "rozmiaru": {
+        "największe": "na dole",
+        "większe": "na dole",
+        "najmniejsze": "na górze",
+        "mniejsze": "na górze",
+    },
+    "częstości użycia": {"najczęściej używane": "na wysokości ręki"},
 }
 _SHARED_STORAGE = re.compile(
     r"Zachowaj metodę, dopasuj ją do wspólnej (?:szafy|szafki|przestrzeni)\. "
@@ -111,16 +120,16 @@ def _clarify_choice(match: re.Match[str]) -> str | None:
     return _sentence_case(f"{first} czy {second}?")
 
 
-def _sorting_plan(match: re.Match[str]) -> tuple[str, str, str] | None:
+def _sorting_plan(match: re.Match[str]) -> _SortingPlan | None:
     criterion = _SORTING_CRITERION[match["criterion"].casefold()]
     priority = match["priority"].casefold()
-    position = match["position"].casefold()
-    if (priority, position) not in _SORTING_PLACEMENTS[criterion]:
+    position = _SORTING_PLACEMENTS[criterion].get(priority)
+    if position is None or position != match["position"].casefold():
         return None
     return criterion, priority, position
 
 
-def _sorting_reply(plan: tuple[str, str, str], *, location: str | None = None) -> str:
+def _sorting_reply(plan: _SortingPlan, *, location: str | None = None) -> str:
     criterion, priority, position = plan
     if location is not None:
         return (

@@ -80,3 +80,34 @@ def test_component_revision_does_not_infer_unknown_group_or_override_explicit_sc
     assert studio_followup(_PENDING, _history("Sporządzono opis w pracowni.")) is None
     first = _START.replace("przez 12", "przez łącznie 12")
     assert studio_followup(_PENDING, _history(first)) is None
+
+
+@pytest.mark.parametrize(
+    "confirmation",
+    [
+        "Nadal nie wiem, czy to prawidłowy czas korekt ani jaki jest zakres. "
+        "Czy można podać sumę?",
+        "Nadal nie znam zakresu dla dwóch pierwszych korekt. Czy można je zsumować z trzecią?",
+        "Nie wiem, ile trwały dwie pierwsze korekty i jaki jest zakres. Czy da się podać jedną sumę?",
+    ],
+)
+def test_reassigned_time_excludes_unconfirmed_group_from_sum(confirmation):
+    reassign = f"12 minut to czas pomiaru ramy. {confirmation}"
+    expected = (
+        "Podana wartość dotyczy innej czynności. Do obliczenia sumy brakuje "
+        "potwierdzonego czasu dwóch pierwszych korekt i jego zakresu."
+    )
+    assert studio_followup(reassign, _history(_START)) == expected
+    assert studio_followup(reassign.replace("12", "13"), _history(_START)) is None
+    assert (
+        studio_followup(
+            reassign.replace("pomiaru ramy", "korekty opisów"), _history(_START)
+        )
+        is None
+    )
+    assert (
+        studio_followup(
+            reassign, _history(_START.replace("przez 12", "przez łącznie 12"))
+        )
+        is None
+    )

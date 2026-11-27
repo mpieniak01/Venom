@@ -60,12 +60,15 @@ _SHORTEN_SOUNDS = re.compile(
     re.I,
 )
 _PLACE_DIRECTION = r"górn|doln|środkow|lew|praw"
+_OPEN_CLOSE_INFINITIVE = r"(?:domknąć|zamknąć|otworzyć)"
+_OPEN_CLOSE_MODAL = r"(?:dał[ayo]?|dawał[ayo]?)"
+_OPEN_CLOSE_EVENT = r"(?:domknął|domknęł[ayo]|zamknął|zamknęł[ayo]|otworzył[ayo]?)"
 _REMOVAL_EFFECT = (
     rf"{_WORD} przestał skrzypieć"
     rf"|(?:reszta|część) {_WORD} się zmieściła"
-    rf"|{_WORD} (?:nie )?(?:dał[ayo]?|dawał[ayo]?) się (?:domknąć|zamknąć|otworzyć)"
-    rf"|(?:nie )?można było (?:domknąć|zamknąć|otworzyć) {_WORD}"
-    rf"|{_WORD} (?:nie )?się (?:domknął|domknęł[ayo]|zamknął|zamknęł[ayo]|otworzył[ayo]?)"
+    rf"|{_WORD} (?:nie )?{_OPEN_CLOSE_MODAL} się {_OPEN_CLOSE_INFINITIVE}"
+    rf"|(?:nie )?(?:można było|dało się) {_OPEN_CLOSE_INFINITIVE} {_WORD}"
+    rf"|{_WORD} (?:nie )?(?:się {_OPEN_CLOSE_EVENT}|{_OPEN_CLOSE_EVENT} się)"
 )
 _REMOVAL = re.compile(
     rf"po zabraniu (?P<object>{_WORD}) (?P<relation>z|ze|spod) "
@@ -73,9 +76,11 @@ _REMOVAL = re.compile(
     re.I,
 )
 _LOCATION_CORRECTION = re.compile(
-    rf"(?:korekta|poprawka): (?P<object>{_WORD}) był[ao] (?P<relation>na|pod) "
+    rf"(?:korekta|poprawka): (?:(?P<object>{_WORD}) był[ao]? (?P<relation>na|pod) "
     rf"(?:(?P<direction>{_PLACE_DIRECTION})(?P<ending>ej|ą) )?(?P<place>{_WORD})[.] "
-    r"zmień tylko to i podaj (?:jedną gotową wersję|jedno zdanie)[.]?",
+    r"zmień tylko to i podaj (?:jedną gotową wersję|jedno zdanie)"
+    rf"|była to (?P<relative_direction>{_PLACE_DIRECTION})a (?P<relative_place>ławka|półka)[.] "
+    r"zmień tylko położenie)[.]?",
     re.I,
 )
 _CHANGE_VERB = {
@@ -106,11 +111,14 @@ _REMOVED_ITEMS = {
     "książki": ("książka", "książkę"),
     "płyty": ("płyta", "płytę"),
     "pudełka": ("pudełko", "pudełko"),
+    "stołka": ("stołek", "stołek"),
     "teczki": ("teczka", "teczkę"),
+    "torby": ("torba", "torbę"),
 }
 _REMOVAL_PLACE_ANCHORS = {
     "blatu": "blat",
     "ławki": "ławkę",
+    "okna": "okno",
     "półki": "półkę",
     "regału": "regał",
     "stołu": "stół",
@@ -121,6 +129,7 @@ _LOCATION_UPDATES = {
     ("na", "półce"): ("z", "półki"),
     ("na", "stole"): ("ze", "stołu"),
     ("pod", "ławką"): ("spod", "ławki"),
+    ("pod", "oknem"): ("spod", "okna"),
     ("pod", "półką"): ("spod", "półki"),
     ("pod", "regałem"): ("spod", "regału"),
     ("pod", "stołem"): ("spod", "stołu"),
@@ -312,6 +321,14 @@ def _correct_removal(correction: re.Match[str], prior: str, origin: str) -> str 
     if revision is None or revision.removal is None:
         return None
     removal = revision.removal
+    if relative_place := correction["relative_place"]:
+        if {"ławka": "ławki", "półka": "półki"}[
+            relative_place.casefold()
+        ] != removal.place:
+            return None
+        return replace(
+            removal, direction=correction["relative_direction"].casefold()
+        ).render(compact=compact)
     if removal.name != correction["object"].casefold():
         return None
     relation = correction["relation"].casefold()

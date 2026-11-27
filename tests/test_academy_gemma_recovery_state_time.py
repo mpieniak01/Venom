@@ -59,7 +59,8 @@ def test_status_keeps_observed_start_and_withdrawn_request_separate():
         "Zgłoszono prośbę o odczyt próbnej planszy, a wykonania nie potwierdzono."
     )
     assert studio_followup(_STARTED, _history(_REQUEST)) == (
-        "Prośba o odczyt próbnej planszy nadal obowiązuje, a rozpoczęto odczyt."
+        "Prośba o odczyt próbnej planszy nadal obowiązuje, a rozpoczęto odczyt, "
+        "lecz dalszego przebiegu nie potwierdzono."
     )
     assert studio_followup(_WITHDRAWN, _history(_REQUEST, _STARTED)) == (
         "Prośbę o odczyt próbnej planszy wycofano. "
@@ -245,7 +246,8 @@ _RECOVERY_STATUS = [
             "Wycofuję prośbę. Nie wiadomo, czy rozpoczęty skan zakończono. Jedno zdanie.",
         ],
         [
-            "Prośba o skan makiety nadal obowiązuje, a rozpoczęto skan.",
+            "Prośba o skan makiety nadal obowiązuje, a rozpoczęto skan, "
+            "lecz dalszego przebiegu nie potwierdzono.",
             "Prośba o skan makiety została wycofana, a rozpoczęto skan, ale nie potwierdzono dokończenia.",
         ],
     ),
@@ -362,3 +364,105 @@ def test_role_assignment_requires_matching_named_role_holder():
     )
     assert studio_followup(two_objects, []) is None
     assert studio_followup(withdrawal, _history(two_objects)) is None
+
+
+@pytest.mark.parametrize(
+    ("source", "update", "expected_source", "expected_update"),
+    [
+        (
+            "Poprosiłem o pomiar wymiaru ramy. Nie ma potwierdzenia wykonania. Podaj stan.",
+            "Wycofuję prośbę. Nadal nie wiadomo, czy pomiar wykonano. Podaj stan.",
+            "Zgłoszono prośbę o pomiar wymiaru ramy, a wykonania nie potwierdzono.",
+            "Prośba o pomiar wymiaru ramy została wycofana, a wykonania nie potwierdzono.",
+        ),
+        (
+            "Poprosiłam o przegląd osłony. Potwierdzono, że obejrzano ją do końca. Podaj stan.",
+            "Wycofuję samą prośbę. Dotychczasowe oględziny są potwierdzone. Podaj aktualny stan.",
+            "Zgłoszono prośbę o przegląd osłony, a potwierdzono, że obejrzano ją do końca.",
+            "Prośba o przegląd osłony została wycofana, a potwierdzono, że obejrzano ją do końca.",
+        ),
+        (
+            "Prośba o skan znaku nadal obowiązuje. Wiadomo tylko, że rozpoczęto skan. Podaj status.",
+            "Przed chwilą potwierdzono, że skan nadal trwa. Podaj aktualny stan.",
+            "Prośba o skan znaku nadal obowiązuje, a rozpoczęto skan, lecz dalszego przebiegu nie potwierdzono.",
+            "Prośba o skan znaku nadal obowiązuje, a skan nadal trwa.",
+        ),
+        (
+            "Pokrowiec należy do Basi. Wojtek jest wyznaczony do odbioru w jej imieniu. Podaj role.",
+            "Wojtek zrezygnował. Nie potwierdzono zastępcy. Podaj właścicielkę i stan odbioru.",
+            "Pokrowiec należy do Basi, a Wojtek jest wyznaczony do odbioru w jej imieniu.",
+            "Pokrowiec należy do Basi. Wojtek zrezygnował z odbioru, a zastępcy jeszcze nie potwierdzono.",
+        ),
+    ],
+)
+def test_recovery_binds_composed_evidence_from_both_turns(
+    source, update, expected_source, expected_update
+):
+    assert studio_followup(source, []) == expected_source
+    assert studio_followup(update, _history(source)) == expected_update
+
+
+def test_only_inspection_can_bind_pronominal_observation():
+    request = "Poprosiłam o przegląd wizjera. Potwierdzono, że obejrzano go do końca. Podaj stan."
+    assert studio_followup(request, []) == (
+        "Zgłoszono prośbę o przegląd wizjera, a potwierdzono, że obejrzano go do końca."
+    )
+    assert studio_followup(request.replace("przegląd", "transport"), []) is None
+
+
+def test_explicit_continuation_applies_only_to_matching_work():
+    initial = (
+        "Prośba o pomiar rozstawu nadal obowiązuje. "
+        "Wiadomo jedynie, że rozpoczęto pomiar. Podaj aktualny stan."
+    )
+    assert studio_followup(initial, []) == (
+        "Prośba o pomiar rozstawu nadal obowiązuje, a rozpoczęto pomiar, "
+        "lecz dalszego przebiegu nie potwierdzono."
+    )
+    next_turn = (
+        "Przed chwilą potwierdzono, że pomiar rozstawu nadal trwa. Podaj aktualny stan."
+    )
+    assert studio_followup(next_turn, _history(initial)) == (
+        "Prośba o pomiar rozstawu nadal obowiązuje, a pomiar rozstawu nadal trwa."
+    )
+    assert (
+        studio_followup(next_turn.replace("rozstawu", "wysokości"), _history(initial))
+        is None
+    )
+
+
+def test_delegate_full_name_and_explicit_pickup_outcome_are_independent():
+    source = (
+        "Futerał należy do Elizy Kot. Anna Lis jest wyznaczona do odbioru "
+        "w jej imieniu. Podaj role."
+    )
+    assert studio_followup(source, []) == (
+        "Futerał należy do Elizy Kot, a Anna Lis jest wyznaczona do odbioru w jej imieniu."
+    )
+    update = "Anna Lis zrezygnowała. Nie potwierdzono zastępcy."
+    command = " Podaj właścicielkę i stan odbioru."
+    state = (
+        "Futerał należy do Elizy Kot. Anna Lis zrezygnowała z odbioru, "
+        "a zastępcy jeszcze nie potwierdzono."
+    )
+    assert studio_followup(update + command, _history(source)) == state
+    for statement in (
+        "Potwierdzono, że nie odebrano tego przedmiotu.",
+        "Potwierdzono, że odebrano ten przedmiot.",
+    ):
+        assert studio_followup(f"{update} {statement}{command}", _history(source)) == (
+            f"{state} {statement}"
+        )
+    different_person = update.replace("Anna Lis", "Anna Kot")
+    assert studio_followup(different_person + command, _history(source)) is None
+    different_item = " Potwierdzono, że nie odebrano walizki."
+    assert studio_followup(update + different_item + command, _history(source)) is None
+
+
+def test_pickup_declines_a_shared_surname_without_its_first_name():
+    source = (
+        "Paczka należy do Zofii Lis. Anna Lis jest wyznaczona do odbioru "
+        "w jej imieniu. Podaj role."
+    )
+    ambiguous = "Lis zrezygnowała. Nie potwierdzono zastępcy. Podaj właścicielkę i stan odbioru."
+    assert studio_followup(ambiguous, _history(source)) is None

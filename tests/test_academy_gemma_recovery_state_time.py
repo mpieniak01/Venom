@@ -216,3 +216,149 @@ def test_duration_explicit_each_count_cannot_claim_the_same_quantity_is_collecti
     )
     assert studio_followup(prompt, []) == "16 min"
     assert studio_followup(prompt.replace("6 minut", "łącznie 6 minut"), []) is None
+
+
+_RECOVERY_STATUS = [
+    (
+        [
+            "Poprosiłam wczoraj o przegląd mapy. Nie mam wiadomości, czy to zrobiono. Podaj stan.",
+            "Wycofuję prośbę i nadal nie wiem, czy przegląd wykonano. Zapisz aktualny stan.",
+        ],
+        [
+            "Zgłoszono prośbę o przegląd mapy, a wykonania nie potwierdzono.",
+            "Prośba o przegląd mapy została wycofana, a wykonania nie potwierdzono.",
+        ],
+    ),
+    (
+        [
+            "Poprosiłem o sprawdzenie obręczy. Potwierdzono, że obejrzano ją do końca. Podaj stan.",
+            "Wycofuję samą prośbę. Dotychczasowe oględziny są potwierdzone. Zapisz aktualny stan.",
+        ],
+        [
+            "Zgłoszono prośbę o sprawdzenie obręczy, a potwierdzono, że obejrzano ją do końca.",
+            "Prośba o sprawdzenie obręczy została wycofana, a potwierdzono, że obejrzano ją do końca.",
+        ],
+    ),
+    (
+        [
+            "Prośba o skan makiety wciąż obowiązuje. Wiadomo tylko, że ktoś zaczął skanować. Podaj status.",
+            "Wycofuję prośbę. Nie wiadomo, czy rozpoczęty skan zakończono. Jedno zdanie.",
+        ],
+        [
+            "Prośba o skan makiety nadal obowiązuje, a rozpoczęto skan.",
+            "Prośba o skan makiety została wycofana, a rozpoczęto skan, ale nie potwierdzono dokończenia.",
+        ],
+    ),
+    (
+        [
+            "Zlecenie odczytu tabliczki obowiązuje. Potwierdzono początek. Podaj status.",
+            "Przed chwilą rozmówca potwierdził, że odczyt nadal trwa. Podaj aktualny status.",
+        ],
+        [
+            "Zlecenie odczytu tabliczki nadal obowiązuje, a potwierdzono rozpoczęcie.",
+            "Zlecenie odczytu tabliczki nadal obowiązuje, a odczyt nadal trwa.",
+        ],
+    ),
+    (
+        [
+            "Szablon należy do Ali. Mirek jest wyznaczony do odbioru w jej imieniu. Wymień role.",
+            "Mirek zrezygnował. Brak potwierdzonego zastępcy. Podaj właścicielkę i stan odbioru.",
+        ],
+        [
+            "Szablon należy do Ali, a Mirek jest wyznaczony do odbioru w jej imieniu.",
+            "Szablon należy do Ali. Mirek zrezygnował z odbioru, a zastępcy jeszcze nie potwierdzono.",
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize(("requests", "expected"), _RECOVERY_STATUS)
+def test_recovery_status_binds_evidence_to_the_same_object(requests, expected):
+    for index, request in enumerate(requests):
+        assert studio_followup(request, _history(*requests[:index])) == expected[index]
+
+
+@pytest.mark.parametrize(
+    ("amount", "pronoun", "matches"),
+    [
+        ("jednej", "ją", True),
+        ("jednej", "je", False),
+        ("dwóch", "ją", False),
+        ("dwóch", "je", True),
+    ],
+)
+def test_inspection_respects_explicit_singular_and_plural_scope(
+    amount, pronoun, matches
+):
+    prompt = (
+        f"Poprosiłem o sprawdzenie {amount} opasek. Potwierdzono, że obejrzano "
+        f"{pronoun} do końca. Podaj stan."
+    )
+    # Use the case agreeing with the explicitly singular count.
+    prompt = prompt.replace("jednej opasek", "jednej opaski")
+    response = studio_followup(prompt, [])
+    assert (response is not None) == matches
+    if response:
+        assert f"{amount} opas" in response
+        assert f"obejrzano {pronoun} do końca" in response
+
+
+def test_negative_completion_and_explicit_nonperformance_are_distinct():
+    prompt = (
+        "Poprosiłam o sprawdzenie jednej opaski. "
+        "Potwierdzono, że nie obejrzano jej do końca. Podaj stan."
+    )
+    assert studio_followup(prompt, []) == (
+        "Zgłoszono prośbę o sprawdzenie jednej opaski, "
+        "a potwierdzono, że nie obejrzano jej do końca."
+    )
+    report = (
+        "Poprosiłam o odczyt arkusza próbnego. "
+        "Potwierdzono, że nie wykonano odczytu arkusza próbnego. Podaj stan."
+    )
+    assert studio_followup(report, []) == (
+        "Zgłoszono prośbę o odczyt arkusza próbnego, "
+        "a nie wykonano odczytu arkusza próbnego."
+    )
+
+
+def test_status_does_not_bind_another_object_or_conflate_request_and_order():
+    initial, progress = _RECOVERY_STATUS[3][0]
+    other = (
+        "Przed chwilą rozmówca potwierdził, że odczyt drugiej tabliczki "
+        "nadal trwa. Podaj aktualny status."
+    )
+    assert studio_followup(other, _history(initial)) is None
+    assert studio_followup(progress, _history(initial, "Kiedy zamykają biuro?")) is None
+    same = progress.replace("odczyt nadal", "odczyt tabliczki nadal")
+    assert studio_followup(same, _history(initial)) == (
+        "Zlecenie odczytu tabliczki nadal obowiązuje, a odczyt tabliczki nadal trwa."
+    )
+
+
+def test_status_keeps_execution_across_multiple_updates_and_withdrawal():
+    source, progress = _RECOVERY_STATUS[3][0]
+    done = "Potwierdzam, że zakończono odczyt tabliczki. Podaj status."
+    assert (
+        studio_followup(
+            "Wycofuję samą prośbę. Zapisz aktualny stan.",
+            _history(source, progress, done),
+        )
+        is None
+    )
+    withdrawal = "Wycofuję samo zlecenie. Zapisz aktualny stan."
+    assert studio_followup(withdrawal, _history(source, progress, done)) == (
+        "Zlecenie odczytu tabliczki zostało wycofane, a zakończono odczyt tabliczki."
+    )
+
+
+def test_role_assignment_requires_matching_named_role_holder():
+    source, withdrawal = _RECOVERY_STATUS[4][0]
+    unrelated_person = withdrawal.replace("Mirek", "Jarek")
+    assert studio_followup(unrelated_person, _history(source)) is None
+    two_objects = (
+        "Futerał należy do Leny, karton do Ewy. Do odbioru futerału wyznaczono Iwa. "
+        "Podaj role dotyczące futerału."
+    )
+    assert studio_followup(two_objects, []) is None
+    assert studio_followup(withdrawal, _history(two_objects)) is None

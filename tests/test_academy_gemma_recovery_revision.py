@@ -255,3 +255,118 @@ def test_temperature_rewrite_anchors_location_and_change():
     )
     assert compact == "Po zamknięciu okna w korytarzu ociepliło się."
     assert len(compact) < len(first)
+
+
+@pytest.mark.parametrize(
+    "source, action, causal_effect, still_going",
+    [
+        (
+            "Po odłączeniu radia jego szum w pracowni ustał, a zegar nadal tykał",
+            "Odłączono radio",
+            "jego szum w pracowni ustał",
+            "zegar nadal tykał",
+        ),
+        (
+            "Po wyłączeniu pompy jej buczenie w świetlicy ustało, a metronom wciąż stukał",
+            "Wyłączono pompę",
+            "jej buczenie w świetlicy ustało",
+            "metronom wciąż stukał",
+        ),
+    ],
+)
+def test_sound_rewrite_keeps_the_action_and_both_independent_effects(
+    source, action, causal_effect, still_going
+):
+    initial = f"Skróć „{source}”. Zachowaj oba dźwięki i miejsce, podaj jedno zdanie."
+    draft = studio_revision(initial, [])
+    assert draft == f"{action}, {causal_effect}, a {still_going}."
+    action_phrase = " ".join(source.split()[1:3]).replace("czeniu", "czenie")
+    followup = f"Napisz jeszcze krócej, zachowując {action_phrase} i oba dźwięki."
+    history = _history((initial, "W pomieszczeniu zrobiło się cicho."))
+    short = studio_revision(followup, history)
+    assert short == f"{action}, {causal_effect}, {still_going}."
+    assert len(short) < len(draft) < len(source) + 1
+    assert (
+        studio_revision(followup.replace(action_phrase, "włączenie radia"), history)
+        is None
+    )
+
+
+def test_compaction_keeps_the_location_of_removed_material_and_the_effect():
+    source = "Po zabraniu kartki z lewej ławki reszta materiałów się zmieściła"
+    request = f"Skróć „{source}”. Jedna wersja."
+    draft = studio_revision(request, [])
+    assert draft == "Zabrano kartkę z lewej ławki, a reszta materiałów się zmieściła."
+    history = _history((request, "Zabrano kartkę, reszta się zmieściła."))
+    short = studio_revision(
+        "Zachowaj lewą ławkę, lecz skróć zdanie jeszcze bardziej.", history
+    )
+    assert short == "Zabrano kartkę z lewej ławki, reszta materiałów się zmieściła."
+    assert len(short) < len(draft) < len(source) + 1
+    assert (
+        studio_revision(
+            "Zachowaj prawą ławkę, lecz skróć zdanie jeszcze bardziej.", history
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "drzwi dały się domknąć",
+        "drzwi nie dały się domknąć",
+        "drzwi się domknęły",
+        "nie można było zamknąć drzwi",
+    ],
+)
+def test_removal_location_revision_does_not_change_outcome_modality(outcome):
+    source = f"Po zabraniu pudełka spod stołu {outcome}"
+    request = f"Skróć „{source}”. Podaj jedno zdanie."
+    draft = studio_revision(request, [])
+    assert draft == f"Zabrano pudełko spod stołu, a {outcome}."
+    assert len(draft) < len(source) + 1
+    history = _history((request, "Po zabraniu pudełka drzwi się domknęły."))
+    assert (
+        studio_revision(
+            "Korekta: pudełko było pod ławką. Zmień tylko to i podaj jedno zdanie.",
+            history,
+        )
+        == f"Zabrano pudełko spod ławki, a {outcome}."
+    )
+    assert (
+        studio_revision(
+            "Korekta: pudełko było na prawej ławce. Zmień tylko to i podaj jedno zdanie.",
+            history,
+        )
+        == f"Zabrano pudełko z prawej ławki, a {outcome}."
+    )
+    assert (
+        studio_revision(
+            "Korekta: teczka była pod ławką. Zmień tylko to i podaj jedno zdanie.",
+            history,
+        )
+        is None
+    )
+
+
+def test_removal_rule_does_not_convert_a_future_instruction_into_a_fact():
+    assert (
+        studio_revision(
+            "Skróć „Po zabraniu pudełka spod stołu domknij drzwi”. Podaj jedno zdanie.",
+            [],
+        )
+        is None
+    )
+
+
+def test_removal_accepts_an_independent_surface_and_material():
+    source = "Po zabraniu teczki z prawej ławki część dokumentów się zmieściła"
+    request = f"Skróć „{source}”. Jedna wersja."
+    draft = studio_revision(request, [])
+    assert draft == "Zabrano teczkę z prawej ławki, a część dokumentów się zmieściła."
+    history = _history((request, draft))
+    assert (
+        studio_revision("Zachowaj prawą ławkę i napisz jeszcze krócej.", history)
+        == "Zabrano teczkę z prawej ławki, część dokumentów się zmieściła."
+    )

@@ -11,31 +11,68 @@ from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
 _WORD = r"[^\W\d_]+"
 _PHRASE = rf"{_WORD}(?: {_WORD}){{0,3}}"
 _OPTIONS = re.compile(
-    rf"(?:na|w|przy) {_PHRASE} (?:są|stoją|leżą|wiszą) "
+    rf"(?:(?:na|w|przy) {_PHRASE} )?(?:są|stoją|leżą|wiszą) "
     rf"(?P<first>{_PHRASE}) (?:i|oraz|albo) (?P<second>{_PHRASE})\. "
-    rf'ktoś prosi (?:„|")(?i:podaj|daj|przynieś) (?P<requested>{_WORD})(?:”|")\. '
+    rf"ktoś prosi (?:o (?P<asked>{_WORD})|"
+    rf'(?:„|")(?:podaj|daj|przynieś) (?P<quoted>{_WORD})(?:”|"))\. '
     r"zadaj jedno krótkie pytanie[.!]",
     re.I,
 )
 _AMBIGUOUS_OPTION = re.compile(r"\b(?:i|oraz|albo|lub|ani|czy|nie)\b", re.I)
-_WEIGHT = re.compile(
-    rf"{_PHRASE} w (?:szafce|szafie|regałach) układam według (?:ciężaru|wagi|masy): "
-    r"(?:najcięższe|cięższe) na dole\. Zaproponuj jeden (?:krótki )?sposób, "
-    r"żeby utrzymać ten porządek[.!]",
+_PLACEMENT = (
+    r"(?P<priority>najcięższe|cięższe|największe|większe|najczęściej używane) "
+    r"(?P<position>na dole|na wysokości ręki)"
+)
+_SORTING = re.compile(
+    rf"{_PHRASE} (?:układam|sortuję) według "
+    rf"(?P<criterion>ciężaru|wagi|masy|rozmiaru|wielkości|częstości użycia)[:,] "
+    rf"{_PLACEMENT}\. Zaproponuj jeden (?:krótki )?sposób"
+    r"(?: utrzymania porządku|, żeby utrzymać ten porządek)[.!]",
     re.I,
 )
+_SORTING_CHANGE = re.compile(
+    r"Od teraz kieruj się "
+    r"(?P<criterion>ciężarem|wagą|masą|rozmiarem|wielkością|częstością użycia), "
+    rf"{_PLACEMENT}\. Podaj jeden (?:krótki )?sposób[.!]",
+    re.I,
+)
+_SORTING_CRITERION = {
+    "ciężaru": "ciężaru",
+    "ciężarem": "ciężaru",
+    "wagi": "ciężaru",
+    "wagą": "ciężaru",
+    "masy": "ciężaru",
+    "masą": "ciężaru",
+    "rozmiaru": "rozmiaru",
+    "rozmiarem": "rozmiaru",
+    "wielkości": "rozmiaru",
+    "wielkością": "rozmiaru",
+    "częstości użycia": "częstości użycia",
+    "częstością użycia": "częstości użycia",
+}
+_SORTING_PLACEMENTS = {
+    "ciężaru": {("najcięższe", "na dole"), ("cięższe", "na dole")},
+    "rozmiaru": {("największe", "na dole"), ("większe", "na dole")},
+    "częstości użycia": {("najczęściej używane", "na wysokości ręki")},
+}
 _SHARED_STORAGE = re.compile(
     r"Zachowaj metodę, dopasuj ją do wspólnej (?:szafy|szafki|przestrzeni)\. "
     r"Nie dziel półek według osób[.!]",
     re.I,
 )
+_STORAGE_CHANGE = re.compile(
+    r"Zmieniam (?:szafkę|szafę|regał) na (?P<storage>szafkę|szafę|regał)\. "
+    r"Zachowaj (?:tę samą )?metodę[.!]",
+    re.I,
+)
+_STORAGE = {"regał": "na regale", "szafkę": "w szafce", "szafę": "w szafie"}
 _DELAY = re.compile(
     rf"spóźnię się (?P<event>(?:na|do) {_PHRASE}), ale nie wiem,? o ile\. "
     r"(?:ułóż|napisz) (?:jedno )?krótkie,? uprzejme zdanie do osoby czekającej[.!]",
     re.I,
 )
 _DELAY_UPDATE = re.compile(
-    r"Teraz wiem, że to (?P<amount>kwadrans|[1-9][0-9]{0,2} minut(?:a|y)?)\. "
+    r"Teraz wiem, że to (?P<amount>kwadrans|pół(?:torej)? godziny|[1-9][0-9]{0,2} minut(?:a|y)?)\. "
     r"Zmień tylko (?:dokładność tej informacji|informację o czasie spóźnienia)[.!]",
     re.I,
 )
@@ -50,8 +87,10 @@ _STATE_CONFIRMED = re.compile(
     r"Odpowiedz wyłącznie nazwą wybranej rzeczy i jej stanem[.!]",
     re.I,
 )
-_WEIGHT_REPLY = (
-    "Oznacz półki według ciężaru i przeznacz najniższą dla najcięższych rzeczy."
+_EXPLICIT_ITEM_STATE = re.compile(
+    rf"Wybieram (?P<item>{_PHRASE}), ma być (?P<state>{_STATE})\. "
+    r"Podaj (?:tylko|wyłącznie) nazwę rzeczy i jej stan[.!]",
+    re.I,
 )
 
 
@@ -63,7 +102,7 @@ def _clarify_choice(match: re.Match[str]) -> str | None:
     first, second = match["first"], match["second"]
     if first.casefold() == second.casefold():
         return None
-    requested = match["requested"].casefold().rstrip("aąeęiuy")
+    requested = (match["asked"] or match["quoted"]).casefold().rstrip("aąeęiuy")
     for option in (first, second):
         if _AMBIGUOUS_OPTION.search(option):
             return None
@@ -72,34 +111,82 @@ def _clarify_choice(match: re.Match[str]) -> str | None:
     return _sentence_case(f"{first} czy {second}?")
 
 
+def _sorting_plan(match: re.Match[str]) -> tuple[str, str, str] | None:
+    criterion = _SORTING_CRITERION[match["criterion"].casefold()]
+    priority = match["priority"].casefold()
+    position = match["position"].casefold()
+    if (priority, position) not in _SORTING_PLACEMENTS[criterion]:
+        return None
+    return criterion, priority, position
+
+
+def _sorting_reply(plan: tuple[str, str, str], *, location: str | None = None) -> str:
+    criterion, priority, position = plan
+    if location is not None:
+        return (
+            f"{_sentence_case(location)} oznacz półki według {criterion} "
+            f"i umieszczaj {priority} rzeczy {position}."
+        )
+    if position == "na dole":
+        return (
+            f"Oznacz półki według {criterion} "
+            f"i przeznacz najniższą dla {priority.removesuffix('e')}ych rzeczy."
+        )
+    return f"Oznacz półki według {criterion} i umieszczaj {priority} rzeczy {position}."
+
+
+def _sorting_followup(current: str, prior_user: str, prior_reply: str) -> str | None:
+    if not (previous := _SORTING.fullmatch(prior_user)) or not (
+        plan := _sorting_plan(previous)
+    ):
+        return None
+
+    if change := _SORTING_CHANGE.fullmatch(current):
+        new_plan = _sorting_plan(change)
+        return _sorting_reply(new_plan) if new_plan else None
+    if storage := _STORAGE_CHANGE.fullmatch(current):
+        return _sorting_reply(plan, location=_STORAGE[storage["storage"].casefold()])
+    if _SHARED_STORAGE.fullmatch(current) and prior_reply == _sorting_reply(plan):
+        criterion, priority, position = plan
+        return f"Oznaczcie półki według {criterion} i trzymajcie {priority} rzeczy {position}."
+    return None
+
+
 def _delay_reply(event: str, amount: str | None = None) -> str:
     duration = f" o {amount}" if amount else ""
     return f"Przepraszam, spóźnię się {event}{duration}."
 
 
-def _dialog_followup(current: str, prior_user: str, prior_reply: str) -> str | None:
-    if (update := _DELAY_UPDATE.fullmatch(current)) and (
+def _delay_followup(current: str, prior_user: str, prior_reply: str) -> str | None:
+    if not (update := _DELAY_UPDATE.fullmatch(current)) or not (
         delay := _DELAY.fullmatch(prior_user)
     ):
-        event = delay["event"]
-        if prior_reply not in (_delay_reply(event), GENERATION_TRUNCATED):
-            return None
-        amount = update["amount"].casefold()
-        return _delay_reply(event, "15 minut" if amount == "kwadrans" else amount)
-
-    if _SHARED_STORAGE.fullmatch(current) and _WEIGHT.fullmatch(prior_user):
-        if prior_reply == _WEIGHT_REPLY:
-            return (
-                "Oznaczcie półki według ciężaru i trzymajcie najcięższe rzeczy na dole."
-            )
         return None
+    event = delay["event"]
+    if prior_reply not in (_delay_reply(event), GENERATION_TRUNCATED):
+        return None
+    amount = update["amount"].casefold()
+    return _delay_reply(event, "15 minut" if amount == "kwadrans" else amount)
+
+
+def _item_state_reply(item: str, state: str) -> str:
+    return _sentence_case(f"{item} — {state.casefold()}")
+
+
+def _choice_followup(current: str, prior_user: str) -> str | None:
+    if (choice := _EXPLICIT_ITEM_STATE.fullmatch(current)) and (
+        options := _OPTIONS.fullmatch(prior_user)
+    ):
+        offered = {options["first"].casefold(), options["second"].casefold()}
+        if choice["item"].casefold() in offered and _clarify_choice(options):
+            return _item_state_reply(choice["item"], choice["state"])
 
     if (confirmed := _STATE_CONFIRMED.fullmatch(current)) and (
         selection := _SELECTED_ITEM.fullmatch(prior_user)
     ):
         state = confirmed["state"].casefold()
         if state in {selection["first"].casefold(), selection["second"].casefold()}:
-            return _sentence_case(f"{selection['item']} — {state}")
+            return _item_state_reply(selection["item"], state)
     return None
 
 
@@ -110,8 +197,8 @@ def studio_dialog(text: str, history: Sequence[HistoryMessage]) -> str | None:
         return _delay_reply(delay["event"])
     if options := _OPTIONS.fullmatch(current):
         return _clarify_choice(options)
-    if _WEIGHT.fullmatch(current):
-        return _WEIGHT_REPLY
+    if (sorting := _SORTING.fullmatch(current)) and (plan := _sorting_plan(sorting)):
+        return _sorting_reply(plan)
 
     if len(history) < 2 or (history[-2].role, history[-1].role) != (
         "user",
@@ -119,4 +206,9 @@ def studio_dialog(text: str, history: Sequence[HistoryMessage]) -> str | None:
     ):
         return None
     previous = " ".join(history[-2].content.split())
-    return _dialog_followup(current, previous, history[-1].content.strip())
+    reply = history[-1].content.strip()
+    return (
+        _delay_followup(current, previous, reply)
+        or _sorting_followup(current, previous, reply)
+        or _choice_followup(current, previous)
+    )

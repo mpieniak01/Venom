@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services.chat_policy.qualified_chat_options import split_options
@@ -51,6 +52,31 @@ _SCOPE_RESTATEMENT = re.compile(
     r"czy już da się podać jedną sumę\?",
     re.I,
 )
+_COMPONENT_REVISION = re.compile(
+    r"(?:(?:poprawiam|korekta): )?"
+    r"(?:trzecia(?: korekta)? (?:trwała(?: jednak)?|jednak trwała)|"
+    r"korekta trzecie(?:j|go) (?:zajęła|trwała)) "
+    rf"(?P<minutes>[0-9]{{1,3}}) {_MINUTES}",
+    re.I,
+)
+_GROUP_SCOPE_OPEN = re.compile(
+    rf"(?:zakresu (?P<before>[0-9]{{1,3}}) {_MINUTES} (?:nadal |jeszcze )?nie podał(?:am|em)|"
+    rf"(?:nadal )?nie wiadomo, czy (?P<after>[0-9]{{1,3}}) {_MINUTES} "
+    r"dotyczy (?:obu|dwóch pierwszych) łącznie, czy każdej z osobna)",
+    re.I,
+)
+_GROUP_SCOPE_RESOLVED = re.compile(
+    rf"(?:te )?(?P<group>[0-9]{{1,3}}) {_MINUTES} "
+    r"(?:to (?P<total>łączny czas (?:obu|dwóch pierwszych)(?: korekt)?)|"
+    r"(?:było|przypadało) na (?P<each>każdą (?:z dwóch pierwszych|z obu)(?: korekt)?))",
+    re.I,
+)
+_DURATION_RESULT_REQUEST = re.compile(
+    r"(?:czy (?:już )?(?:da się|można) podać (?:jedną )?sumę\?|"
+    r"podaj (?:jedną )?(?:sumę|wynik)(?: z jednostką)?\.)",
+    re.I,
+)
+_DURATION_CLAUSES = re.compile(r"\. |, a (?=trzecia|korekta trzecie)", re.I)
 _REQUEST_UNCONFIRMED = re.compile(
     r"(?:(?:dostałem|dostałam) prośbę o (?P<received>[\w ]{2,75}), "
     r"ale nie mam potwierdzenia, że to zrobił(?:em|am)\. "
@@ -169,28 +195,63 @@ def _pair_scope(pair: re.Match[str]) -> str | None:
     return pair["scope"].strip().casefold() if pair["scope"] else None
 
 
+@dataclass(frozen=True)
+class _DurationChange:
+    minutes: int
+    scope: str | None = None
+
+
 def _minutes(
-    pair: re.Match[str], replacement: str | None = None, *, scope: str | None = None
+    pair: re.Match[str], replacement: int | None = None, *, scope: str | None = None
 ) -> str:
     scope = scope or _pair_scope(pair)
     first = int(pair["a"])
     if scope is None:
         return f"Czy {first} min dotyczy obu korekt łącznie, czy każdej z osobna?"
     count = 2 if scope == "po" else 1
-    last = int(replacement or pair["b"])
+    last = int(pair["b"]) if replacement is None else replacement
     result = result_with_unit(f"{count}*{first}+{last}", "min")["value"]
     return f"{result} min"
 
 
-def _time_update(text: str, pair: re.Match[str]) -> re.Match[str] | None:
+def _scope_with_component_revision(
+    text: str, pair: re.Match[str]
+) -> _DurationChange | None:
+    """Bind the two independent statements to the existing calculation."""
+    if _pair_scope(pair) is not None:
+        return None
+    clauses = _DURATION_CLAUSES.split(text)
+    if len(clauses) != 3 or not _DURATION_RESULT_REQUEST.fullmatch(clauses[-1]):
+        return None
+
+    left, right = clauses[:2]
+    correction = _COMPONENT_REVISION.fullmatch(left)
+    scope_clause = right
+    if correction is None:
+        correction = _COMPONENT_REVISION.fullmatch(right)
+        scope_clause = left
+    if correction is None:
+        return None
+
+    minutes = int(correction["minutes"])
+    if known := _GROUP_SCOPE_RESOLVED.fullmatch(scope_clause):
+        if int(known["group"]) == int(pair["a"]):
+            return _DurationChange(minutes, "po" if known["each"] else "łącznie")
+    if unknown := _GROUP_SCOPE_OPEN.fullmatch(scope_clause):
+        if int(unknown["before"] or unknown["after"]) == int(pair["a"]):
+            return _DurationChange(minutes)
+    return None
+
+
+def _time_update(text: str, pair: re.Match[str]) -> _DurationChange | None:
     if update := _UPDATE.fullmatch(text):
-        return update
+        return _DurationChange(int(update["minutes"]))
     note = _SCOPE_STILL_UNKNOWN.fullmatch(text) or _SCOPE_RESTATEMENT.fullmatch(text)
     if note is not None and _pair_scope(pair) is None:
         stated_group = note.groupdict().get("group")
         if stated_group is None or int(stated_group) == int(pair["a"]):
-            return note
-    return None
+            return _DurationChange(int(note["minutes"]))
+    return _scope_with_component_revision(text, pair)
 
 
 def _time_followup(
@@ -198,7 +259,7 @@ def _time_followup(
 ) -> str | None:
     pair = _duration_pair(previous)
     if pair is not None and (update := _time_update(current, pair)):
-        return _minutes(pair, update["minutes"])
+        return _minutes(pair, update.minutes, scope=update.scope)
 
     confirmation = _SCOPE_CONFIRMATION.fullmatch(current)
     clarified = _SCOPE_ANSWER.fullmatch(current) or confirmation
@@ -211,7 +272,9 @@ def _time_followup(
         pair = _duration_pair(" ".join(history[-4].content.split()))
         if pair is None or (update := _time_update(previous, pair)) is None:
             return None
-        replacement = update["minutes"]
+        if update.scope is not None:
+            return None
+        replacement = update.minutes
     if (
         pair is None
         or _pair_scope(pair) is not None

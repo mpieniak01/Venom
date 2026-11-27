@@ -193,3 +193,125 @@ def test_gemma_does_not_repeat_complete_unmatched_dialogue(studio_chat, monkeypa
     )
     assert len(calls) == 1
     assert not replies
+
+
+@pytest.mark.parametrize(
+    "turns",
+    [
+        pytest.param(
+            (
+                (
+                    "Są srebrny kubek i zielony bidon. "
+                    "Ktoś prosi o naczynie. Zadaj jedno krótkie pytanie.",
+                    "Srebrny kubek czy zielony bidon?",
+                ),
+                (
+                    "Wybieram zielony bidon, ma być pusty. Podaj tylko nazwę rzeczy i jej stan.",
+                    "Zielony bidon — pusty",
+                ),
+            ),
+            id="ZD-D02",
+        ),
+        pytest.param(
+            (
+                (
+                    "Walizki układam według ciężaru, najcięższe na dole. "
+                    "Zaproponuj jeden krótki sposób, żeby utrzymać ten porządek.",
+                    "Oznacz półki według ciężaru i przeznacz najniższą dla najcięższych rzeczy.",
+                ),
+                (
+                    "Zmieniam szafkę na regał. Zachowaj tę samą metodę.",
+                    "Na regale oznacz półki według ciężaru i umieszczaj najcięższe rzeczy na dole.",
+                ),
+            ),
+            id="ZD-D03",
+        ),
+        pytest.param(
+            (
+                (
+                    "Pudełka sortuję według rozmiaru, największe na dole. "
+                    "Zaproponuj jeden sposób utrzymania porządku.",
+                    "Oznacz półki według rozmiaru i przeznacz najniższą dla największych rzeczy.",
+                ),
+                (
+                    "Od teraz kieruj się częstością użycia, najczęściej używane na wysokości ręki. "
+                    "Podaj jeden sposób.",
+                    "Oznacz półki według częstości użycia i umieszczaj najczęściej używane rzeczy na wysokości ręki.",
+                ),
+            ),
+            id="ZD-D04",
+        ),
+        pytest.param(
+            (
+                (
+                    _DELAY.replace("rozmowę", "odprawę"),
+                    _FIRST_DELAY_REPLY.replace("rozmowę", "odprawę"),
+                ),
+                (
+                    _DELAY_UPDATE.replace("kwadrans", "pół godziny"),
+                    "Przepraszam, spóźnię się na odprawę o pół godziny.",
+                ),
+            ),
+            id="ZD-D06",
+        ),
+    ],
+)
+def test_zd_dialog_keeps_each_turn_grounded_and_persisted(
+    studio_chat, monkeypatch, turns
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, calls, replies = studio_chat
+    session = str(uuid4())
+    for prompt, answer in turns:
+        assert (
+            chat(prompt, session=session, verify_history=True, stream=False) == answer
+        )
+    assert not calls and not replies
+
+
+def test_sorting_rejects_conflicting_priority_and_uses_new_explicit_storage():
+    prompt = (
+        "Torby sortuję według rozmiaru, największe na dole. "
+        "Zaproponuj jeden sposób utrzymania porządku."
+    )
+    answer = studio_dialog(prompt, [])
+    assert answer
+    history = _history(prompt, answer)
+    assert (
+        studio_dialog(
+            "Zmieniam regał na szafkę. Zachowaj tę samą metodę.",
+            history,
+        )
+        == "W szafce oznacz półki według rozmiaru i umieszczaj największe rzeczy na dole."
+    )
+    assert (
+        studio_dialog(
+            "Od teraz kieruj się ciężarem, największe na dole. Podaj jeden sposób.",
+            history,
+        )
+        is None
+    )
+    assert studio_dialog(prompt.replace("rozmiaru", "ciężaru"), []) is None
+
+
+def test_current_choice_and_duration_do_not_fill_unstated_facts():
+    choice = "Są termos i dzbanek. Ktoś prosi o naczynie. Zadaj jedno krótkie pytanie."
+    answer = studio_dialog(choice, [])
+    assert answer == "Termos czy dzbanek?"
+    assert (
+        studio_dialog(
+            "Wybieram kubek, ma być pusty. Podaj tylko nazwę rzeczy i jej stan.",
+            _history(choice, answer),
+        )
+        is None
+    )
+    assert studio_dialog(choice.replace("naczynie", "termos"), []) is None
+    assert (
+        studio_dialog(
+            _DELAY_UPDATE.replace("kwadrans", "około pół godziny"),
+            _history(_DELAY, _FIRST_DELAY_REPLY),
+        )
+        is None
+    )

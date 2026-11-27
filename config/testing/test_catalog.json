@@ -779,6 +779,20 @@
       "rationale": "Prevent narrow S/K gains from discarding sealed wider retention and critical regressions."
     },
     {
+      "path": "tests/test_academy_gemma_duration_scope.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Bind independent duration changes and group scope to verified Studio history."
+    },
+    {
       "path": "tests/test_academy_gemma_recovery_dialog.py",
       "domain": "academy",
       "test_type": "route_contract",

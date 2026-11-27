@@ -445,6 +445,7 @@ _SAFE_BULLETIN = (
 )
 
 
+@pytest.mark.parametrize("destination", ["", " na tablicę"])
 @pytest.mark.parametrize(
     ("draft", "expected"),
     [
@@ -462,14 +463,15 @@ _SAFE_BULLETIN = (
     ],
 )
 def test_studio_checks_a_publication_plan_before_publishing(
-    studio_chat, monkeypatch, draft, expected
+    studio_chat, monkeypatch, destination, draft, expected
 ):
     monkeypatch.setattr(
         llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
     )
     chat, sent, replies = studio_chat
     replies.append(native(draft))
-    assert chat(_BULLETIN, verify_history=True) == expected
+    prompt = _BULLETIN.replace("dwóch zdań:", f"dwóch zdań{destination}:")
+    assert chat(prompt, verify_history=True) == expected
     assert len(sent) == 1 and not replies
 
 

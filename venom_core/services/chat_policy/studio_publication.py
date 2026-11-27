@@ -14,7 +14,8 @@ from venom_core.services.chat_policy.qualified_chat_quote import (
 
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
 _BULLETIN = re.compile(
-    r"skróć (?:mój tekst )?do dwóch zdań(?: mój tekst do (?:biuletynu|ogłoszenia))?:\s*"
+    r"skróć (?:mój tekst )?do dwóch zdań"
+    r"(?: (?:mój tekst )?(?:do (?:biuletynu|ogłoszenia)|na (?:tablicę|plakat)))?:\s*"
     r"(?:[.!]\s*)?(?:nie zmieniaj przybliżenia w dokładną liczbę[.!]?|"
     r"(?:nie używaj|bez) pierwszej osoby[.!]?)?",
     re.I,

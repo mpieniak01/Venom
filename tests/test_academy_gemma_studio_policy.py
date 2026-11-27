@@ -516,3 +516,45 @@ def test_studio_matches_verified_count_to_checklist_requirement(
     user = "Kartę już podpisano. Podaj finalny status na podstawie dwóch warunków."
     assert chat(user, history, verify_history=True) == expected
     assert not sent and not replies
+
+
+def test_studio_code_recipient_is_not_inferred_as_collection_actor(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    history = [
+        {
+            "role": "user",
+            "content": (
+                "Mam potwierdzenie, że Ola pobrała kod z automatu, ale skrytka się nie otworzyła. "
+                "Czy odnotować odbiór?"
+            ),
+        },
+        {"role": "assistant", "content": "Odbiór pozostaje niepotwierdzony."},
+    ]
+    assert (
+        chat(
+            "Automat pokazuje „Skrytka otwarta, odbiór zarejestrowany o 19:21”. "
+            "Podaj gotowy wpis do ewidencji.",
+            history,
+            verify_history=True,
+        )
+        == "Odbiór zarejestrowany o 19:21."
+    )
+    assert not sent and not replies
+
+
+def test_studio_notice_variants_preserve_the_same_place(studio_chat, monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    assert chat(
+        "Ułóż w rozmowie dwie propozycje tabliczki „Plecaki zostawiamy przy kasie”. "
+        "Są dla kierowniczki do obejrzenia, decyzja o użyciu później.",
+        verify_history=True,
+    ) == ("1. Plecaki zostawiamy przy kasie.\n2. Plecaki prosimy zostawiać przy kasie.")
+    assert not sent and not replies

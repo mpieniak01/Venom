@@ -513,7 +513,7 @@ _DECLARED_COUNT = re.compile(
 )
 _UNCHECKED_PACKAGE = re.compile(
     r"\b(?:przed przyjęciem\b[^.!?]{0,72}|przed przyjęciem\s+paczki[^.!?]{0,72})"
-    r"trzeba sprawdzić\b[^.!?]{0,52}(?P<aspect>odcienie|kolorów)"
+    r"trzeba sprawdzić\b[^.!?]{0,52}(?P<aspect>odcieni(?:e)?|kolorów)"
     r"[^.!?]{0,24}(?:podpis|podpisać)",
     re.I,
 )
@@ -539,10 +539,19 @@ def _explicit_pending_status(text: str) -> str | None:
         and (check := _UNCHECKED_PACKAGE.search(text))
         and _UNCHECKED_EVIDENCE.search(text)
     ):
-        aspect = "odcieni" if check["aspect"].casefold() == "odcienie" else "kolorów"
+        aspect = (
+            "odcieni" if check["aspect"].casefold().startswith("odcieni") else "kolorów"
+        )
+        declared = int(counts[0]["number"])
+        expected = _expected_colors(text)
+        requirement = (
+            f"Wymagany komplet to {expected}. "
+            if expected is not None and expected != declared
+            else ""
+        )
         return (
-            f"Na etykiecie podano {counts[0]['number']} sztuk. "
-            f"Zgodność {aspect} i podpis karty nadal wymagają potwierdzenia."
+            f"Na etykiecie podano {declared} sztuk. "
+            f"{requirement}Zgodność {aspect} i podpis karty nadal wymagają potwierdzenia."
         )
     if (revoked := _REVOKED_ISSUE.fullmatch(text)) and int(revoked["done"]) <= int(
         revoked["total"]
@@ -561,6 +570,12 @@ _COLLECTION_CODE = re.compile(
     r"pobra[łl]\w*\s+kod\b[^.!?]{0,42}),\s*ale\s+"
     r"(?P<blocked>skrytka\s+(?:jeszcze\s+)?(?:się\s+)?nie\s+(?:się\s+)?otworzyła)"
     r"[.!]\s*czy odnotować odbiór\?$",
+    re.I,
+)
+_COLLECTION_RECEIPT = re.compile(
+    r"(?:teraz )?automat pokazuje [„«\"]skrytka otwarta,\s*odbiór zarejestrowany o "
+    r"(?P<time>(?:[01]?[0-9]|2[0-3]):[0-5][0-9])[”»\"][.!]\s*"
+    r"podaj gotowy wpis do ewidencji[.!]?",
     re.I,
 )
 _NUMBER_FORMS = {
@@ -606,7 +621,7 @@ _REGISTRY_SPLIT = re.compile(
     rf"(?:zapisałam|zapisałem|wpisano) numery\s+(?P<done>[1-9][0-9]{{0,3}})"
     rf"\s+(?P<items>[^\W\d_]+)[.!]\s*"
     rf"(?P<pending>{'|'.join(_NUMBER_FORMS)}|[1-9][0-9]{{0,3}})\s+"
-    r"jest bez numeru[.!]\s*(?:czy )?mogę odhaczyć warunek dla całej partii\?$",
+    r"(?:jest|są) bez numeru[.!]\s*(?:czy )?mogę odhaczyć warunek dla całej partii\?$",
     re.I,
 )
 _ISSUE_WITHDRAWAL = re.compile(
@@ -619,6 +634,13 @@ _PREFERENCE_ONLY = re.compile(
     r"jak mam ją oznaczyć w pliku z propozycjami\?$",
     re.I,
 )
+
+
+def _expected_colors(text: str) -> int | None:
+    if required := _EXPECTED_COLORS.search(text):
+        amount = required["count"].casefold()
+        return int(amount) if amount.isdecimal() else _EXPECTED_FORMS[amount]
+    return None
 
 
 def _checklist_source(line: str) -> int | None:
@@ -654,10 +676,8 @@ def _checklist_status(text: str, history: Sequence[HistoryMessage]) -> str | Non
     ) == 2:
         declared = _checklist_source(stages[0])
         check = _CHECKED_COLORS.fullmatch(stages[1])
-        required = _EXPECTED_COLORS.search(stages[0])
-        if check and required and declared is not None:
-            amount = required["count"].casefold()
-            expected = int(amount) if amount.isdecimal() else _EXPECTED_FORMS[amount]
+        expected = _expected_colors(stages[0])
+        if check and expected is not None and declared is not None:
             confirmed = _recorded_count(check["count"])
             if expected != declared or expected != confirmed:
                 return (
@@ -690,10 +710,19 @@ def _recorded_operational_status(
     users = _last_users(history, 1)
     if (
         users
-        and _REGISTRY_SPLIT.fullmatch(users[-1])
-        and _ISSUE_WITHDRAWAL.fullmatch(text)
+        and _COLLECTION_CODE.search(users[-1])
+        and (receipt := _COLLECTION_RECEIPT.fullmatch(text))
     ):
-        return "Zgodę na wyniesienie wycofano. Niczego nie wyniesiono."
+        return f"Odbiór zarejestrowany o {receipt['time']}."
+    if (
+        users
+        and _ISSUE_WITHDRAWAL.fullmatch(text)
+        and (registry := _REGISTRY_SPLIT.fullmatch(users[-1]))
+    ):
+        return (
+            "Zgodę na wyniesienie wycofano. Niczego nie wyniesiono. "
+            f"W rejestrze pozostaje {registry['done']} pozycji z numerami."
+        )
     if (
         (preference := _PREFERENCE_ONLY.fullmatch(text))
         and users

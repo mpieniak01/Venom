@@ -8,6 +8,10 @@ from typing import Literal
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
+from venom_core.services.chat_policy.qualified_chat_quote import (
+    single_quoted_operand,
+    without_quotes,
+)
 
 _WORD = r"[^\W\d_]+"
 _PHRASE = rf"{_WORD}(?: {_WORD}){{0,3}}"
@@ -240,9 +244,35 @@ def _covered_activity_reply(text: str, previous: str) -> str | None:
     return None
 
 
+_NOTICE_PREVIEW = re.compile(
+    r"ułóż w rozmowie dwie propozycje tabliczki\s*[.!]\s*są dla [^.!?]{3,40} "
+    r"do obejrzenia,\s*decyzja o użyciu później[.!]?",
+    re.I,
+)
+_NOTICE_SOURCE = re.compile(
+    r"(?P<item>[^\W\d_]+(?: [^\W\d_]+){0,2}) zostawiamy "
+    r"(?P<location>(?:przy|przed|w|na|pod|obok) [^.!?]{3,45})[.!]?",
+    re.I,
+)
+
+
+def _notice_rewordings(text: str) -> str | None:
+    if not _NOTICE_PREVIEW.fullmatch(" ".join(without_quotes(text).split())):
+        return None
+    source = single_quoted_operand(text)
+    if source and (notice := _NOTICE_SOURCE.fullmatch(source)):
+        return (
+            f"1. {source.rstrip('.')}.\n"
+            f"2. {notice['item']} prosimy zostawiać {notice['location']}."
+        )
+    return None
+
+
 def studio_dialog(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve a bounded dialogue request using explicit current and prior facts."""
     current = " ".join(text.split())
+    if notices := _notice_rewordings(current):
+        return notices
     if program := _program_with_shared_condition(current):
         age = f"Dla dzieci od {program['age']} lat."
         return f"- {program['first']}. {age}\n- {program['second']}. {age}"

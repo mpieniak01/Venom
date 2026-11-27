@@ -51,7 +51,7 @@ _CAP_COMMAND = re.compile(
     re.I,
 )
 _CAP = re.compile(
-    r"pula (?:to|obejmuje|wynosi)\s+(?:do|maksymalnie|najwyżej|nie więcej niż)\s+"
+    r"pula (?:to|obejmuje|wynosi)\s+(?P<bound>do|maksymalnie|najwyżej|nie więcej niż)\s+"
     r"(?P<number>[1-9][0-9]{0,4})\s+(?P<unit>[^\W\d_]+)[.!]?",
     re.I,
 )
@@ -162,8 +162,9 @@ def _capped(source: str, *, remove_word: bool) -> PublicationCheck | None:
     bound = f"{cap['number']} {cap['unit']}"
     amount = per_person["amount"]
     units = f" {per_person['units']}" if per_person["units"] else ""
+    ceiling = "do" if cap["bound"].casefold() == "do" else "najwyżej"
     fallback = (
-        f"{_sentence(lines[0])} Pula obejmuje do {bound}, "
+        f"{_sentence(lines[0])} Pula obejmuje {ceiling} {bound}, "
         f"a jedna osoba może {per_person['verb']} {amount}{units}."
     )
     quantified = re.compile(

@@ -199,9 +199,53 @@ def _choice_followup(current: str, prior_user: str) -> str | None:
     return None
 
 
+_PROGRAM = re.compile(
+    r"(?P<first>[^.!?]{16,190})[.!]\s+(?P<second>[^.!?]{16,180})[.!]\s+"
+    r"obie (?:propozycje są dla dzieci|opcje|propozycje)\s+od\s+"
+    r"(?P<age>[1-9][0-9]?|[^\W\d_]+)\s+lat[.!]\s+"
+    r"(?:jak je zapowiedzieć|zapowiedz je|daj (?:zapowiedź|program))\s+w\s+dwóch\s+punktach[.!?]",
+    re.I,
+)
+_PROGRAM_CONDITION = re.compile(r"\b(?:ma sens tylko jeśli|wymaga)\b", re.I)
+_UNDER_COVER = re.compile(
+    r"(?:czy )?pod\s+(?:dachem|wiatą|zadaszeniem)"
+    r"(?: z otwartym bokiem)?\s+(?:też można zrobić|mogę zrobić|da się zrobić)"
+    r"\s+(?:to drugie|tę drugą rzecz)\?",
+    re.I,
+)
+
+
+def _program_with_shared_condition(text: str) -> re.Match[str] | None:
+    if (
+        (program := _PROGRAM.fullmatch(text))
+        and re.search(
+            r"\b(?:zadaszen\w*|namiot\w*|własną salę|każdą pogodę)\b",
+            program["first"],
+            re.I,
+        )
+        and _PROGRAM_CONDITION.search(program["second"])
+    ):
+        return program
+    return None
+
+
+def _covered_activity_reply(text: str, previous: str) -> str | None:
+    if _UNDER_COVER.fullmatch(text) and (
+        program := _program_with_shared_condition(previous)
+    ):
+        return (
+            "Tak, pod warunkiem że miejsce pod zadaszeniem spełnia tę samą zasadę. "
+            f"{program['second']}."
+        )
+    return None
+
+
 def studio_dialog(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve a bounded dialogue request using explicit current and prior facts."""
     current = " ".join(text.split())
+    if program := _program_with_shared_condition(current):
+        age = f"Dla dzieci od {program['age']} lat."
+        return f"- {program['first']}. {age}\n- {program['second']}. {age}"
     if delay := _DELAY.fullmatch(current):
         return _delay_reply(delay["event"])
     if options := _OPTIONS.fullmatch(current):
@@ -220,4 +264,5 @@ def studio_dialog(text: str, history: Sequence[HistoryMessage]) -> str | None:
         _delay_followup(current, previous, reply)
         or _sorting_followup(current, previous, reply)
         or _choice_followup(current, previous)
+        or _covered_activity_reply(current, previous)
     )

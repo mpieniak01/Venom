@@ -375,6 +375,22 @@ def test_studio_preserves_conditions_during_literal_point_edits(
     ("prompt", "expected"),
     [
         (
+            "W pliku mam wpis „sprawdzić działanie lampy” bez potwierdzenia wykonania. "
+            "Czy mogę wpisać wykonano?",
+            "Wpis oznacza zadanie do zrobienia. Wykonanie pozostaje niepotwierdzone.",
+        ),
+        (
+            "Na etykiecie paczki widnieje 8 sztuk. Przed przyjęciem trzeba sprawdzić "
+            "wszystkie odcienie i podpis. Niczego jeszcze nie porównaliśmy ani nie podpisaliśmy. "
+            "Co wpisujemy?",
+            "Na etykiecie podano 8 sztuk. Zgodność odcieni i podpis karty nadal wymagają potwierdzenia.",
+        ),
+        (
+            "Wpisaliśmy 7 z 9. Potem zgodę cofnięto, nic nie wydano. Podaj stan.",
+            "Zgoda została cofnięta i nic nie wydano. Jest 7 wpisów z 9. "
+            "Liczba pozycji bez wpisu to 2.",
+        ),
+        (
             "Są dwie koperty. Zielona zawiera umowę dla Ewy, szara notatkę dla Jana. "
             "Potrzebuję dla obu etykiet bez informacji o treści z przodu. Co napisać?",
             "Zielona — „Dla Ewy”.\nSzara — „Dla Jana”.",

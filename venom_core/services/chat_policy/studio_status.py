@@ -500,10 +500,67 @@ def _pending_log_field(text: str) -> str | None:
     return None
 
 
+_PLANNED_ENTRY = re.compile(
+    r"[„«\"](?:zlecić|zamówić|sprawdzić|przekazać)\s+[^”»\"]{2,100}[”»\"]"
+    r"\s+(?:i\s+żadnego numeru zamówienia|bez potwierdzenia wykonania)[.!]\s*"
+    r"czy mogę (?:zaznaczyć|wpisać) wykonano\?$",
+    re.I,
+)
+_DECLARED_COUNT = re.compile(
+    r"(?:[„«\"]|na (?:karcie|etykiecie) \w+ (?:jest|widnieje) )"
+    r"(?P<number>[1-9][0-9]{0,3})\s+sztuk\b",
+    re.I,
+)
+_UNCHECKED_PACKAGE = re.compile(
+    r"\b(?:przed przyjęciem\b[^.!?]{0,72}|przed przyjęciem\s+paczki[^.!?]{0,72})"
+    r"trzeba sprawdzić\b[^.!?]{0,52}(?P<aspect>odcienie|kolorów)"
+    r"[^.!?]{0,24}(?:podpis|podpisać)",
+    re.I,
+)
+_UNCHECKED_EVIDENCE = re.compile(
+    r"(?:nie porównaliśmy ani nie podpisaliśmy|karty nie widzę)"
+    r"[.!]\s*co (?:wpisać na liście kontrolnej|wpisujemy)\?$",
+    re.I,
+)
+_REVOKED_ISSUE = re.compile(
+    r"wpisaliśmy (?P<done>[0-9]{1,4}) z (?P<total>[1-9][0-9]{0,3})[.!]\s*"
+    r"(?:potem )?zgodę cofnięto,\s*nic nie wydano[.!]\s*"
+    r"(?:napisz finał|podaj stan)[.!]?",
+    re.I,
+)
+
+
+def _explicit_pending_status(text: str) -> str | None:
+    if _PLANNED_ENTRY.search(text):
+        return "Wpis oznacza zadanie do zrobienia. Wykonanie pozostaje niepotwierdzone."
+    counts = list(_DECLARED_COUNT.finditer(text))
+    if (
+        len(counts) == 1
+        and (check := _UNCHECKED_PACKAGE.search(text))
+        and _UNCHECKED_EVIDENCE.search(text)
+    ):
+        aspect = "odcieni" if check["aspect"].casefold() == "odcienie" else "kolorów"
+        return (
+            f"Na etykiecie podano {counts[0]['number']} sztuk. "
+            f"Zgodność {aspect} i podpis karty nadal wymagają potwierdzenia."
+        )
+    if (revoked := _REVOKED_ISSUE.fullmatch(text)) and int(revoked["done"]) <= int(
+        revoked["total"]
+    ):
+        remaining = int(revoked["total"]) - int(revoked["done"])
+        return (
+            f"Zgoda została cofnięta i nic nie wydano. "
+            f"Jest {revoked['done']} wpisów z {revoked['total']}. "
+            f"Liczba pozycji bez wpisu to {remaining}."
+        )
+    return None
+
+
 def studio_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Report explicit user evidence and keep planned and performed actions separate."""
     return (
         _pending_log_field(text)
+        or _explicit_pending_status(text)
         or _request_status(text, history)
         or _pickup_status(text, history)
     )

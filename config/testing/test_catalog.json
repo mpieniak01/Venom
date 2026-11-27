@@ -779,6 +779,48 @@
       "rationale": "Prevent narrow S/K gains from discarding sealed wider retention and critical regressions."
     },
     {
+      "path": "tests/test_academy_gemma_recovery_dialog.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Preserve named choices, criteria and concise Studio dialogue after corrections."
+    },
+    {
+      "path": "tests/test_academy_gemma_recovery_revision.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Preserve explicit subjects, source facts and draft permissions in Studio revisions."
+    },
+    {
+      "path": "tests/test_academy_gemma_recovery_state_time.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Preserve independent action state, roles and the scope of grouped time calculations."
+    },
+    {
       "path": "tests/test_academy_qualified_chat.py",
       "domain": "academy",
       "test_type": "route_contract",

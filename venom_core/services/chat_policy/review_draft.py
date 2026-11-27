@@ -28,6 +28,8 @@ _TOPIC_HEAD = {
     "notatki": None,
     "wersji": None,
     "konspektu": "konspekt",
+    "opisu": "opis",
+    "harmonogramu": "harmonogram",
 }
 _TOPIC_MODIFIERS = re.compile(
     r"\b(?:jeśli|chyba|i|oraz|albo|lub|który|która|które|żeby|aby|dziś|jutro|później|"
@@ -35,7 +37,7 @@ _TOPIC_MODIFIERS = re.compile(
     re.I,
 )
 _FEEDBACK_REQUEST = re.compile(
-    r"(?<=\. )poproś wprost o (?P<feedback>(?:krótkie )?uwagi do (?:planu|projektu))\.",
+    r"(?<=\. )poproś wprost o (?P<feedback>(?:krótkie )?uwagi do (?P<head>\w+))\.",
     re.I,
 )
 _PENDING_PDF = re.compile(
@@ -57,7 +59,7 @@ _UNSUPPORTED_ADDITION = re.compile(
 )
 _SENDING = (
     r"(?:przesyłam|wysyłam|dołączam|załączam|udostępniam|przesłałem|przesłałam|"
-    r"dołączyłem|dołączyłam|w załączniku znajdziecie)"
+    r"wysłałem|wysłałam|dołączyłem|dołączyłam|załączyłem|załączyłam|w załączniku znajdziecie)"
 )
 _FEEDBACK = (
     r"(?:zgłoś(?:cie)? (?:uwagi|komentarze)|"
@@ -67,6 +69,9 @@ _FEEDBACK = (
     r"(?:\w+ ){0,5}(?:uwagi|opinie|komentarze|zastrzeżenia)|"
     r"co (?:(?:\w+ ){0,3}myśl(?:isz|icie)|poprawić|zmienić))|"
     r"zgłaszanie (?:ewentualnych )?(?:uwag|komentarzy))"
+)
+_FEEDBACK_TARGET = re.compile(
+    r"^ do (?P<target>[a-ząćęłńóśźż]+(?: [a-ząćęłńóśźż]+){0,5})"
 )
 _AVAILABILITY = r"daj(?:cie)? znać,? (?:kiedy|w jakim terminie)"
 _SET_DATE = r"(?:ustalimy|ustalę|uzgodnimy|uzgodnię|umówimy|umówię)"
@@ -83,14 +88,16 @@ _INITIAL_ADDITION = re.compile(
     rf"(?P<schedule>{_AVAILABILITY}|termin(?:u)? (?:\w+ ){{0,3}}{_SET_DATE}|"
     rf"{_SET_DATE} (?:\w+ ){{0,3}}termin(?:u)?))\b"
 )
-_REVIEW_INTENT = re.compile(r"\b(?:wspóln\w+ przegląd\w*|wspólnie przejrz\w+)\b")
+_REVIEW_INTENT = re.compile(
+    r"\b(?:wspóln\w+ przegląd\w*|wspólnie przejrz\w+|przejrz\w+ wspólnie)\b"
+)
 _PDF_PERMISSION = re.compile(
     r"\b(?:mogę dołączyć(?: (?:plik|pdf|dokument))? po (?:waszej |uzyskaniu waszej )?zgodzie|"
     r"po (?:waszej |uzyskaniu waszej )?zgodzie mogę dołączyć (?:plik|pdf|dokument))\b"
 )
 _CLAUSE_BOUNDARY = re.compile(
     r"[.!?;\n–—]+|,\s*(?:ale|lecz|jednak)\s+"
-    rf"|,\s*(?=(?:(?:a|i|oraz)\s+)?(?:{_SENDING}|{_FEEDBACK}|{_AVAILABILITY}|{_FOLLOW_UP})\b)"
+    rf"|(?:,\s*|\s+(?:a|i|oraz)\s+)(?=(?:(?:a|i|oraz)\s+)?(?:{_SENDING}|{_FEEDBACK}|{_AVAILABILITY}|{_FOLLOW_UP})\b)"
 )
 _NEGATION = re.compile(r"\b(?:nie|bez|ani)\b")
 _DRAFT_PREFACE = re.compile(
@@ -112,8 +119,11 @@ class ReviewDraft:
     requested_feedback: str | None = None
     pending_pdf: bool = False
 
+    def invitation(self) -> str:
+        return f"Proponuję wspólny przegląd {self.topic}."
+
     def _minimum(self) -> str:
-        invitation = f"Proponuję wspólny przegląd {self.topic}."
+        invitation = self.invitation()
         if self.requested_feedback:
             return f"{invitation} Proszę o {self.requested_feedback}."
         if self.pending_pdf:
@@ -139,6 +149,13 @@ class ReviewDraft:
                 if _NEGATION.search(clause, 0, match.end()):
                     continue
                 if match.lastgroup == "feedback" and self.requested_feedback:
+                    target = _FEEDBACK_TARGET.match(clause[match.end() :])
+                    expected = self.requested_feedback.partition(" do ")[2]
+                    if target and target["target"] not in {
+                        expected,
+                        self.topic.casefold(),
+                    }:
+                        return self._minimum()
                     brief = self.requested_feedback.startswith("krótkie ")
                     feedback_present |= not brief or bool(
                         re.search(r"\b(?:krótkie|zwięzłe)\b", match[0])
@@ -228,6 +245,8 @@ def parse_review_draft(
     head, tail = topic.split(" ", 1)
     head = head.casefold()
     if head not in _TOPIC_HEAD or _TOPIC_MODIFIERS.search(topic):
+        return None
+    if feedback and feedback[0]["head"].casefold() != head:
         return None
     object_head = _TOPIC_HEAD[head]
     object_topic = f"{object_head} {tail}" if object_head else None

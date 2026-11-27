@@ -114,6 +114,12 @@ _PENDING_STATUS = re.compile(
 )
 _TOPIC_WORD = re.compile(r"[^\W\d_]{5,}")
 _STATUS_REFERENCE = re.compile(r"\b[a-z][a-z0-9]*-\d+\b", re.I)
+_STATUS_FIELDS = (
+    re.compile(r"\b(?:pokwitow|potwierdz|dotar|doręcz)\w*", re.I),
+    re.compile(r"\b(?:odbior|odbiór|odebra|wydaw)\w*", re.I),
+    re.compile(r"\b(?:zgod|rozpocz|zaczą)\w*", re.I),
+    re.compile(r"\b(?:kwot|wysokoś)\w*", re.I),
+)
 _RSS_NOT_READ = "W tej turze nie odczytano nagłówków z publicznego kanału RSS."
 _SOURCE_STATUS_POLICY = (
     "\n\nPoniższy status pochodzi z aplikacji. Przekaż go własnymi słowami "
@@ -322,6 +328,9 @@ def _partial_user_status(message: str, history: list[HistoryMessage]) -> str | N
         not _OBSERVED_STATUS.search(observed)
         or _NONCURRENT_STATUS.search(observed)
         or not _PENDING_STATUS.search(pending)
+        or not any(
+            field.search(question) and field.search(pending) for field in _STATUS_FIELDS
+        )
     ):
         return None
     refs = set(_STATUS_REFERENCE.findall(observed.casefold()))

@@ -431,6 +431,21 @@ def _ordinal_scope(ordinal: str, gender: str, *, nominative: bool) -> _Scope | N
     return None
 
 
+def _notice_noun(plural: str, singular: str, count: str) -> tuple[str, str] | None:
+    if noun := _NOTICE_NAMES.get(plural):
+        return noun
+    # Only regular forms whose stems and grammatical gender are in the source.
+    if count in _ENTITLEMENT_COUNT["y"] and plural == singular + "y":
+        return singular, "y"
+    if (
+        count in _ENTITLEMENT_COUNT["a"]
+        and singular.endswith(("ka", "ga"))
+        and plural == singular[:-1] + "i"
+    ):
+        return singular, "a"
+    return None
+
+
 def _notice(text: str) -> _Notice | None:
     visible = " ".join(without_quotes(text).split())
     quoted = single_quoted_operand(text)
@@ -445,7 +460,8 @@ def _notice(text: str) -> _Notice | None:
     if service is None or entitlement is None or paid is None:
         return None
     items = service["items"] or service["front_items"]
-    noun = _NOTICE_NAMES.get(items.casefold())
+    count = entitlement["count"].casefold()
+    noun = _notice_noun(items.casefold(), entitlement["item"].casefold(), count)
     if noun is None:
         return None
     item, gender = noun
@@ -456,7 +472,7 @@ def _notice(text: str) -> _Notice | None:
     ]
     if (
         entitlement["item"].casefold() != item
-        or entitlement["count"].casefold() not in _ENTITLEMENT_COUNT[gender]
+        or count not in _ENTITLEMENT_COUNT[gender]
         or len(statuses) != 1
         or not statuses[0].endswith(gender)
     ):

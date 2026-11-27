@@ -277,3 +277,33 @@ def test_clock_correction_preserves_entitlement_and_scope_of_paid_price():
     assert (
         studio_quantity("Zmień tylko godzinę odbioru na 27.", _history(prompt)) is None
     )
+
+
+@pytest.mark.parametrize(
+    ("service", "entitlement", "charge"),
+    [
+        ("Żetony", "Jeden zniżkowy żeton na osobę", "Drugi kosztuje 7 zł"),
+        (
+            "Nalepki",
+            "Jedna bezpłatna nalepka na rodzinę",
+            "Każda następna kosztuje 5 zł",
+        ),
+    ],
+)
+def test_unlisted_notice_items_preserve_status_and_ordinal(
+    service, entitlement, charge
+):
+    source = (
+        f"„{service} wydajemy w bibliotece do 17. {entitlement}. {charge}.” "
+        "Zrób z tego trzy krótkie komunikaty bez wykrzykników."
+    )
+    assert studio_quantity(source, []) == (
+        f"{service} wydajemy w bibliotece do 17:00.\n{entitlement}.\n{charge}."
+    )
+    assert (
+        studio_quantity(
+            "Usuń formę „my”, to kartka dla gości. Zachowaj wszystkie dane.",
+            _history(source),
+        )
+        == f"{service} do odbioru w bibliotece do 17:00.\n{entitlement}.\n{charge}."
+    )

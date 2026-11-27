@@ -107,7 +107,10 @@ def test_return_of_one_named_item_cannot_confirm_another_location():
         "nie potwierdziliśmy, jest rzutnik. Zgodnie z listą, jego termin to jutro, "
         "więc obecnie wciąż jest on poza pracownią."
     )
-    only_open = "Rzutnik: zwrot niepotwierdzony (termin jutro)."
+    only_open = (
+        "Rzutnik: zwrot niepotwierdzony (termin jutro). "
+        "Kabel HDMI jest na półce według Twojej informacji."
+    )
     assert check.publish(draft) == only_open
     safe = "Kabel HDMI jest na półce. Do potwierdzenia pozostaje tylko rzutnik."
     assert check.publish(safe) == safe
@@ -262,3 +265,33 @@ def test_only_sketchbooks_have_the_reported_covers():
     assert check.publish(advice) == advice
     truncated = "Odpowiedź przekroczyła limit długości."
     assert check.publish(truncated) == truncated
+
+
+def test_inventory_draft_keeps_observation_separate_from_the_register():
+    check = prepare_studio_claim_check(_PUT_BACK, _history(_LEDGER))
+    assert check is not None
+    draft = "Do potwierdzenia pozostaje rzutnik."
+    assert check.publish(draft) == (
+        f"{draft} Kabel HDMI jest na półce według Twojej informacji."
+    )
+
+
+def test_sms_question_after_phone_resolves_generic_yes_against_user_evidence():
+    question = "Porozmawiałem z Martą przez telefon. Mam odnotować, że SMS wysłany?"
+    check = prepare_studio_claim_check(
+        question, _history("Ułóż SMS do Marty o spotkaniu.")
+    )
+    assert check is not None
+    assert check.publish("Tak, możesz to odnotować. Zapisz to w notatkach.") == (
+        "Możesz odnotować rozmowę telefoniczną z Martą. "
+        "Rozmowa nie potwierdza wysłania SMS-u."
+    )
+    safe = "Nie. Rozmowa telefoniczna nie potwierdza wysłania SMS-u."
+    assert check.publish(safe) == safe
+
+    sent = prepare_studio_claim_check(
+        "Wysłałem SMS do Marty. Czy odnotować wysłanie SMS-u?",
+        _history("Ułóż SMS do Marty o spotkaniu."),
+    )
+    assert sent is not None
+    assert sent.publish("Tak, możesz to odnotować.") == "Tak, możesz to odnotować."

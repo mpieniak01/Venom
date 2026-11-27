@@ -24,7 +24,7 @@ _GUARDED = re.compile(
     re.I,
 )
 _SMS_DRAFT = re.compile(
-    rf"(?:napisz|ułóż|przygotuj) (?:krótki )?sms do (?P<subject>{_NAME})(?=[,.!?])",
+    rf"(?:napisz|ułóż|przygotuj) (?:krótki )?sms do (?P<subject>{_NAME}?)(?=[,.!?]| o )",
     re.I,
 )
 _PHONE = re.compile(
@@ -40,8 +40,10 @@ _PHONE_CONVERSATION = re.compile(
 )
 _SENT = re.compile(rf"wysłał[ae]m sms(?:-a)? do (?P<subject>{_NAME})", re.I)
 _SMS_QUERY = re.compile(
-    r"czy (?:mogę|można) (?:w notatce )?(?:zaznaczyć|zapisać|wpisać|odnotować)"
-    r".{0,65}\bsms\b.{0,35}",
+    r"(?:(?:czy )?(?:mogę|można) (?:w notatce )?|mam |czy )"
+    r"(?:zaznaczyć|zapisać|wpisać|odnotować|oznaczyć)(?: w notatce)?"
+    r"(?:,? że)? (?:wysłanie sms(?:-a|-u)?|sms(?:-a)? (?:jako )?"
+    r"(?:(?:został )?wysłan[oy]|poszedł)|wysłano sms(?:-a)?)",
     re.I,
 )
 _SENT_CLAIM = re.compile(
@@ -55,7 +57,11 @@ _SMS_RECIPIENT = re.compile(
     rf"\b(?:wysłan[oy]|poszedł)(?: sms(?:-a)?)? do (?P<recipient>{_NAME})$",
     re.I,
 )
-_SMS_YES = re.compile(r"^tak(?:[, ]+możesz (?:to zrobić|tak zapisać))?$", re.I)
+_SMS_YES = re.compile(
+    r"^tak(?:[, ]+możesz (?:(?:to|tak) )?(?:zrobić|zapisać|wpisać|odnotować|oznaczyć)"
+    r"(?: (?:to|tak))?)?$",
+    re.I,
+)
 
 _LEDGER = re.compile(
     r"na (?:papierowej )?(?:liście|karcie) wypożyczeń (?:mam|jest): (?P<rows>[^.!?]{5,360})",
@@ -352,7 +358,17 @@ class _InventoryCheck:
     def publish(self, draft: str) -> str:
         labels = [entry.subject for entry in self.rows]
         if not _has_unsupported_location(draft, labels, self.observations, self.place):
-            return draft
+            omitted = [
+                item
+                for item in self.observations
+                if not any(
+                    item.subject in _mentioned_subjects(clause, labels)
+                    and "na półce" in clause.casefold()
+                    and not _GUARDED.search(clause)
+                    for clause in _clauses(draft)
+                )
+            ]
+            return " ".join((draft, *map(self._location_note, omitted)))
         notes = []
         for entry in self.rows:
             label = entry.subject[0].upper() + entry.subject[1:]
@@ -365,7 +381,12 @@ class _InventoryCheck:
                 notes.append(f"{label}: zwrot niepotwierdzony (termin {entry.value}).")
             else:
                 notes.append(f"{label}: brak wpisu potwierdzającego zwrot.")
-        return " ".join(notes)
+        return " ".join((*notes, *map(self._location_note, self.observations)))
+
+    @staticmethod
+    def _location_note(item: Evidence) -> str:
+        label = item.subject
+        return f"{label[0].upper()}{label[1:]} jest na półce według Twojej informacji."
 
 
 def _return_place(question: re.Match[str] | None) -> str:
@@ -386,7 +407,9 @@ def _inventory_check(text: str, users: Sequence[str]) -> StudioClaimCheck | None
     earlier_question = _RETURN_QUESTION.fullmatch(_statements(users[-1])[-1])
     return (
         _InventoryCheck(
-            rows, (Evidence(subject, Proof.ON_SHELF),), _return_place(earlier_question)
+            rows,
+            (Evidence(subject, Proof.ON_SHELF),),
+            _return_place(earlier_question),
         )
         if subject
         else None

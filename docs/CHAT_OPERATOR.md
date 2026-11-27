@@ -141,6 +141,22 @@ can also save evidence from other public sources.
 Standalone Studio at /chat2 uses the ordinary chat controls with the native
 text selector disabled.
 
+The ACADEMY_GEMMA_REVIEW_RETRY_ENABLED flag enables a pilot for short
+invitations to review material without setting a date. It defaults to False
+and requires Academy reply checks, local Gemma 12B Q4_K_M, and Studio with
+notes disabled. Studio allows one additional attempt after truncation and
+checks the retried draft against the request. For the first complete draft,
+it can also remove an unrequested claim that material was sent, a request for
+feedback, a question about availability, or a promise to arrange a date or
+follow up. It keeps explicitly requested feedback and distinguishes a ready
+PDF that may be attached after approval from a completed transfer. This
+first-draft check applies when the conversation has no previous user turn.
+For supported follow-ups, Studio uses facts from the preceding user turn.
+It asks whether an ambiguous duration covers both tasks or each task.
+In supported cases it also retains the other option or the portioning
+method after a correction. It also keeps a recognized request or withdrawal
+separate from confirmation that the action occurred.
+
 A verified calendar write reports success only when Google confirms the event
 parameters. If Google returns an event ID with unconfirmed parameters, the
 form shows that ID and retries the same submission with the same key. The

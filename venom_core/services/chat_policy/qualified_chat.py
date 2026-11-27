@@ -46,6 +46,7 @@ from venom_core.services.chat_policy.qualified_chat_writing import (
     revises_opening_only,
     selects_one_proposal,
 )
+from venom_core.services.chat_policy.review_draft import ReviewDraft
 
 _CALENDAR_UNCONFIRMED = "Wpis do kalendarza wymaga potwierdzenia wykonania."
 _DAYS = {
@@ -368,6 +369,7 @@ class QualifiedReply:
     rss: RSSSummary | None = None
     opening_only: bool = False
     requested_opening: str | None = None
+    review_draft: ReviewDraft | None = None
 
     @property
     def requires_complete_draft(self) -> bool:
@@ -376,6 +378,7 @@ class QualifiedReply:
             or self.rewrite is not None
             or self.rss is not None
             or self.opening_only
+            or self.review_draft is not None
             or bool(self.restrictions)
             or self.timed
             or self.count is not None

@@ -10,6 +10,7 @@ import asyncio
 import json
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any, AsyncIterator, Optional
 from uuid import UUID, uuid4
 
@@ -64,6 +65,15 @@ from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
 from venom_core.services.chat_policy.qualified_chat_writing import (
     ordinary_reply_hint,
     writing_hint,
+)
+from venom_core.services.chat_policy.review_draft import (
+    REVIEW_RETRY_INSTRUCTION,
+    ReviewDraft,
+    parse_review_draft,
+)
+from venom_core.services.chat_policy.studio_followup import (
+    studio_concise_hint,
+    studio_followup,
 )
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
@@ -127,6 +137,7 @@ from venom_core.services.llm_simple_stream_service import (
 )
 from venom_core.services.ollama_audio import is_host_ollama
 from venom_core.services.ollama_text_adapter import (
+    QUALIFIED_MODEL,
     OllamaTextProfile,
     completed_native_draft,
     local_direct_model,
@@ -1116,14 +1127,50 @@ def _draft_truncated(data: Any) -> bool:
     return data.get("done") is True and data.get("done_reason") == "length"
 
 
+def _plain_review_response(data: Any) -> bool:
+    if not isinstance(data, dict) or data.get("error") is not None:
+        return False
+    message = data.get("message")
+    return isinstance(message, dict) and not message.get("tool_calls")
+
+
+async def _retry_review_draft(
+    review: ReviewDraft, runtime: LLMRuntimeInfo, url: str, payload: dict[str, Any]
+) -> str | None:
+    system, *history = payload["messages"]
+    instruction = REVIEW_RETRY_INSTRUCTION
+    if review.requested_feedback or review.pending_pdf:
+        instruction += (
+            " Dodaj osobne zdanie z jawnie zleconą prośbą lub warunkiem zgody."
+        )
+    retry_system = {
+        **system,
+        "content": f"{system['content']}\n\n{instruction}",
+    }
+    replacement = await _read_non_stream_data(
+        runtime, url, {**payload, "messages": [retry_system, *history]}
+    )
+    if not _plain_review_response(replacement):
+        return None
+    if _draft_truncated(replacement):
+        return GENERATION_TRUNCATED
+    draft = completed_native_draft(replacement)
+    return review.publish_retry(draft) if draft.strip() else None
+
+
 async def _publish_qualified_draft(
     reply: QualifiedReply,
     data: dict[str, Any],
     runtime: LLMRuntimeInfo,
     url: str,
     payload: dict[str, Any],
-) -> str:
+) -> str | None:
     content = completed_native_draft(data)
+    if reply.review_draft is not None:
+        if not _plain_review_response(data):
+            return None
+        if _draft_truncated(data):
+            return await _retry_review_draft(reply.review_draft, runtime, url, payload)
     if reply.rss is not None:
         return (
             GENERATION_TRUNCATED
@@ -1136,7 +1183,10 @@ async def _publish_qualified_draft(
             return GENERATION_TRUNCATED
         if not content.strip():
             return "Nie udało się uzyskać kompletnej odpowiedzi."
-        return reply.publish(content)
+        answer = reply.publish(content)
+        return (
+            reply.review_draft.publish_initial(answer) if reply.review_draft else answer
+        )
     kept, schema = repair
     request = {
         "role": "user",
@@ -1238,6 +1288,22 @@ async def _stream_simple_chunks_non_stream(
                 if qualified_reply is not None
                 else _extract_message_content(data, fallback_text="")
             )
+            if content is None:
+                code = "review_draft_unverified"
+                message = "Nie udało się zweryfikować treści ponowionej odpowiedzi."
+                _record_simple_error(
+                    request_id,
+                    error_code=code,
+                    error_message=message,
+                    error_details={"model": model_name},
+                    retryable=False,
+                )
+                yield (
+                    "event: error\ndata: "
+                    + json.dumps({"code": code, "message": message})
+                    + "\n\n"
+                )
+                return
             logprobs_telemetry = _extract_logprobs_telemetry(data)
             if logprobs_telemetry is not None:
                 yield (
@@ -1452,13 +1518,34 @@ def _prepare_qualified_reply(
             request.content, request.history, token_budget=request.max_tokens
         ):
             return reply
+        if (
+            SETTINGS.ACADEMY_GEMMA_REVIEW_RETRY_ENABLED
+            and model_name.casefold() == QUALIFIED_MODEL
+            and (answer := studio_followup(request.content, request.history))
+            is not None
+        ):
+            return QualifiedReply(local_text=answer)
         if is_current_news_request(request.content):
             return None
-    return (
-        prepare_reply(request.content, request.history)
-        if profile is not None and profile.direct_drafts
-        else None
-    )
+    if profile is None or not profile.direct_drafts:
+        return None
+    original = prepare_reply(request.content, request.history)
+    if (
+        SETTINGS.ACADEMY_GEMMA_REVIEW_RETRY_ENABLED
+        and model_name.casefold() == QUALIFIED_MODEL
+        and _qualified_studio_request(request, profile)
+    ):
+        if not original.requires_complete_draft:
+            review = parse_review_draft(
+                request.content,
+                check_initial=not any(turn.role == "user" for turn in request.history),
+            )
+            if review is not None:
+                return replace(original, review_draft=review)
+        hint = studio_concise_hint(request.content, original.count is not None)
+        if hint:
+            return replace(original, hint=" ".join(filter(None, (original.hint, hint))))
+    return original
 
 
 async def _resolve_non_openrouter_runtime(request: SimpleChatRequest):

@@ -1542,7 +1542,12 @@ _STUDIO_ORDINARY_DRAFT_POLICY = (
     "Obowiązek dotyczy wyłącznie wskazanej osoby lub rzeczy. Gdy ją usunięto, "
     "usuń także przypisany do niej obowiązek. "
     "Plan, warunkowa zgoda, brak dowodu i wykonanie to odrębne stany. "
+    "Brak dowodu nie przesądza, że działanie się nie odbyło. "
+    "Zachowaj sens ograniczeń, np. „najwcześniej”, „tylko jeśli”, „co najmniej” "
+    "i przybliżenia. W opisie planu użyj słowa „plan” lub „zamierza”. "
     "Po zmianie warunku porównaj możliwości od nowa według celu użytkownika. "
+    "Najpierw uwzględnij warunek wykonalności, a później wygodę. "
+    "Zachowaj nazwy i rozróżnienia z podanego opisu. "
     "W razie braku rozstrzygającego faktu zaznacz warunek lub dopytaj. "
     "Pełna odpowiedź ma zachować wymagane szczegóły także wtedy, gdy jest krótka."
 )

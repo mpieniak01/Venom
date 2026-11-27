@@ -407,9 +407,77 @@ def _review_revision(text: str, prior: str, origin: str) -> str | None:
     return None
 
 
+_RULES_SOURCE = re.compile(
+    r"(?:dwa|2)\s+(?:warunki|punkty|zdania|reguły)\b[^.!?]{0,70}:\s*"
+    r"(?:ułóż|zapisz|wypisz)\s+(?:je\s+)?po\s+jednym\s+(?:krótkim\s+)?punkcie[.!]?"
+    r"(?:\s+(?:nie zmieniaj granicy wieku|zachowaj (?:oba|wszystkie) warunki)[.!]?)?",
+    re.I,
+)
+_RULE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+_LOCATION_TEXT = r"(?:w|we|na|przy|przed|pod|obok)\s+[^\d.,!?;:]{1,48}?"
+_EDIT_LOCATION = re.compile(
+    rf"[^.!?]{{1,56}}\s+(?:będą|będzie|są|jest)\s+(?P<new>{_LOCATION_TEXT}),\s*"
+    rf"nie\s+(?P<old>{_LOCATION_TEXT})[.!]\s*"
+    r"(?:zaktualizuj|zmień)\s+tylko\s+(?P<item>pierwszy|drugi)\s+punkt,\s*"
+    r"(?:pokaż|zwróć)\s+oba[.!]?",
+    re.I,
+)
+_REPLACE_RULE = re.compile(
+    r"(?:ostatecznie|od teraz)\s+(?P<new>[^.!?]{5,130})[.!]\s*"
+    r"(?:zmień|zastąp)\s+(?P<item>pierwszy|drugi)\s+punkt,\s*a\s+"
+    r"(?P<kept>pierwszy|drugi)\s+(?:pozostaw|zachowaj)\s+słowo\s+w\s+słowo[.!]?",
+    re.I,
+)
+
+
+def _rules_from_source(text: str) -> list[str]:
+    if _RULES_SOURCE.fullmatch(without_quotes(text).strip()) is None:
+        return []
+    source = single_quoted_operand(text)
+    if source is None or len(source) > 450:
+        return []
+    lines = _RULE_BOUNDARY.split(source.strip())
+    return lines if len(lines) == 2 else []
+
+
+def _apply_rule_edit(text: str, lines: list[str]) -> bool:
+    if match := _EDIT_LOCATION.fullmatch(text):
+        slot = int(match["item"].casefold() == "drugi")
+        target = re.compile(rf"(?<!\w){re.escape(match['old'])}(?!\w)", re.I)
+        if len(target.findall(lines[slot])) != 1:
+            return False
+        lines[slot] = target.sub(lambda _: match["new"], lines[slot], count=1)
+        return True
+    if match := _REPLACE_RULE.fullmatch(text):
+        if match["item"].casefold() == match["kept"].casefold():
+            return False
+        slot = int(match["item"].casefold() == "drugi")
+        new = match["new"]
+        lines[slot] = new[0].upper() + new[1:] + "."
+        return True
+    return False
+
+
+def _quoted_rules_reply(current: str, history: Sequence[HistoryMessage]) -> str | None:
+    """Replace only the explicitly addressed rule and preserve its untouched clauses."""
+    users = [turn.content for turn in history if turn.role == "user"][-4:]
+    lines: list[str] = []
+    for turn in (*users, current):
+        text = " ".join(turn.split())
+        if source := _rules_from_source(text):
+            lines = source
+        elif not lines or not _apply_rule_edit(text, lines):
+            lines = []
+    return "\n".join(f"- {line}" for line in lines) if lines else None
+
+
 def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve only recognized edits, using adjacent user turns as evidence."""
     current = " ".join(text.split())
     prior = _prior_user(history)
     origin = _prior_user(history, 2) if prior else ""
-    return _rewrite(current, prior, origin) or _review_revision(current, prior, origin)
+    return (
+        _quoted_rules_reply(current, history)
+        or _rewrite(current, prior, origin)
+        or _review_revision(current, prior, origin)
+    )

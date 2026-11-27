@@ -310,3 +310,53 @@ def test_studio_calculation_rebuilds_from_user_facts_only(
 )
 def test_studio_calculator_defers_unbound_inputs(prompt):
     assert plan_studio_calculation(prompt, ()) is None
+
+
+def test_studio_preserves_conditions_during_literal_point_edits(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    source = (
+        "Dwa warunki do instrukcji: „Dzieci poniżej 12 lat wchodzą z opiekunem. "
+        "Osoby bez własnych opasek odbierają je przy bramce.” "
+        "Zapisz po jednym krótkim punkcie. Zachowaj oba warunki."
+    )
+    correction = (
+        "Opaski będą przy recepcji, nie przy bramce. "
+        "Zmień tylko drugi punkt, zwróć oba."
+    )
+    initial = (
+        "- Dzieci poniżej 12 lat wchodzą z opiekunem.\n"
+        "- Osoby bez własnych opasek odbierają je przy bramce."
+    )
+    updated = initial.replace("przy bramce", "przy recepcji")
+    assert chat(source, verify_history=True) == initial
+    assert (
+        chat(
+            correction,
+            [
+                {"role": "user", "content": source},
+                {"role": "assistant", "content": initial},
+            ],
+            verify_history=True,
+        )
+        == updated
+    )
+    assert chat(
+        "Od teraz zajęcia są dla osób od 12 lat. "
+        "Zmień pierwszy punkt, a drugi zachowaj słowo w słowo.",
+        [
+            {"role": "user", "content": source},
+            {"role": "assistant", "content": initial},
+            {"role": "user", "content": correction},
+            {"role": "assistant", "content": updated},
+        ],
+        verify_history=True,
+    ) == updated.replace(
+        "Dzieci poniżej 12 lat wchodzą z opiekunem.",
+        "Zajęcia są dla osób od 12 lat.",
+    )
+    assert not sent and not replies

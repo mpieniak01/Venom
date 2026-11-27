@@ -2257,6 +2257,36 @@ def test_studio_one_sentence_for_value_missing_in_the_conversation(
     fetch.assert_not_awaited()
     instruction = sent[-1]["payload"]["messages"][0]["content"]
     assert "dokładnie jedno zdanie odpowiadające na ostatnie pytanie" in instruction
+    assert [row["content"] for row in sent[-1]["payload"]["messages"][1:]] == [
+        "Nie znam temperatury.",
+        prompt,
+    ]
+
+
+@pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_only_user_supplied_facts_exclude_assistant_claims(studio_chat, monkeypatch):
+    chat, sent, replies = studio_chat
+    fetch = AsyncMock()
+    from venom_core.services import studio_normal_chat
+
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", fetch)
+    prompt = "Podaj godzinę wyłącznie na podstawie informacji, które podałam."
+    history = [
+        turn("Panel umówiono na 11:20."),
+        turn("Zaczyna się o 12:00, w sali 8.", "assistant"),
+        turn("Korekta: aktualna godzina to 13:10."),
+        turn("Potwierdzona godzina 14:30.", "assistant"),
+    ]
+    replies.append(streamed("13:10."))
+    assert chat(prompt, history, verify_history=False) == "13:10."
+    assert [row["content"] for row in sent[-1]["payload"]["messages"][1:]] == [
+        "Panel umówiono na 11:20.",
+        "Korekta: aktualna godzina to 13:10.",
+        prompt,
+    ]
+    fetch.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

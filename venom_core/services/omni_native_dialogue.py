@@ -248,6 +248,22 @@ def _valid_wav(encoded: str) -> bytes:
     return wav
 
 
+def contains_tool_markup(text: str) -> bool:
+    """Recognize tool protocol markers in a buffered Omni reply."""
+    normalized = text.casefold()
+    return any(
+        marker in normalized
+        for marker in (
+            "<tool_call>",
+            "</tool_call>",
+            "<function=",
+            "</function>",
+            "<parameter=",
+            "</parameter>",
+        )
+    )
+
+
 def _result(output: bytes, mode: NativeMode) -> NativeDialogueResult:
     try:
         data = json.loads(output)
@@ -266,6 +282,7 @@ def _result(output: bytes, mode: NativeMode) -> NativeDialogueResult:
             or (text is not None and not isinstance(text, str))
             or (mode == "audio" and text is not None)
             or (mode == "interleaved" and not text)
+            or (isinstance(text, str) and contains_tool_markup(text))
         ):
             raise ValueError("native result invalid")
         wav = _valid_wav(data["wav"])

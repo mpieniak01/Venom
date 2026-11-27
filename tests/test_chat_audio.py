@@ -975,6 +975,53 @@ async def test_native_studio_returns_one_wav_and_retains_only_its_session_contex
 
 
 @pytest.mark.asyncio
+async def test_native_studio_rejects_tool_markup_before_audio_or_history(
+    rig, native_runtime, monkeypatch, tmp_path
+):
+    client, _, _ = rig
+    monkeypatch.setattr(
+        omni_native_dialogue, "_configured_snapshot", lambda _: tmp_path
+    )
+    invoke = AsyncMock(
+        return_value=json.dumps(
+            {
+                "model_revision": omni_native_dialogue.NATIVE_MODEL_REVISION,
+                "generation_count": 1,
+                "timings_ms": dict.fromkeys(
+                    ("load", "prepare", "generate", "decode"), 0
+                ),
+                "peak_reserved_mib": 512,
+                "text": "Treść <FUNCTION=think>szkic</function>",
+                "wav": base64.b64encode(_native_test_wav()).decode("ascii"),
+            }
+        ).encode()
+    )
+    monkeypatch.setattr(omni_native_dialogue, "_invoke", invoke)
+    response = await client.post(
+        "/api/v1/chat/audio/multimodal-turn",
+        data={
+            "session_id": "native-protocol",
+            "generation_mode": "interleaved",
+            "sample_rate": 16000,
+        },
+        files={
+            "audio": (
+                "input.pcm",
+                bytes.fromhex("0010") * 80,
+                "application/octet-stream",
+            )
+        },
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"]["reason_code"] == "omni_native_invalid_output"
+    assert "audio_base64" not in response.text
+    assert "szkic" not in response.text
+    store = client._transport.app.dependency_overrides[get_session_store]()
+    assert not store.get_history("native-protocol")
+    invoke.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("mode", "available", "status", "reason"),
     [

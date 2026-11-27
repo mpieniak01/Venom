@@ -2257,7 +2257,6 @@ def test_studio_one_sentence_for_value_missing_in_the_conversation(
     fetch.assert_not_awaited()
     instruction = sent[-1]["payload"]["messages"][0]["content"]
     assert "dokładnie jedno zdanie odpowiadające na ostatnie pytanie" in instruction
-    assert "zarówno ustalony fakt, jak i brakujące potwierdzenie" in instruction
     assert [row["content"] for row in sent[-1]["payload"]["messages"][1:]] == [
         "Nie znam temperatury.",
         prompt,

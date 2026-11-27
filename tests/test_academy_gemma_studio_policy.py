@@ -148,3 +148,27 @@ def test_pump_explanation_uses_the_named_part_and_preserves_it_when_shortened(
     correction = "Pomyliłam element. Chodzi o zawór na materacu. Odpowiedz w dwóch prostych zdaniach."
     assert chat(correction, history) == target
     assert len(sent) == 1 and not replies
+
+
+def test_packaging_uses_the_declared_subject_and_asks_for_missing_material(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    assert (
+        chat("Na plakaty mamy tuby. Jak to dopisać jednym zdaniem?", max_tokens=160)
+        == "Na plakaty mamy tuby."
+    )
+    source = "Na tabliczce przy stoisku piszę o szklankach i szkicownikach. Do szkicowników są papierowe obwoluty. Jak doradzić zabranie szkicownika w podróż?"
+    response = "Do szkicowników są papierowe obwoluty. Skorzystaj z tego zabezpieczenia w podróży."
+    assert chat(source, verify_history=True) == response
+    history = [
+        {"role": "user", "content": source},
+        {"role": "assistant", "content": response},
+    ]
+    assert chat("A ze szklankami pod tym samym względem?", history) == (
+        "Czy macie papier ochronny albo pudełka, żeby zabezpieczyć je na czas podróży?"
+    )
+    assert not sent and not replies

@@ -123,6 +123,11 @@ _PACKAGE_QUESTION = re.compile(
     r"(?:pod tym samym względem|w tym samym kontekście|pod względem pakowania)\?",
     re.I,
 )
+_PACKING_ADDENDUM = re.compile(r"jak to dopisać (?:w )?jednym zdaniem", re.I)
+_PACKING_TRIP_ADVICE = re.compile(
+    rf"jak doradzić zabranie (?P<item>{_SUBJECT}?) w podróż", re.I
+)
+_UNSUPPORTED_FIT = re.compile(r"\b(?:zbyt (?:duż|mał)\w*|inny kształt)\b", re.I)
 _PACKED_DONE = re.compile(
     r"\b(?:(?:są|jest|został[yao]?) (?:już )?(?:zapakowan|spakowan)[yea]|"
     r"zapakowano|zapakowaliśmy)\b",
@@ -455,7 +460,7 @@ def _package_subject_forms(subject: str) -> tuple[str, ...]:
     subject = subject.casefold()
     if subject.endswith("ów") and len(subject) > 4 and " " not in subject:
         stem = subject[:-2]
-        return (subject, stem + "ami", stem + "i", stem + "y", stem + "ach")
+        return (subject, stem + "ami", stem + "i", stem + "y", stem + "ach", stem + "a")
     if subject.endswith(("y", "i", "e")) and len(subject) > 3 and " " not in subject:
         stem = subject[:-1]
         return (subject, stem + "ami", stem + "ów", stem + "ach")
@@ -469,6 +474,8 @@ class _PackagingCheck:
 
     def publish(self, draft: str) -> str:
         for sentence in _clauses(draft):
+            if _UNSUPPORTED_FIT.search(sentence) and not _GUARDED.search(sentence):
+                return self._grounded_alternative()
             packed_done = _PACKED_DONE.search(sentence)
             if (
                 _QUESTION.match(sentence)
@@ -503,18 +510,21 @@ class _PackagingCheck:
                 not _supports(self.evidence, self.subject, Proof.PACKAGE, value)
                 for value in packages
             ):
-                known = [
-                    row.value
-                    for row in self.evidence
-                    if row.subject == self.subject and row.proof == Proof.PACKAGE
-                ]
-                if known:
-                    return f"Dostępne opakowanie dla tych rzeczy: {', '.join(known)}."
-                return (
-                    "Czy macie papier ochronny albo pudełka, "
-                    "żeby zabezpieczyć je na czas podróży?"
-                )
+                return self._grounded_alternative()
         return draft
+
+    def _grounded_alternative(self) -> str:
+        known = [
+            row.value
+            for row in self.evidence
+            if row.subject == self.subject and row.proof == Proof.PACKAGE
+        ]
+        if known:
+            return f"Dostępne opakowanie dla tych rzeczy: {', '.join(known)}."
+        return (
+            "Czy macie papier ochronny albo pudełka, "
+            "żeby zabezpieczyć je na czas podróży?"
+        )
 
 
 def _packaging_check(text: str, users: Sequence[str]) -> StudioClaimCheck | None:
@@ -529,6 +539,41 @@ def _packaging_check(text: str, users: Sequence[str]) -> StudioClaimCheck | None
             subject = row.subject
             break
     return _PackagingCheck(subject, evidence)
+
+
+def _stated_packaging(text: str) -> str | None:
+    clauses = _statements(text)
+    if len(clauses) < 2:
+        return None
+    addendum = _PACKING_ADDENDUM.fullmatch(clauses[-1])
+    advice = _PACKING_TRIP_ADVICE.fullmatch(clauses[-1])
+    if not (addendum or advice):
+        return None
+    facts = [clause for clause in clauses[:-1] if _package_source(clause)]
+    if len(facts) != 1:
+        return None
+    fact = facts[0]
+    if advice:
+        (subject,) = {row.subject for row in _package_source(fact)}
+        if advice["item"].casefold() not in _package_subject_forms(subject):
+            return None
+        return (
+            f"{fact[0].upper()}{fact[1:]}. Skorzystaj z tego zabezpieczenia w podróży."
+        )
+    return f"{fact[0].upper()}{fact[1:]}."
+
+
+def stated_packaging_reply(text: str, history: Sequence[HistoryMessage]) -> str | None:
+    current = " ".join(text.split())
+    if reply := _stated_packaging(current):
+        return reply
+    users = [" ".join(turn.content.split()) for turn in history if turn.role == "user"]
+    previous = _statements(users[-1]) if users else []
+    if previous and _PACKING_TRIP_ADVICE.fullmatch(previous[-1]):
+        check = _packaging_check(current, users)
+        if isinstance(check, _PackagingCheck):
+            return check._grounded_alternative()
+    return None
 
 
 def topic_only_sms(text: str, history: Sequence[HistoryMessage]) -> str | None:

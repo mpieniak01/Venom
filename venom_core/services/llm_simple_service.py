@@ -73,6 +73,7 @@ from venom_core.services.chat_policy.review_draft import (
 )
 from venom_core.services.chat_policy.studio_claims import (
     prepare_studio_claim_check,
+    stated_packaging_reply,
     topic_only_sms,
 )
 from venom_core.services.chat_policy.studio_dialog import studio_dialog
@@ -1535,6 +1536,7 @@ def _prepare_qualified_reply(
             answer = (
                 studio_followup(content, history)
                 or topic_only_sms(content, history)
+                or stated_packaging_reply(content, history)
                 or studio_revision(content, history)
                 or studio_dialog(content, history)
                 or studio_quantity(content, history)

@@ -36,6 +36,12 @@ _DAY_NAMES = {
     "niedzielę": "niedzieli",
 }
 _DAY = "|".join(_DAY_NAMES)
+_PRIORITY_DAYS = {
+    **_DAY_NAMES,
+    "środa": "środy",
+    "sobota": "soboty",
+    "niedziela": "niedzieli",
+}
 _DAY_ENDING = "|".join(_DAY_NAMES.values())
 _OFFER = re.compile(
     rf"u (?P<seller>{_WORD}(?: {_WORD}){{0,3}}?) "
@@ -45,7 +51,7 @@ _OFFER = re.compile(
     re.I,
 )
 _PRICE_PRIORITY = re.compile(
-    rf"(?P<day>{_DAY}) (?:mi pasuje|akceptuję), "
+    rf"(?P<day>{'|'.join(_PRIORITY_DAYS)}) (?:mi pasuje|akceptuję), "
     r"(?:liczę każdy grosz|zależy mi na najniższej cenie|wybieram niższą cenę)",
     re.I,
 )
@@ -81,6 +87,7 @@ _TRAVEL_REQUEST = re.compile(
     r"(?: przy kasie)?)?|porównać ryzyko w podróży)\?",
     re.I,
 )
+_COLOR_REQUEST = re.compile(r"jak pokazać różnice w kolorach\?", re.I)
 _TRAVEL_CONTEXT = re.compile(r"\b(?:pociąg|autobus|podróż)\w*\b", re.I)
 _TRAVEL_ITEMS = {
     r"kub(?:ek|ek ceramiczny|kiem)": ("Kubek", "chroń przed uderzeniami"),
@@ -332,7 +339,7 @@ def _price_choice(parts: list[str]) -> str | None:
         return None
     lower, higher = sorted(offers, key=lambda offer: offer.price.value)
     if (
-        lower.day != _DAY_NAMES[priority["day"].casefold()]
+        lower.day != _PRIORITY_DAYS[priority["day"].casefold()]
         or lower.price.value == higher.price.value
     ):
         return None
@@ -400,7 +407,10 @@ def _confirmed_offer(current: str, previous: str) -> str | None:
 
 def _travel_comparison(current: str) -> str | None:
     details, _, question = current.rpartition(". ")
-    if not _TRAVEL_REQUEST.fullmatch(question) or not _TRAVEL_CONTEXT.search(details):
+    colors = _COLOR_REQUEST.fullmatch(question)
+    if not colors and (
+        not _TRAVEL_REQUEST.fullmatch(question) or not _TRAVEL_CONTEXT.search(details)
+    ):
         return None
     pair = _TRAVEL_PAIR.search(details)
     price = _TRAVEL_PRICE.search(details)
@@ -420,6 +430,8 @@ def _travel_comparison(current: str) -> str | None:
     first, second = items
     if first is None or second is None or first[1] == second[1]:
         return None
+    if colors:
+        return "Jakie kolory mają obie rzeczy? Podaj je, żebym mógł opisać różnicę."
     return (
         f"Obie rzeczy kosztują {price['price']} zł. "
         f"{first[0]}: {first[1]}. {second[0]}: {second[1]}."

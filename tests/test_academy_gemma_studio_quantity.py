@@ -367,7 +367,16 @@ def test_travel_comparison_keeps_protection_for_each_item():
         "Obie rzeczy kosztują 17 zł. Miska ceramiczna: chroń przed uderzeniem i stłuczeniem. "
         "Papierowy rysunek: zabezpiecz przed zgięciem."
     )
-    assert studio_quantity(prompt.replace("ryzyko w podróży", "kolory"), []) is None
+    colors = prompt.replace("porównać ryzyko w podróży", "pokazać różnice w kolorach")
+    assert studio_quantity(colors, []) == (
+        "Jakie kolory mają obie rzeczy? Podaj je, żebym mógł opisać różnicę."
+    )
+    assert (
+        studio_quantity(
+            colors.replace("miskę ceramiczną", "czerwoną miskę ceramiczną"), []
+        )
+        is None
+    )
     assert (
         studio_quantity(prompt.replace("Obie rzeczy kosztują 17 zł.", ""), []) is None
     )

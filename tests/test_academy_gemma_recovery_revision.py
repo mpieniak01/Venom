@@ -518,3 +518,21 @@ def test_removal_leaves_unconfirmed_action_or_different_object_outside_rewrite(
     if "próbie" in source:
         assert studio_revision(ask, []) is None
     assert studio_revision(correction, _history((ask, "Sam wynik."))) is None
+
+
+def test_general_removal_preserves_inability_after_location_update():
+    request = (
+        "Skróć „Po wyjęciu nakrętki spod podestu szafki nie dało się zamknąć”. "
+        "Podaj jedno zdanie."
+    )
+    first = studio_revision(request, [])
+    assert first == "Wyjęto nakrętkę spod podestu, a szafki nie dało się zamknąć."
+    history = [
+        HistoryMessage(role="user", content=request),
+        HistoryMessage(role="assistant", content=first),
+    ]
+    correction = "Korekta dotyczy miejsca: nakrętka leżała pod koszem. Zachowaj wynik."
+    assert studio_revision(correction, history) == (
+        "Nakrętka leżała pod koszem, a po jej wyjęciu szafki nie dało się zamknąć."
+    )
+    assert studio_revision(correction.replace("nakrętka", "szpilka"), history) is None

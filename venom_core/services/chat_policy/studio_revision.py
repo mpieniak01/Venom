@@ -195,7 +195,7 @@ class _Removal:
 class _Revision:
     initial: str
     compact: str
-    anchor: str
+    anchor: str | None
     removal: _Removal | None = None
     sound_action: str = ""
 
@@ -225,8 +225,13 @@ def _sound_revision(noise: re.Match[str]) -> _Revision | None:
 def _removal_revision(match: re.Match[str]) -> _Revision | None:
     names = _REMOVED_ITEMS.get(match["object"].casefold())
     place = match["place"].casefold()
-    if names is None or place not in _REMOVAL_PLACE_ANCHORS:
-        return None
+    if names is None:
+        stem = match["object"].casefold()
+        if not stem.endswith("ki") or not re.search(
+            _OPEN_CLOSE_INFINITIVE, match["effect"]
+        ):
+            return None
+        names = stem[:-1] + "a", stem[:-1] + "ę"
     name, object_name = names
     removal = _Removal(
         _REMOVAL_ACTIONS[match["action"].casefold()],
@@ -240,7 +245,7 @@ def _removal_revision(match: re.Match[str]) -> _Revision | None:
     return _Revision(
         removal.render(compact=False),
         removal.render(compact=True),
-        removal.anchor,
+        removal.anchor if place in _REMOVAL_PLACE_ANCHORS else None,
         removal=removal,
     )
 
@@ -339,11 +344,28 @@ def _correct_removal(correction: re.Match[str], prior: str, origin: str) -> str 
         return None
     relation = correction["relation"].casefold()
     location = _LOCATION_UPDATES.get((relation, correction["place"].casefold()))
-    if location is None or correction["ending"] not in {
+    if correction["ending"] not in {
         None,
         "ej" if relation == "na" else "ą",
     }:
         return None
+    if location is None:
+        if correction["direction"] or removal.name == removal.object:
+            return None
+        # Keep the case of the location given by the user.
+        participle = {
+            "Usunięto": "usunięciu",
+            "Wyjęto": "wyjęciu",
+            "Zabrano": "zabraniu",
+        }
+        return (
+            (
+                f"{removal.name.capitalize()} leżała {relation} {correction['place']}, "
+                f"a po jej {participle[removal.action]} {removal.effect}."
+            )
+            if removal.name.endswith("ka")
+            else None
+        )
     source_relation, place = location
     return replace(
         removal,

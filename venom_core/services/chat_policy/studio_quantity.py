@@ -132,6 +132,14 @@ _REMOVE_WE = re.compile(
     r"(?: zachowaj wszystkie dane[.])?",
     re.I,
 )
+_PICKUP_NOTICE = re.compile(
+    rf"napisz jednolinijkową informację z faktów: (?P<items>{_WORD}) "
+    rf"do odbioru od (?P<clock>{_CLOCK}) (?P<place>(?:pod|na|przy|w|we) {_NAME}), "
+    rf"(?P<allocation>każdy bierze po (?:jednej|dwie|dwa|trzy|cztery|pięć|[1-9][0-9]?))"
+    r"\. bez nagłówka[.!]?",
+    re.I,
+)
+_PICKUP_PLACE = re.compile(rf"zmień tylko miejsce na (?P<place>{_NAME})[.!]?", re.I)
 _CLOCK_CHANGE = re.compile(
     rf"zmień tylko godzinę odbioru na (?P<clock>{_CLOCK})[.]?", re.I
 )
@@ -496,6 +504,21 @@ def _notice(text: str) -> _Notice | None:
     )
 
 
+def _pickup_notice(current: str, previous: str) -> str | None:
+    new_place = _PICKUP_PLACE.fullmatch(current)
+    notice = _PICKUP_NOTICE.fullmatch(previous if new_place else current)
+    if notice is None or (clock := _clock(notice["clock"])) is None:
+        return None
+    items, place, allocation = notice["items"], notice["place"], notice["allocation"]
+    items = items[0].upper() + items[1:]
+    if new_place:
+        return (
+            f"{items} do odbioru od {clock}, {allocation} "
+            f"(zmiana miejsca na {new_place['place']})."
+        )
+    return f"{items} do odbioru od {clock} {place}, {allocation}."
+
+
 def _notice_followup(current: str, previous: str) -> str | None:
     correction = _CLOCK_CHANGE.fullmatch(current)
     visible = " ".join(without_quotes(current).split())
@@ -542,7 +565,7 @@ def studio_quantity(text: str, history: Sequence[HistoryMessage]) -> str | None:
         return notice.render(for_guests=False)
     previous = _prior_user(history)
     if not previous or len(previous) > 640:
-        return None
+        return _pickup_notice(current, "")
     scope = _comparison_scope(current)
     shorter = _SHORTER_ROUTE.fullmatch(current)
     if (scope is not None or shorter) and (
@@ -553,4 +576,4 @@ def studio_quantity(text: str, history: Sequence[HistoryMessage]) -> str | None:
         return " ".join(
             (*_route_comparison(route.options), "Chodzi Ci o marsz czy cały dojazd?")
         )
-    return _notice_followup(current, previous)
+    return _pickup_notice(current, previous) or _notice_followup(current, previous)

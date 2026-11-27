@@ -307,3 +307,20 @@ def test_unlisted_notice_items_preserve_status_and_ordinal(
         )
         == f"{service} do odbioru w bibliotece do 17:00.\n{entitlement}.\n{charge}."
     )
+
+
+def test_pickup_notice_updates_only_location_from_the_user():
+    request = (
+        "Napisz jednolinijkową informację z faktów: identyfikatory do odbioru "
+        "od 11:30 przy bramie, każdy bierze po dwa. Bez nagłówka."
+    )
+    assert studio_quantity(request, []) == (
+        "Identyfikatory do odbioru od 11:30 przy bramie, każdy bierze po dwa."
+    )
+    assert studio_quantity(
+        "Zmień tylko miejsce na gablotę w wejściu.", _history(request)
+    ) == (
+        "Identyfikatory do odbioru od 11:30, każdy bierze po dwa "
+        "(zmiana miejsca na gablotę w wejściu)."
+    )
+    assert studio_quantity("Zmień tylko miejsce na gablotę w wejściu.", []) is None

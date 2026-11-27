@@ -99,6 +99,20 @@ _PROVIDED_INFORMATION_ONLY = re.compile(
     r"informacji,?\s+które\s+(?:podałem|podałam)))\b",
     re.I,
 )
+_OBSERVED_STATUS = re.compile(
+    r"\b(?:przekazano|wydano|wydan[yaoe]|gotow[yaoe]|zatwierdzon[oaey])\b",
+    re.I,
+)
+_NONCURRENT_STATUS = re.compile(
+    r"\b(?:nie|jeśli|jeżeli|gdyby|może|wstępnie|wcześniej|pierwotnie|miało)\b",
+    re.I,
+)
+_PENDING_STATUS = re.compile(
+    r"\b(?:nie (?:ma|mamy|uzyskano|otrzymano) (?:pokwitowania|potwierdzenia)|"
+    r"nie (?:potwierdz\w*|ustalono|uzgodniono|udzielono|udzielił[ao]?)|nikt nie wypełnił)\b",
+    re.I,
+)
+_TOPIC_WORD = re.compile(r"[^\W\d_]{5,}")
 _RSS_NOT_READ = "W tej turze nie odczytano nagłówków z publicznego kanału RSS."
 _SOURCE_STATUS_POLICY = (
     "\n\nPoniższy status pochodzi z aplikacji. Przekaż go własnymi słowami "
@@ -282,6 +296,38 @@ def _provided_information_policy(
     return system_context, True, user_facts_only
 
 
+def _partial_user_status(message: str, history: list[HistoryMessage]) -> str | None:
+    """Quote adjacent explicit observations when a factual status is incomplete."""
+    visible = without_quotes(" ".join(message.split()))
+    question, separator, tail = _PROVIDED_INFORMATION_ONLY.sub("", visible).partition(
+        "?"
+    )
+    if (
+        not history
+        or not separator
+        or not question.casefold().startswith("czy ")
+        or tail.strip(" .!").casefold() not in {"", "odpowiedz"}
+        or re.search(r"\b(?:i|oraz|lub)\b", question, re.I)
+    ):
+        return None
+    evidence = " ".join(history[-1].content.split())
+    if evidence != without_quotes(evidence) or any(mark in evidence for mark in "?!"):
+        return None
+    pieces = re.split(r"(?<=\.)\s+", evidence)
+    if len(pieces) != 2 or not all(piece.endswith(".") for piece in pieces):
+        return None
+    observed, pending = pieces
+    if (
+        not _OBSERVED_STATUS.search(observed)
+        or _NONCURRENT_STATUS.search(observed)
+        or not _PENDING_STATUS.search(pending)
+    ):
+        return None
+    question_terms = {word[:5] for word in _TOPIC_WORD.findall(question.casefold())}
+    observed_terms = {word[:5] for word in _TOPIC_WORD.findall(observed.casefold())}
+    return evidence if question_terms & observed_terms else None
+
+
 def _normal_history_options(request: SimpleChatRequest) -> tuple[bool, bool, bool]:
     local_qualification = (
         SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED and not request.use_notes
@@ -455,5 +501,9 @@ async def prepare_studio_normal(
     )
     prepared._studio_public_source_evidence = evidence.to_record() if evidence else None
     prepared._studio_public_scope_reply = scope_reply
+    if setup.user_facts_only:
+        prepared._studio_user_fact_reply = _partial_user_status(
+            request.content, prepared.history
+        )
     prepared._studio_rss_headlines = headlines
     return prepared, system_context

@@ -1514,6 +1514,8 @@ def _prepare_qualified_reply(
     if _qualified_studio_request(request, profile):
         if request._studio_public_scope_reply:
             return QualifiedReply(local_text=request._studio_public_scope_reply)
+        if request._studio_user_fact_reply:
+            return QualifiedReply(local_text=request._studio_user_fact_reply)
         if request._studio_rss_headlines:
             count = requested_count(request.content)
             return QualifiedReply(

@@ -44,6 +44,7 @@ class SimpleChatRequest(BaseModel):
 
     _studio_public_source_evidence: dict[str, str] | None = PrivateAttr(default=None)
     _studio_public_scope_reply: str | None = PrivateAttr(default=None)
+    _studio_user_fact_reply: str | None = PrivateAttr(default=None)
     _studio_rss_headlines: tuple[NewsHeadline, ...] = PrivateAttr(default=())
 
     @model_validator(mode="after")

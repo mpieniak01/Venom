@@ -2290,6 +2290,32 @@ def test_only_user_supplied_facts_exclude_assistant_claims(studio_chat, monkeypa
 
 
 @pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_only_user_facts_answer_keeps_known_and_pending_status(studio_chat):
+    chat, sent, replies = studio_chat
+    prompt = "Czy odbiór przesyłki jest potwierdzony? Tylko na podstawie podanych informacji."
+    evidence = "Przesyłkę przekazano przewoźnikowi. Nie ma pokwitowania odbioru."
+    history = [turn(evidence), turn("Przesyłka została odebrana.", "assistant")]
+    assert chat(prompt, history) == evidence
+    assert not sent and not replies
+
+
+def test_only_user_facts_does_not_restate_unrelated_or_superseded_evidence(studio_chat):
+    chat, sent, replies = studio_chat
+    prompt = "Czy odbiór przesyłki jest potwierdzony? Tylko na podstawie podanych informacji."
+    for evidence in (
+        "Zwrot został zatwierdzony. Kwoty jeszcze nie ustalono.",
+        "Przesyłkę przekazano przewoźnikowi. Nie ma pokwitowania odbioru. Ta informacja jest już nieaktualna.",
+        "Jeśli przesyłkę przekazano przewoźnikowi. Nie ma pokwitowania odbioru.",
+    ):
+        replies.append(streamed("W rozmowie nie podano tej informacji."))
+        history = [turn(evidence), turn("Zrozumiałem.", "assistant")]
+        assert chat(prompt, history) == "W rozmowie nie podano tej informacji."
+    assert len(sent) == 3 and not replies
+
+
+@pytest.mark.parametrize(
     ("source", "summary", "expected", "speaker"),
     [
         (

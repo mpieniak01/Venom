@@ -82,6 +82,10 @@ from venom_core.services.chat_policy.studio_followup import (
     studio_concise_hint,
     studio_followup,
 )
+from venom_core.services.chat_policy.studio_publication import (
+    publication_check,
+    publication_heading,
+)
 from venom_core.services.chat_policy.studio_quantity import studio_quantity
 from venom_core.services.chat_policy.studio_revision import studio_revision
 from venom_core.services.chat_policy.studio_visibility import studio_visibility
@@ -1574,6 +1578,18 @@ def _prepare_qualified_reply(
                     request._studio_rss_headlines, count or CountRequirement("exact", 1)
                 )
             )
+        if (
+            SETTINGS.ACADEMY_GEMMA_REVIEW_RETRY_ENABLED
+            and model_name.casefold() == QUALIFIED_MODEL
+        ):
+            if heading := publication_heading(request.content, request.history):
+                return QualifiedReply(local_text=heading)
+            if check := publication_check(request.content, request.history):
+                return QualifiedReply(
+                    claim_check=check,
+                    hint=_STUDIO_ORDINARY_DRAFT_POLICY,
+                    retry_truncated=SETTINGS.ACADEMY_GEMMA_STUDIO_TRUNCATION_RETRY_ENABLED,
+                )
         if reply := prepare_studio_reply(
             request.content, request.history, token_budget=request.max_tokens
         ):

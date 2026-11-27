@@ -428,3 +428,91 @@ def test_neutral_labels_do_not_override_additional_restrictions():
         )
         is None
     )
+
+
+_BULLETIN = (
+    "Skróć do dwóch zdań: „Wstępnie naliczyliśmy około 28 kart. "
+    "Trzy karty bez adresu jeszcze sprawdzamy. Wynik zamierzamy ogłosić w sobotę.” "
+    "Nie używaj pierwszej osoby."
+)
+_VALID_BULLETIN = (
+    "Wstępnie naliczono około 28 kart, a trzy karty bez adresu są w trakcie sprawdzania. "
+    "Wynik planuje się ogłosić w sobotę."
+)
+_SAFE_BULLETIN = (
+    "Wstępnie naliczono około 28 kart, a nadal sprawdza się trzy karty bez adresu. "
+    "Wynik planuje się ogłosić w sobotę."
+)
+
+
+@pytest.mark.parametrize(
+    ("draft", "expected"),
+    [
+        (_VALID_BULLETIN, _VALID_BULLETIN),
+        (
+            "Wstępnie naliczono 28 kart, w tym trzy karty bez adresu. "
+            "Wynik zostanie ogłoszony w sobotę.",
+            _SAFE_BULLETIN,
+        ),
+        (
+            "Wstępnie naliczono około 28 kart i planuje się dodatkową kontrolę. "
+            "Wynik ogłosimy w sobotę.",
+            _SAFE_BULLETIN,
+        ),
+    ],
+)
+def test_studio_checks_a_publication_plan_before_publishing(
+    studio_chat, monkeypatch, draft, expected
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    replies.append(native(draft))
+    assert chat(_BULLETIN, verify_history=True) == expected
+    assert len(sent) == 1 and not replies
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        (
+            9,
+            "Przyjęcie zakończone. Potwierdzono 9 właściwych kolorów, kartę podpisano.",
+        ),
+        (
+            8,
+            "Przyjęcie pozostaje otwarte. Wymagana liczba to 9, na etykiecie podano 8, "
+            "a po sprawdzeniu potwierdzono 9. Kartę podpisano.",
+        ),
+    ],
+)
+def test_studio_matches_verified_count_to_checklist_requirement(
+    studio_chat, monkeypatch, label, expected
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    history = [
+        {
+            "role": "user",
+            "content": (
+                "Przed przyjęciem trzeba sprawdzić komplet dziewięciu kolorów i podpisać kartę. "
+                f"Na paczce widnieje „{label} sztuk”, a karty nie widzę. "
+                "Co wpisać na liście kontrolnej?"
+            ),
+        },
+        {"role": "assistant", "content": "Brak danych do zamknięcia."},
+        {
+            "role": "user",
+            "content": (
+                "Przeliczyliśmy kolory, jest dziewięć właściwych. "
+                "Kartę podpisze osoba dyżurna po 17."
+            ),
+        },
+        {"role": "assistant", "content": "Wszystkie warunki natychmiast spełnione."},
+    ]
+    user = "Kartę już podpisano. Podaj finalny status na podstawie dwóch warunków."
+    assert chat(user, history, verify_history=True) == expected
+    assert not sent and not replies

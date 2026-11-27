@@ -556,11 +556,163 @@ def _explicit_pending_status(text: str) -> str | None:
     return None
 
 
+_COLLECTION_CODE = re.compile(
+    r"mam potwierdzenie,\s*że\s+(?P<known>[^.!?]{3,80}\b"
+    r"pobra[łl]\w*\s+kod\b[^.!?]{0,42}),\s*ale\s+"
+    r"(?P<blocked>skrytka\s+(?:jeszcze\s+)?(?:się\s+)?nie\s+(?:się\s+)?otworzyła)"
+    r"[.!]\s*czy odnotować odbiór\?$",
+    re.I,
+)
+_NUMBER_FORMS = {
+    "dwa": 2,
+    "trzy": 3,
+    "cztery": 4,
+    "pięć": 5,
+    "sześć": 6,
+    "siedem": 7,
+    "osiem": 8,
+    "dziewięć": 9,
+    "dziesięć": 10,
+}
+_EXPECTED_FORMS = {
+    "dwóch": 2,
+    "trzech": 3,
+    "czterech": 4,
+    "pięciu": 5,
+    "sześciu": 6,
+    "siedmiu": 7,
+    "ośmiu": 8,
+    "dziewięciu": 9,
+    "dziesięciu": 10,
+}
+_EXPECTED_COLORS = re.compile(
+    rf"\btrzeba sprawdzić komplet (?P<count>{'|'.join(_EXPECTED_FORMS)}|[1-9][0-9]{{0,3}})"
+    r"\s+(?:kolorów|odcieni)\b",
+    re.I,
+)
+_CHECKED_COLORS = re.compile(
+    rf"przeliczyliśmy (?P<topic>kolory|odcienie),\s*jest\s+"
+    rf"(?P<count>{'|'.join(_NUMBER_FORMS)}|[1-9][0-9]{{0,3}})\s+właściwych[.!]\s*"
+    r"(?P<pending>kartę podpisze [^.!?]{8,95})[.!]?",
+    re.I,
+)
+_SIGNED_CHECKLIST = re.compile(
+    r"(?:podpisała się właśnie|karta została podpisana|kartę już podpisano)"
+    r"(?P<scan> i skan karty jest w ewidencji)?[.!]\s*"
+    r"(?:napisz|podaj) finalny status na podstawie (?:tych )?dwóch warunków[.!]?",
+    re.I,
+)
+_REGISTRY_SPLIT = re.compile(
+    rf"(?:zapisałam|zapisałem|wpisano) numery\s+(?P<done>[1-9][0-9]{{0,3}})"
+    rf"\s+(?P<items>[^\W\d_]+)[.!]\s*"
+    rf"(?P<pending>{'|'.join(_NUMBER_FORMS)}|[1-9][0-9]{{0,3}})\s+"
+    r"jest bez numeru[.!]\s*(?:czy )?mogę odhaczyć warunek dla całej partii\?$",
+    re.I,
+)
+_ISSUE_WITHDRAWAL = re.compile(
+    r"(?P<owner>[^.!?]{2,40})\s+(?:anulował[ao]?|wycofał[ao]?)\s+zgodę,\s*"
+    r"zanim cokolwiek wynieśliśmy[.!]\s*jak zamknąć adnotację\?$",
+    re.I,
+)
+_PREFERENCE_ONLY = re.compile(
+    r"(?P<person>[^.!?]{3,30}) woli (?P<choice>pierwszą|drugą),\s*ale jeszcze się waha[.!]\s*"
+    r"jak mam ją oznaczyć w pliku z propozycjami\?$",
+    re.I,
+)
+
+
+def _checklist_source(line: str) -> int | None:
+    counts = list(_DECLARED_COUNT.finditer(line))
+    if (
+        len(counts) == 1
+        and _UNCHECKED_PACKAGE.search(line)
+        and _UNCHECKED_EVIDENCE.search(line)
+    ):
+        return int(counts[0]["number"])
+    return None
+
+
+def _recorded_count(text: str) -> int:
+    return int(text) if text.isdecimal() else _NUMBER_FORMS[text.casefold()]
+
+
+def _checked_checklist(topic: str, count: int) -> str:
+    checked = {"kolory": "kolorów", "odcienie": "odcieni"}[topic.casefold()]
+    return f"Potwierdzono {count} właściwych {checked}"
+
+
+def _checklist_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
+    users = _last_users(history, 1)
+    if (check := _CHECKED_COLORS.fullmatch(text)) and users:
+        declared = _checklist_source(users[-1])
+        count = _recorded_count(check["count"])
+        if declared == count:
+            pending = check["pending"]
+            return f"{_checked_checklist(check['topic'], count)}. {pending[0].upper()}{pending[1:]}."
+    if (close := _SIGNED_CHECKLIST.fullmatch(text)) and len(
+        stages := _last_users(history, 2)
+    ) == 2:
+        declared = _checklist_source(stages[0])
+        check = _CHECKED_COLORS.fullmatch(stages[1])
+        required = _EXPECTED_COLORS.search(stages[0])
+        if check and required and declared is not None:
+            amount = required["count"].casefold()
+            expected = int(amount) if amount.isdecimal() else _EXPECTED_FORMS[amount]
+            confirmed = _recorded_count(check["count"])
+            if expected != declared or expected != confirmed:
+                return (
+                    f"Przyjęcie pozostaje otwarte. Wymagana liczba to {expected}, "
+                    f"na etykiecie podano {declared}, a po sprawdzeniu potwierdzono "
+                    f"{confirmed}. Kartę podpisano."
+                )
+            signature = "kartę podpisano"
+            if close["scan"]:
+                signature += " i zapisano jej skan w ewidencji"
+            return f"Przyjęcie zakończone. {_checked_checklist(check['topic'], declared)}, {signature}."
+    return None
+
+
+def _recorded_operational_status(
+    text: str, history: Sequence[HistoryMessage]
+) -> str | None:
+    if code := _COLLECTION_CODE.search(text):
+        known = code["known"]
+        return (
+            f"{known[0].upper()}{known[1:]}, ale {code['blocked']}. "
+            "Odbiór pozostaje niepotwierdzony."
+        )
+    if recorded := _REGISTRY_SPLIT.fullmatch(text):
+        return (
+            f"Numery zapisano dla {recorded['done']} {recorded['items']}. "
+            f"Liczba pozycji bez numeru to {_recorded_count(recorded['pending'])}. "
+            "Warunek dla całej partii pozostaje niespełniony."
+        )
+    users = _last_users(history, 1)
+    if (
+        users
+        and _REGISTRY_SPLIT.fullmatch(users[-1])
+        and _ISSUE_WITHDRAWAL.fullmatch(text)
+    ):
+        return "Zgodę na wyniesienie wycofano. Niczego nie wyniesiono."
+    if (
+        (preference := _PREFERENCE_ONLY.fullmatch(text))
+        and users
+        and re.search(r"\bdwie propozycje\b.+\bdecyzja\b.+\bpóźniej\b", users[-1], re.I)
+    ):
+        choice = {"pierwszą": "pierwsza", "drugą": "druga"}[
+            preference["choice"].casefold()
+        ]
+        return f"„Preferowana roboczo {choice} wersja. Decyzja nadal otwarta.”"
+    return None
+
+
 def studio_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Report explicit user evidence and keep planned and performed actions separate."""
     return (
         _pending_log_field(text)
         or _explicit_pending_status(text)
+        or _checklist_status(text, history)
+        or _recorded_operational_status(text, history)
         or _request_status(text, history)
         or _pickup_status(text, history)
     )

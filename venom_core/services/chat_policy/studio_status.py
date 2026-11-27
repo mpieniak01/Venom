@@ -481,6 +481,29 @@ def _pickup_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
     return None
 
 
+_PENDING_FIELD = re.compile(
+    r"[„«\"](?P<queued>przyjęto do sprawdzenia|przekazano do weryfikacji|"
+    r"skierowano do kontroli)[”»\"]\s*,?\s*(?:bez dalszych wpisów|bez potwierdzenia wykonania)"
+    r"[^„«\"]{0,90}[„«\"](?P<field>sprawdzono|zweryfikowano|skontrolowano)[”»\"]"
+    r"[.!]\s*(?:podpowiedz,\s*jak je wypełnić|co (?:tam )?wpisać)[.?]$",
+    re.I,
+)
+
+
+def _pending_log_field(text: str) -> str | None:
+    if match := _PENDING_FIELD.search(text):
+        queued = match["queued"]
+        return (
+            f"{queued[:1].upper()}{queued[1:]}. "
+            f"Pole „{match['field']}” pozostaje otwarte do potwierdzenia wyniku."
+        )
+    return None
+
+
 def studio_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Report explicit user evidence and keep planned and performed actions separate."""
-    return _request_status(text, history) or _pickup_status(text, history)
+    return (
+        _pending_log_field(text)
+        or _request_status(text, history)
+        or _pickup_status(text, history)
+    )

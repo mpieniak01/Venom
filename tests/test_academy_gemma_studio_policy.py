@@ -7,6 +7,7 @@ from tests.test_academy_qualified_chat import studio_chat as qualified_studio_ch
 from venom_core.services import llm_simple_service
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.chat_policy.studio_calculator import plan_studio_calculation
+from venom_core.services.chat_policy.studio_visibility import studio_visibility
 from venom_core.services.ollama_text_adapter import QUALIFIED_BOLT_MODEL
 
 studio_chat = qualified_studio_chat
@@ -360,3 +361,46 @@ def test_studio_preserves_conditions_during_literal_point_edits(
         "Zajęcia są dla osób od 12 lat.",
     )
     assert not sent and not replies
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        (
+            "Są dwie koperty. Zielona zawiera umowę dla Ewy, szara notatkę dla Jana. "
+            "Potrzebuję dla obu etykiet bez informacji o treści z przodu. Co napisać?",
+            "Zielona — „Dla Ewy”.\nSzara — „Dla Jana”.",
+        ),
+        (
+            "Na karcie widnieje „przekazano do weryfikacji”, bez potwierdzenia wykonania. "
+            "W raporcie jest pole „zweryfikowano”. Co wpisać?",
+            "Przekazano do weryfikacji. Pole „zweryfikowano” pozostaje otwarte do potwierdzenia wyniku.",
+        ),
+        (
+            "Potrzebuję trzech długich listew po 450 mm i czterech krótkich po 19 cm. "
+            "Ile cm razem?",
+            "3 × 45 cm + 4 × 19 cm = 211 cm.",
+        ),
+    ],
+)
+def test_studio_publishes_only_verified_fields_and_values(
+    studio_chat, monkeypatch, prompt, expected
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    assert chat(prompt, verify_history=True) == expected
+    assert not sent and not replies
+
+
+def test_neutral_labels_do_not_override_additional_restrictions():
+    assert (
+        studio_visibility(
+            "Są dwie koperty. Zielona zawiera umowę dla Ewy, szara notatkę dla Jana. "
+            "Potrzebuję dla obu etykiet bez informacji o treści z przodu. "
+            "Nie umieszczaj imion na etykietach.",
+            (),
+        )
+        is None
+    )

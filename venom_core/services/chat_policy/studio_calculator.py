@@ -23,14 +23,23 @@ _NUMBER = r"[0-9]{1,7}(?:[.,][0-9]{1,4})?"
 _WORD_COUNTS = {
     "dwa": 2,
     "dwie": 2,
+    "dwóch": 2,
     "trzy": 3,
+    "trzech": 3,
     "cztery": 4,
+    "czterech": 4,
     "pięć": 5,
+    "pięciu": 5,
     "sześć": 6,
+    "sześciu": 6,
     "siedem": 7,
+    "siedmiu": 7,
     "osiem": 8,
+    "ośmiu": 8,
     "dziewięć": 9,
+    "dziewięciu": 9,
     "dziesięć": 10,
+    "dziesięciu": 10,
 }
 _COUNT = rf"(?:[1-9][0-9]{{0,3}}|{'|'.join(_WORD_COUNTS)})"
 _LENGTH = rf"(?P<value>{_NUMBER})\s*(?P<unit>mm|cm|m)\b"

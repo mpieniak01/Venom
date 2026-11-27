@@ -84,6 +84,7 @@ from venom_core.services.chat_policy.studio_followup import (
 )
 from venom_core.services.chat_policy.studio_quantity import studio_quantity
 from venom_core.services.chat_policy.studio_revision import studio_revision
+from venom_core.services.chat_policy.studio_visibility import studio_visibility
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
 )
@@ -1587,6 +1588,7 @@ def _prepare_qualified_reply(
                 or topic_only_sms(content, history)
                 or stated_packaging_reply(content, history)
                 or studio_revision(content, history)
+                or studio_visibility(content, history)
                 or studio_dialog(content, history)
                 or studio_quantity(content, history)
             )

@@ -32,6 +32,12 @@ _PHONE = re.compile(
     rf"(?:przed chwilą )?zadzwonił[ae]m)(?: do (?P<subject>{_NAME}))?)",
     re.I,
 )
+_PHONE_CONVERSATION = re.compile(
+    rf"(?:(?:zdążył[ae]m(?: już| jednak)? porozmawiać)|"
+    rf"(?:porozmawiał|rozmawiał)[ae]m) "
+    rf"(?:z[e]? (?P<person>{_NAME}) przez telefon|przez telefon z[e]? (?P<recipient>{_NAME}))",
+    re.I,
+)
 _SENT = re.compile(rf"wysłał[ae]m sms(?:-a)? do (?P<subject>{_NAME})", re.I)
 _SMS_QUERY = re.compile(
     r"czy (?:mogę|można) (?:w notatce )?(?:zaznaczyć|zapisać|wpisać|odnotować)"
@@ -56,8 +62,10 @@ _LEDGER = re.compile(
     re.I,
 )
 _ROW = re.compile(rf"(?P<subject>{_SUBJECT})\s+[—–-]\s+(?P<status>[\w :/-]{{3,65}})")
+_PLACE = r"(?:w|we|na|do) [\w-]+(?: [\w-]+){0,4}"
 _RETURN_QUESTION = re.compile(
-    r"czy .{1,80}(?:z powrotem|wrócił[oy]?|na miejscu|w pracowni)|"
+    rf"czy .{{1,80}}(?:z powrotem|wrócił[yao]?)(?: (?P<place>{_PLACE}))?|"
+    rf"czy .{{1,80}}(?:są|jest|znajdują się) (?:już )?(?P<site>{_PLACE})|"
     r"czego (?:jeszcze )?nie potwierdziliśmy",
     re.I,
 )
@@ -69,6 +77,10 @@ _SHELF_OBSERVATION = re.compile(
 _LOCATION = re.compile(
     r"\b(?:poza pracownią|w pracowni|na półce|na miejscu|wrócił[yao]?|zwrócono|"
     r"nie (?:wrócił[yao]?|zwrócono)|(?:są|jest) już z powrotem)\b",
+    re.I,
+)
+_OUTSIDE = re.compile(
+    r"\bpoza (?!(?:listą|rejestrem|wykazem|tabelą|kartą|ewidencją|zakresem)\b)[\w-]+",
     re.I,
 )
 _REGISTERED_RETURN = re.compile(r"\b(?:wpisano|odnotowano), że\b", re.I)
@@ -88,9 +100,10 @@ _PACKAGES = {
     "folia": r"foli(?:a|ę|ą|i)(?: bąbelkow[aąej])?",
     "pokrowiec": r"pokrow(?:iec|ca|ce|cach|cami)",
     "woreczek": r"worecz(?:ek|ka|ki|kach|kami)",
+    "obwoluta": r"obwolut(?:a|ę|y|ą|ach|ami)",
 }
 _PACKAGING = re.compile(
-    rf"na (?P<subject>{_SUBJECT}?) (?:mamy|są|przygotowaliśmy) (?P<package>[^.!?]{{2,70}})",
+    rf"(?:na|do) (?P<subject>{_SUBJECT}?) (?:mamy|są|przygotowaliśmy) (?P<package>[^.!?]{{2,70}})",
     re.I,
 )
 _PACKAGE_QUESTION = re.compile(
@@ -165,7 +178,17 @@ class _SmsCheck:
             return draft
         if _supports(self.evidence, self.subject, Proof.SENT_SMS):
             return f"Potwierdzono wysłanie SMS-u do {self.subject}."
-        if _supports(self.evidence, self.subject, Proof.PHONE):
+        for call in self.evidence:
+            if (
+                call.proof != Proof.PHONE
+                or call.subject.casefold() != self.subject.casefold()
+            ):
+                continue
+            if call.value:
+                return (
+                    f"Możesz odnotować rozmowę telefoniczną z {call.value}. "
+                    "Rozmowa nie potwierdza wysłania SMS-u."
+                )
             return (
                 f"Możesz odnotować telefon do {self.subject}. "
                 "Sam telefon nie potwierdza wysłania SMS-u."
@@ -186,6 +209,33 @@ class _SmsCheck:
         ) and not _supports(self.evidence, claimed_subject, Proof.SENT_SMS)
 
 
+def _same_phone_recipient(genitive: str, instrumental: str) -> bool:
+    def same_name_word(target: str, speaker: str) -> bool:
+        if target == speaker:
+            return True
+        for target_endings, speaker_endings in (
+            (("i", "y", "iej"), ("ą", "ją")),
+            (("a",), ("em", "iem")),
+        ):
+            if any(
+                target.endswith(target_end)
+                and speaker.endswith(speaker_end)
+                and len(target) - len(target_end) >= 2
+                and target.removesuffix(target_end) == speaker.removesuffix(speaker_end)
+                for target_end in target_endings
+                for speaker_end in speaker_endings
+            ):
+                return True
+        return False
+
+    target = genitive.casefold().split()
+    speaker = instrumental.casefold().split()
+    return len(target) == len(speaker) and all(
+        same_name_word(first, second)
+        for first, second in zip(target, speaker, strict=True)
+    )
+
+
 def _sms_check(text: str, users: Sequence[str]) -> StudioClaimCheck | None:
     if not users or not (original := _SMS_DRAFT.match(users[-1])):
         return None
@@ -197,6 +247,10 @@ def _sms_check(text: str, users: Sequence[str]) -> StudioClaimCheck | None:
     for piece in pieces[:-1]:
         if call := _PHONE.fullmatch(piece):
             evidence.append(Evidence(call["subject"] or subject, Proof.PHONE))
+        if conversation := _PHONE_CONVERSATION.fullmatch(piece):
+            caller = conversation["person"] or conversation["recipient"]
+            resolved = subject if _same_phone_recipient(subject, caller) else caller
+            evidence.append(Evidence(resolved, Proof.PHONE, caller))
         if sent := _SENT.fullmatch(piece):
             evidence.append(Evidence(sent["subject"], Proof.SENT_SMS))
     if not evidence:
@@ -251,8 +305,9 @@ def _mentioned_subjects(clause: str, labels: Sequence[str]) -> list[str]:
 
 
 def _has_unsupported_location(
-    draft: str, labels: Sequence[str], evidence: Sequence[Evidence]
+    draft: str, labels: Sequence[str], evidence: Sequence[Evidence], place: str
 ) -> bool:
+    scoped_place = re.compile(rf"\b{re.escape(place)}\b", re.I) if place else None
     previous: list[str] = []
     for clause in _clauses(draft):
         if _FIRSTHAND_CHECK.search(clause):
@@ -262,7 +317,11 @@ def _has_unsupported_location(
             subjects = list(labels) if _COLLECTIVE.search(clause) else previous
         if subjects:
             previous = subjects
-        claim = _LOCATION.search(clause)
+        claim = (
+            _LOCATION.search(clause)
+            or (scoped_place.search(clause) if scoped_place else None)
+            or _OUTSIDE.search(clause)
+        )
         if (
             not subjects
             or claim is None
@@ -288,10 +347,11 @@ def _has_unsupported_location(
 class _InventoryCheck:
     rows: tuple[Evidence, ...]
     observations: tuple[Evidence, ...]
+    place: str = ""
 
     def publish(self, draft: str) -> str:
         labels = [entry.subject for entry in self.rows]
-        if not _has_unsupported_location(draft, labels, self.observations):
+        if not _has_unsupported_location(draft, labels, self.observations, self.place):
             return draft
         notes = []
         for entry in self.rows:
@@ -308,19 +368,28 @@ class _InventoryCheck:
         return " ".join(notes)
 
 
+def _return_place(question: re.Match[str] | None) -> str:
+    return (question["place"] or question["site"] or "") if question else ""
+
+
 def _inventory_check(text: str, users: Sequence[str]) -> StudioClaimCheck | None:
     pieces = _statements(text)
-    if not pieces or not _RETURN_QUESTION.fullmatch(pieces[-1]):
+    if not pieces or not (question := _RETURN_QUESTION.fullmatch(pieces[-1])):
         return None
     if current := _ledger_rows(text):
-        return _InventoryCheck(current, ())
+        return _InventoryCheck(current, (), _return_place(question))
     if not users or not (rows := _ledger_rows(users[-1])):
         return None
     if len(pieces) != 2 or not (placement := _SHELF_OBSERVATION.fullmatch(pieces[0])):
         return None
     subject = _resolve_subject(placement["subject"], [entry.subject for entry in rows])
+    earlier_question = _RETURN_QUESTION.fullmatch(_statements(users[-1])[-1])
     return (
-        _InventoryCheck(rows, (Evidence(subject, Proof.ON_SHELF),)) if subject else None
+        _InventoryCheck(
+            rows, (Evidence(subject, Proof.ON_SHELF),), _return_place(earlier_question)
+        )
+        if subject
+        else None
     )
 
 
@@ -333,17 +402,20 @@ def _package_values(text: str) -> tuple[str, ...]:
 
 
 def _package_source(text: str) -> tuple[Evidence, ...]:
-    pieces = _statements(text)
-    if not pieces or not (fact := _PACKAGING.fullmatch(pieces[0])):
-        return ()
     return tuple(
         Evidence(fact["subject"], Proof.PACKAGE, value)
+        for statement in _statements(text)
+        if (fact := _PACKAGING.fullmatch(statement))
+        and not _GUARDED.search(fact["package"])
         for value in _package_values(fact["package"])
     )
 
 
 def _package_subject_forms(subject: str) -> tuple[str, ...]:
     subject = subject.casefold()
+    if subject.endswith("ów") and len(subject) > 4 and " " not in subject:
+        stem = subject[:-2]
+        return (subject, stem + "ami", stem + "i", stem + "y", stem + "ach")
     if subject.endswith(("y", "i", "e")) and len(subject) > 3 and " " not in subject:
         stem = subject[:-1]
         return (subject, stem + "ami", stem + "ów", stem + "ach")

@@ -70,15 +70,18 @@ _REMOVAL_EFFECT = (
     rf"|(?:nie )?(?:można było|dało się) {_OPEN_CLOSE_INFINITIVE} {_WORD}"
     rf"|{_WORD} (?:nie )?(?:się {_OPEN_CLOSE_EVENT}|{_OPEN_CLOSE_EVENT} się)"
 )
+_REMOVAL_ACTIONS = {"zabraniu": "Zabrano", "usunięciu": "Usunięto", "wyjęciu": "Wyjęto"}
 _REMOVAL = re.compile(
-    rf"po zabraniu (?P<object>{_WORD}) (?P<relation>z|ze|spod) "
+    rf"po (?P<action>{'|'.join(_REMOVAL_ACTIONS)}) (?P<object>{_WORD}) "
+    r"(?P<relation>z|ze|spod) "
     rf"(?:(?P<direction>{_PLACE_DIRECTION})ej )?(?P<place>{_WORD}) (?P<effect>{_REMOVAL_EFFECT})",
     re.I,
 )
 _LOCATION_CORRECTION = re.compile(
-    rf"(?:korekta|poprawka): (?:(?P<object>{_WORD}) był[ao]? (?P<relation>na|pod) "
+    rf"(?:korekta(?: dotyczy miejsca)?|poprawka): "
+    rf"(?:(?P<object>{_WORD}) (?:był|leżał)[ao]? (?P<relation>na|pod) "
     rf"(?:(?P<direction>{_PLACE_DIRECTION})(?P<ending>ej|ą) )?(?P<place>{_WORD})[.] "
-    r"zmień tylko to i podaj (?:jedną gotową wersję|jedno zdanie)"
+    r"(?:zmień tylko to i podaj (?:jedną gotową wersję|jedno zdanie)|zachowaj wynik)"
     rf"|była to (?P<relative_direction>{_PLACE_DIRECTION})a (?P<relative_place>ławka|półka)[.] "
     r"zmień tylko położenie)[.]?",
     re.I,
@@ -112,6 +115,7 @@ _REMOVED_ITEMS = {
     "płyty": ("płyta", "płytę"),
     "pudełka": ("pudełko", "pudełko"),
     "stołka": ("stołek", "stołek"),
+    "śrubki": ("śrubka", "śrubkę"),
     "teczki": ("teczka", "teczkę"),
     "torby": ("torba", "torbę"),
 }
@@ -163,6 +167,7 @@ _TOPIC_CONNECTOR = re.compile(r"\b(?:i|lub|albo|oraz|bez|nie|tylko)\b", re.I)
 
 @dataclass(frozen=True)
 class _Removal:
+    action: str
     name: str
     object: str
     relation: str
@@ -181,9 +186,9 @@ class _Removal:
         subject, creaks, _ = self.effect.partition(" przestał skrzypieć")
         if creaks:
             effect = f"{subject} nie skrzypi" if compact else self.effect
-            return f"Zabrano {self.object} {location}, {effect}."
+            return f"{self.action} {self.object} {location}, {effect}."
         connector = "" if compact else "a "
-        return f"Zabrano {self.object} {location}, {connector}{self.effect}."
+        return f"{self.action} {self.object} {location}, {connector}{self.effect}."
 
 
 @dataclass(frozen=True)
@@ -224,6 +229,7 @@ def _removal_revision(match: re.Match[str]) -> _Revision | None:
         return None
     name, object_name = names
     removal = _Removal(
+        _REMOVAL_ACTIONS[match["action"].casefold()],
         name,
         object_name,
         match["relation"].casefold(),

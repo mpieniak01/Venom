@@ -173,3 +173,92 @@ def test_keeps_confirmed_packaging_of_the_exact_product():
 )
 def test_claim_check_requires_relevant_user_evidence(text, history):
     assert prepare_studio_claim_check(text, history) is None
+
+
+def test_spoken_phone_channel_fixes_sms_draft_without_marking_sms_sent():
+    initial = "Napisz krótki SMS do Oli, że zbiórka jest o 18. Chcę tylko szkic, wysyłkę zrobię sama."
+    update = "Zdążyłam już porozmawiać z Olą przez telefon. Czy mogę zapisać, że SMS wysłany?"
+    draft = "Tak, oczywiście! Możesz to zapisać w dowolny sposób, np.:\n\n*   **SMS wysłany**\n*   **Zbiórka potwierdzona z Olą**\n*   **Ola poinformowana**\n\nJeśli potrzebujesz, żeby pomóc Ci w czymś jeszcze, daj znać!"
+    check = prepare_studio_claim_check(update, _history(initial))
+    assert check is not None
+    assert check.publish(draft) == (
+        "Możesz odnotować rozmowę telefoniczną z Olą. "
+        "Rozmowa nie potwierdza wysłania SMS-u."
+    )
+
+
+def test_instrumental_name_must_agree_on_the_entire_recipient_name():
+    initial = "Napisz SMS do Oli Nowak, że zbiórka jest o 18."
+    good_update = "Rozmawiałam przez telefon z Olą Nowak."
+    bad_update = good_update.replace("Nowak", "Lis")
+    good = prepare_studio_claim_check(f"{good_update} {_SMS_NOTE}", _history(initial))
+    other = prepare_studio_claim_check(f"{bad_update} {_SMS_NOTE}", _history(initial))
+    assert good is not None and other is not None
+    assert good.publish("SMS wysłany.") == (
+        "Możesz odnotować rozmowę telefoniczną z Olą Nowak. "
+        "Rozmowa nie potwierdza wysłania SMS-u."
+    )
+    masculine = good_update.replace("Olą", "Olem")
+    same_stem = prepare_studio_claim_check(
+        f"{masculine} {_SMS_NOTE}", _history(initial)
+    )
+    assert same_stem is not None
+    assert same_stem.publish("SMS wysłany.") == other.publish("SMS wysłany.")
+    assert other.publish("SMS wysłany.") == (
+        "Telefon nie potwierdza wysłania SMS-u. Zapisz wysłanie dopiero po jego potwierdzeniu."
+    )
+
+
+def test_list_is_not_evidence_of_a_room_and_true_shelf_update_is_kept():
+    initial = "Na papierowej liście wypożyczeń mam: mikrofon — zwrot wpisany, projektor — termin jutro, statyw — bez wpisu o zwrocie. Czy wszystkie trzy sprzęty są już z powrotem w sali?"
+    followup = (
+        "Przed chwilą odłożyłem statyw na półkę. Czego jeszcze nie potwierdziliśmy?"
+    )
+    draft = "Nie, nie wszystkie trzy sprzęty są już z powrotem w sali.\n\nOto status sprzętów na podstawie Twojej listy:\n1. **Mikrofon** – jest w sali (masz wpis o zwrocie).\n2. **Projektor** – nie jest w sali (termin zwrotu przypada na jutro).\n3. **Statyw** – status jest niejasny (brak wpisu o zwrocie), więc nie można potwierdzić, czy jest już w sali."
+    safe = "Skoro statyw jest już na półce, to potwierdziliśmy jego zwrot.\n\nJedynym sprzętem, którego zwrotu jeszcze nie potwierdziliśmy, jest **projektor** (jego termin zwrotu przypada na jutro)."
+    check = prepare_studio_claim_check(initial, [])
+    checked_followup = prepare_studio_claim_check(followup, _history(initial))
+    assert check is not None and checked_followup is not None
+    assert check.publish(draft) == (
+        "Mikrofon: zwrot wpisany na liście. Projektor: zwrot niepotwierdzony "
+        "(termin jutro). Statyw: brak wpisu potwierdzającego zwrot."
+    )
+    assert check.publish("Projektor jest w sali.") == check.publish(draft)
+    assert check.publish("Projektor jest poza salą.") == check.publish(draft)
+    assert checked_followup.publish(safe) == safe
+
+
+@pytest.mark.parametrize("place", ["w czytelni", "we wnęce", "na regale w holu"])
+def test_missing_location_evidence_generalizes_across_explicit_places(place):
+    text = (
+        "Na karcie wypożyczeń mam: czytnik — zwrot wpisany, "
+        "mikrofon — termin jutro. Czy oba sprzęty są " + place + "?"
+    )
+    check = prepare_studio_claim_check(text, [])
+    assert check is not None
+    assert check.publish(f"Czytnik jest {place}.") == (
+        "Czytnik: zwrot wpisany na liście. Mikrofon: zwrot niepotwierdzony (termin jutro)."
+    )
+    question = f"Nie można potwierdzić, czy czytnik jest {place}."
+    assert check.publish(question) == question
+
+
+def test_only_sketchbooks_have_the_reported_covers():
+    initial = (
+        "Na tabliczce przy stoisku piszę o szklankach i szkicownikach. "
+        "Do szkicowników są papierowe obwoluty. Jak doradzić zabranie szkicownika w podróż?"
+    )
+    check = prepare_studio_claim_check(
+        "A ze szklankami pod tym samym względem?", _history(initial)
+    )
+    assert check is not None
+    unsupported = "Szklanki dostają papierowe obwoluty."
+    assert check.publish(unsupported) == (
+        "Czy macie papier ochronny albo pudełka, żeby zabezpieczyć je na czas podróży?"
+    )
+    known = "Do szkicowników dostępne są papierowe obwoluty."
+    assert check.publish(known) == known
+    advice = "Szklanki warto zabezpieczyć w drodze. Czy macie papier ochronny?"
+    assert check.publish(advice) == advice
+    truncated = "Odpowiedź przekroczyła limit długości."
+    assert check.publish(truncated) == truncated

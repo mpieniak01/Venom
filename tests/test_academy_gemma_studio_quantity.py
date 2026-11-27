@@ -174,3 +174,106 @@ def test_followup_uses_only_the_adjacent_user_source_and_never_the_prior_draft(
     messages = _history(relevant)
     messages[0].material_ids = ["not_available_to_this_contract"]
     assert studio_quantity(followup, messages) is None
+
+
+def test_route_to_explicit_destination_keeps_both_time_axes():
+    prompt = (
+        "Do hali przez park idę 4 minuty, a cała podróż trwa 31 minut. "
+        "Przez most idę 12 minut, lecz cała podróż trwa 24 minuty. Porównaj oba warianty."
+    )
+    reply = studio_quantity(prompt, [])
+    assert reply == (
+        "Krótszy marsz jest przez park (4 min wobec 12 min). "
+        "Krótszy dojazd jest przez most (24 min wobec 31 min)."
+    )
+    assert studio_quantity("W takim razie wybierz krótszą.", _history(prompt)) == (
+        f"{reply} Chodzi Ci o marsz czy cały dojazd?"
+    )
+    assert (
+        studio_quantity(prompt.replace("Przez most", "Do garażu przez most"), [])
+        is None
+    )
+
+
+def test_duration_difference_uses_only_the_requested_measure():
+    prompt = (
+        "Trasa wschodnia zajmuje 10 minut pieszo i 48 minut łącznie. "
+        "Zachodnia 20 minut pieszo i 34 łącznie. O ile różni się sam czas marszu?"
+    )
+    assert studio_quantity(prompt, []) == (
+        "Czas marszu różni się o 10 min. Krócej jest na trasie: wschodnia."
+    )
+    assert studio_quantity(
+        "A różnica czasu łącznego?", _history(prompt, "34 min.")
+    ) == ("Czas całej podróży różni się o 14 min. Krócej jest na trasie: Zachodnia.")
+    assert studio_quantity(prompt.replace("34 łącznie", "34 pieszo"), []) is None
+    assert studio_quantity(prompt.replace("20 minut pieszo", "20 pieszo"), []) is None
+
+
+def test_named_route_metrics_can_be_presented_in_reversed_order():
+    prompt = (
+        "Trasa podmiejska trwa 47 minut łącznie, a pieszo 9 minut. "
+        "Trasa nad rzeką zajmuje 25 min łącznie, ale pieszo 14 min. "
+        "O ile różni się czas łączny?"
+    )
+    assert studio_quantity(prompt, []) == (
+        "Czas całej podróży różni się o 22 min. Krócej jest na trasie: nad rzeką."
+    )
+    assert studio_quantity("A różnica samego czasu marszu?", _history(prompt)) == (
+        "Czas marszu różni się o 5 min. Krócej jest na trasie: podmiejska."
+    )
+
+
+def test_discount_is_not_free_and_second_item_is_not_every_later_item():
+    prompt = (
+        "„Bilety wydajemy w biurze do 13. Jeden bilet zniżkowy na osobę. "
+        "Drugi można kupić za 7 zł.” Zrób z tego trzy krótkie komunikaty bez wykrzykników."
+    )
+    revised = "Usuń formę „my”, to kartka dla gości. Zachowaj wszystkie dane."
+    assert studio_quantity(prompt, []) == "\n".join(
+        [
+            "Bilety wydajemy w biurze do 13:00.",
+            "Jeden bilet zniżkowy na osobę.",
+            "Drugi można kupić za 7 zł.",
+        ]
+    )
+    assert studio_quantity(
+        revised, _history(prompt, "Pierwszy bilet gratis.")
+    ) == "\n".join(
+        [
+            "Bilety do odbioru w biurze do 13:00.",
+            "Jeden bilet zniżkowy na osobę.",
+            "Drugi można kupić za 7 zł.",
+        ]
+    )
+    assert (
+        studio_quantity(
+            prompt.replace(
+                "bilet zniżkowy na osobę", "bilet bezpłatny na osobę jest zniżkowy"
+            ),
+            [],
+        )
+        is None
+    )
+
+
+def test_clock_correction_preserves_entitlement_and_scope_of_paid_price():
+    prompt = (
+        "„Torby odbieramy w portierni do 18. Pierwsza torba na rodzinę jest bezpłatna. "
+        "Każda następna kosztuje 4 zł.” Podaj trzy krótkie komunikaty bez wykrzykników."
+    )
+    draft = studio_quantity(prompt, [])
+    assert draft == "\n".join(
+        [
+            "Torby odbieramy w portierni do 18:00.",
+            "Pierwsza torba na rodzinę jest bezpłatna.",
+            "Każda następna kosztuje 4 zł.",
+        ]
+    )
+    corrected = studio_quantity(
+        "Zmień tylko godzinę odbioru na 17.", _history(prompt, "Każda torba za 4 zł.")
+    )
+    assert corrected == draft.replace("18:00", "17:00")
+    assert (
+        studio_quantity("Zmień tylko godzinę odbioru na 27.", _history(prompt)) is None
+    )

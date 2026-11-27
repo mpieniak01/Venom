@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
+from tests.test_academy_qualified_chat import studio_chat as qualified_studio_chat
 from venom_core.api.schemas.llm_simple import HistoryMessage
+from venom_core.services import llm_simple_service
 from venom_core.services.chat_policy.review_draft import parse_review_draft
 from venom_core.services.chat_policy.studio_revision import studio_revision
+
+studio_chat = qualified_studio_chat
 
 _REVIEW = (
     "Napisz krótką wiadomość do kolegi o wspólnym przeglądzie opisu ekspozycji. "
@@ -428,3 +434,87 @@ def test_removal_preserves_explicit_preposition_when_there_is_no_correction():
         studio_revision(request, [])
         == "Zabrano pudełko ze stołu, a wieko się zamknęło."
     )
+
+
+def test_pv_r03_preserves_source_method_outcome_and_corrected_location(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, calls, replies = studio_chat
+    session = str(uuid4())
+    assert (
+        chat(
+            "Skróć „Po usunięciu śrubki spod stołu drzwiczki nie dały się otworzyć”. "
+            "Podaj jedno zdanie.",
+            session=session,
+            verify_history=True,
+            stream=False,
+        )
+        == "Usunięto śrubkę spod stołu, a drzwiczki nie dały się otworzyć."
+    )
+    assert (
+        chat(
+            "Korekta dotyczy miejsca: śrubka leżała pod ławką. Zachowaj wynik.",
+            session=session,
+            verify_history=True,
+            stream=False,
+        )
+        == "Usunięto śrubkę spod ławki, a drzwiczki nie dały się otworzyć."
+    )
+    assert not calls and not replies
+
+
+@pytest.mark.parametrize(
+    "source, action, location_change, corrected",
+    [
+        (
+            "Po wyjęciu teczki z półki pokrywa dała się zamknąć",
+            "Wyjęto teczkę z półki, a pokrywa dała się zamknąć.",
+            "teczka leżała pod oknem",
+            "Wyjęto teczkę spod okna, a pokrywa dała się zamknąć.",
+        ),
+        (
+            "Po usunięciu płyty spod regału szafka nie dała się domknąć",
+            "Usunięto płytę spod regału, a szafka nie dała się domknąć.",
+            "płyta leżała na stole",
+            "Usunięto płytę ze stołu, a szafka nie dała się domknąć.",
+        ),
+    ],
+)
+def test_removal_verbs_are_grounded_in_the_source_not_the_previous_draft(
+    source, action, location_change, corrected
+):
+    ask = f"Skróć „{source}”. Podaj jedno zdanie."
+    assert studio_revision(ask, []) == action
+    history = _history((ask, "Zabrano rzecz i drzwiczki się domknęły."))
+    assert (
+        studio_revision(
+            f"Korekta dotyczy miejsca: {location_change}. Zachowaj wynik.",
+            history,
+        )
+        == corrected
+    )
+
+
+@pytest.mark.parametrize(
+    "source, correction",
+    [
+        (
+            "Po próbie usunięcia śrubki spod stołu drzwiczki nie dały się otworzyć",
+            "Korekta dotyczy miejsca: śrubka leżała pod ławką. Zachowaj wynik.",
+        ),
+        (
+            "Po usunięciu śrubki spod stołu drzwiczki nie dały się otworzyć",
+            "Korekta dotyczy miejsca: teczka leżała pod ławką. Zachowaj wynik.",
+        ),
+    ],
+)
+def test_removal_leaves_unconfirmed_action_or_different_object_outside_rewrite(
+    source, correction
+):
+    ask = f"Skróć „{source}”. Podaj jedno zdanie."
+    if "próbie" in source:
+        assert studio_revision(ask, []) is None
+    assert studio_revision(correction, _history((ask, "Sam wynik."))) is None

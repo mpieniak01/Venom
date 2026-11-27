@@ -41,6 +41,9 @@ tests/test_academy_gemma_duration_scope.py
 tests/test_academy_gemma_recovery_dialog.py
 tests/test_academy_gemma_recovery_revision.py
 tests/test_academy_gemma_recovery_state_time.py
+tests/test_academy_gemma_studio_claims.py
+tests/test_academy_gemma_studio_policy.py
+tests/test_academy_gemma_studio_quantity.py
 tests/test_academy_history_module.py
 tests/test_academy_judge_controls.py
 tests/test_academy_judge_dispatch.py

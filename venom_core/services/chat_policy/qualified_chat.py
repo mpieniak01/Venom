@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services.chat_policy.qualified_chat_constraints import (
@@ -153,6 +153,10 @@ def _calendar_reply(text: str) -> str | None:
     if _CALENDAR_REQUEST.match(text):
         return _CALENDAR_UNCONFIRMED
     return None
+
+
+if TYPE_CHECKING:
+    from venom_core.services.chat_policy.studio_claims import StudioClaimCheck
 
 
 _DEFAULT_INSTRUCTION = (
@@ -370,6 +374,7 @@ class QualifiedReply:
     opening_only: bool = False
     requested_opening: str | None = None
     review_draft: ReviewDraft | None = None
+    claim_check: StudioClaimCheck | None = None
 
     @property
     def requires_complete_draft(self) -> bool:
@@ -379,6 +384,7 @@ class QualifiedReply:
             or self.rss is not None
             or self.opening_only
             or self.review_draft is not None
+            or self.claim_check is not None
             or bool(self.restrictions)
             or self.timed
             or self.count is not None
@@ -490,7 +496,9 @@ class QualifiedReply:
                 return _CLARIFICATION
         if _claim(draft):
             return _CALENDAR_UNCONFIRMED
-        return draft if draft.strip() and self._allowed(draft) else _CLARIFICATION
+        if not draft.strip() or not self._allowed(draft):
+            return _CLARIFICATION
+        return self.claim_check.publish(draft) if self.claim_check else draft
 
     def publish(
         self, draft: str, repair: str | None = None, *, truncated: bool = False

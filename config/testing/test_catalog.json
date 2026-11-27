@@ -639,6 +639,34 @@
       "rationale": "Academy campaign capabilities preserve fixed campaigns when the optional optimizer is unavailable."
     },
     {
+      "path": "tests/test_academy_conversation_blind.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify 0A blinded review package integrity, paired provenance and publication."
+    },
+    {
+      "path": "tests/test_academy_conversation_review.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify full-conversation 0A scoring receipts and checkpoint promotion gates."
+    },
+    {
       "path": "tests/test_academy_conversion_contracts.py",
       "domain": "academy",
       "test_type": "route_contract",
@@ -709,76 +737,6 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
-      "path": "tests/test_academy_history_module.py",
-      "domain": "academy",
-      "test_type": "route_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
-      "path": "tests/test_academy_models_module.py",
-      "domain": "academy",
-      "test_type": "route_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
-      "path": "tests/test_academy_openrouter_regression_replay.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Verify sealed offline replay, immutable receipts and a persistent set of regression cases without provider calls."
-    },
-    {
-      "path": "tests/test_academy_optuna_backend.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Durable Optuna trial assignment, outcome reconciliation, and reproducible sampler replay."
-    },
-    {
-      "path": "tests/test_academy_parent_selection.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Prevent narrow S/K gains from discarding sealed wider retention and critical regressions."
-    },
-    {
       "path": "tests/test_academy_gemma_duration_scope.py",
       "domain": "academy",
       "test_type": "route_contract",
@@ -833,6 +791,174 @@
       ],
       "legacy_targeted": false,
       "rationale": "Preserve independent action state, roles and the scope of grouped time calculations."
+    },
+    {
+      "path": "tests/test_academy_gemma_studio_claims.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Keep completion and authorization linked to the correct explicit user evidence."
+    },
+    {
+      "path": "tests/test_academy_gemma_studio_policy.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Run grounded claims and quantity rules through the opt-in Studio HTTP route."
+    },
+    {
+      "path": "tests/test_academy_gemma_studio_quantity.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Keep unit, ordered price scope and comparison criteria tied to explicit user data."
+    },
+    {
+      "path": "tests/test_academy_history_module.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_academy_judge_controls.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Freeze corrected source and role controls without changing historical receipts or opening held-out data."
+    },
+    {
+      "path": "tests/test_academy_judge_dispatch.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Route qualified local and OpenRouter reviewers through calibration, checkpoint, final and cache contracts."
+    },
+    {
+      "path": "tests/test_academy_models_module.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_academy_openrouter_audit.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Validate operator audit preparation, phase-one gating, fail-fast accounting and complete fake HTTP qualification without provider calls."
+    },
+    {
+      "path": "tests/test_academy_openrouter_judge.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify remote reviewer qualification replay, cost accounting, fail-closed transport and authenticated cache inputs with fake HTTP."
+    },
+    {
+      "path": "tests/test_academy_openrouter_regression_replay.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify sealed offline replay, immutable receipts and a persistent set of regression cases without provider calls."
+    },
+    {
+      "path": "tests/test_academy_optuna_backend.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Durable Optuna trial assignment, outcome reconciliation, and reproducible sampler replay."
+    },
+    {
+      "path": "tests/test_academy_parent_selection.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Prevent narrow S/K gains from discarding sealed wider retention and critical regressions."
     },
     {
       "path": "tests/test_academy_qualified_chat.py",
@@ -917,34 +1043,6 @@
       "rationale": "Verify remote Academy evidence identity, transfer fault recovery, and honest development ranking."
     },
     {
-      "path": "tests/test_academy_conversation_blind.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Verify 0A blinded review package integrity, paired provenance and publication."
-    },
-    {
-      "path": "tests/test_academy_conversation_review.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Verify full-conversation 0A scoring receipts and checkpoint promotion gates."
-    },
-    {
       "path": "tests/test_academy_route_handlers_extra.py",
       "domain": "academy",
       "test_type": "service_contract",
@@ -999,62 +1097,6 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
-      "path": "tests/test_academy_judge_controls.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Freeze corrected source and role controls without changing historical receipts or opening held-out data."
-    },
-    {
-      "path": "tests/test_academy_judge_dispatch.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Route qualified local and OpenRouter reviewers through calibration, checkpoint, final and cache contracts."
-    },
-    {
-      "path": "tests/test_academy_openrouter_judge.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Verify remote reviewer qualification replay, cost accounting, fail-closed transport and authenticated cache inputs with fake HTTP."
-    },
-    {
-      "path": "tests/test_academy_openrouter_audit.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Validate operator audit preparation, phase-one gating, fail-fast accounting and complete fake HTTP qualification without provider calls."
     },
     {
       "path": "tests/test_academy_semantic_fact_evidence.py",

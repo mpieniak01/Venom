@@ -71,11 +71,13 @@ from venom_core.services.chat_policy.review_draft import (
     ReviewDraft,
     parse_review_draft,
 )
+from venom_core.services.chat_policy.studio_claims import prepare_studio_claim_check
 from venom_core.services.chat_policy.studio_dialog import studio_dialog
 from venom_core.services.chat_policy.studio_followup import (
     studio_concise_hint,
     studio_followup,
 )
+from venom_core.services.chat_policy.studio_quantity import studio_quantity
 from venom_core.services.chat_policy.studio_revision import studio_revision
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
@@ -1529,6 +1531,7 @@ def _prepare_qualified_reply(
                 studio_followup(content, history)
                 or studio_revision(content, history)
                 or studio_dialog(content, history)
+                or studio_quantity(content, history)
             )
             if answer is not None:
                 return QualifiedReply(local_text=answer)
@@ -1549,6 +1552,10 @@ def _prepare_qualified_reply(
             )
             if review is not None:
                 return replace(original, review_draft=review)
+            if claim_check := prepare_studio_claim_check(
+                request.content, request.history
+            ):
+                return replace(original, claim_check=claim_check)
         hint = studio_concise_hint(request.content, original.count is not None)
         if hint:
             return replace(original, hint=" ".join(filter(None, (original.hint, hint))))

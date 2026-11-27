@@ -265,14 +265,24 @@ def _provided_information_policy(
         return system_context, False, False
     user_facts_only = bool(provided_only["user_facts"])
     if user_facts_only:
-        system_context += " Korzystaj tylko z informacji podanych przez użytkownika."
-    system_context += (
-        " Korzystaj tylko z danych z rozmowy. Jeśli aktualnej wartości nie podano, "
-        "powiedz wprost «W rozmowie nie podano tej informacji». "
-        "Nie przypisuj sobie wypowiedzi użytkownika. "
-        "Jeśli pytanie na końcu dotyczy jednej wartości, odpowiedz na nie wprost "
-        "i nie streszczaj wcześniejszych porad."
-    )
+        system_context += (
+            " Korzystaj tylko z informacji podanych przez użytkownika. "
+            "Zachowaj aktualne fakty potrzebne do odpowiedzi. Przy częściowo znanym "
+            "stanie podaj zarówno ustalony fakt, jak i brakujące potwierdzenie lub "
+            "warunek. Jeśli użytkownik wskazał brak potwierdzenia, nazwij, czego "
+            "dokładnie nie potwierdzono. Dopiero gdy żaden potrzebny fakt nie jest "
+            "znany, powiedz wprost «W rozmowie nie podano tej informacji». "
+            "Nie przypisuj sobie wypowiedzi użytkownika. Odpowiedz na aktualne pytanie "
+            "bez streszczania wcześniejszych porad."
+        )
+    else:
+        system_context += (
+            " Korzystaj tylko z danych z rozmowy. Jeśli aktualnej wartości nie podano, "
+            "powiedz wprost «W rozmowie nie podano tej informacji». "
+            "Nie przypisuj sobie wypowiedzi użytkownika. "
+            "Jeśli pytanie na końcu dotyczy jednej wartości, odpowiedz na nie wprost "
+            "i nie streszczaj wcześniejszych porad."
+        )
     format_request = _SENTENCE_REQUEST.search(visible)
     if format_request and format_request.group("one"):
         system_context += (

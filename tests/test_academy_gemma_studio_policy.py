@@ -6,6 +6,7 @@ from tests.test_academy_qualified_chat import native, streamed
 from tests.test_academy_qualified_chat import studio_chat as qualified_studio_chat
 from venom_core.services import llm_simple_service
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
+from venom_core.services.chat_policy.studio_calculator import plan_studio_calculation
 from venom_core.services.ollama_text_adapter import QUALIFIED_BOLT_MODEL
 
 studio_chat = qualified_studio_chat
@@ -250,3 +251,62 @@ def test_studio_retries_a_truncated_draft_with_default_transport(
     instruction = sent[0]["payload"]["messages"][0]["content"]
     assert "zachowaj wszystkie pozostałe ustalenia, liczby i warunki" in instruction
     assert "Plan, warunkowa zgoda, brak dowodu i wykonanie" in instruction
+
+
+@pytest.mark.parametrize(
+    ("prior", "current", "expected"),
+    [
+        (
+            (
+                "Mam cztery listwy po 27 cm i trzy listwy po 18 cm. Ile razem centymetrów?",
+                "Każda krótka ma 19 cm. Odciąłem 1,6 m. Ile centymetrów brakuje?",
+            ),
+            "Jest odcięte 1,55 m. Ile centymetrów brakuje?",
+            "Brakuje 10 cm (3 × 19 cm + 4 × 27 cm − 155 cm).",
+        ),
+        (
+            (
+                "Na pokaz poszło 12 biletów normalnych po 5 zł i 3 ulgowe po 4 zł. Podaj tylko za normalne.",
+            ),
+            "Ulgowe były jednak po 6 zł. Jaka jest kwota za wszystkie bilety?",
+            "60 zł + 18 zł = 78 zł.",
+        ),
+        (
+            (
+                "Odczyty szerokości: Sowa 0,7 m, Sroka 685 mm i Jaskółka 69 cm. Wskaż najszerszą.",
+            ),
+            "Poszerzono Srokę do 71 cm. Która jest teraz najwęższa?",
+            "Najmniejsza szerokość: Jaskółka, 69 cm. Porównanie: Sowa 70 cm, Sroka 71 cm, Jaskółka 69 cm.",
+        ),
+    ],
+)
+def test_studio_calculation_rebuilds_from_user_facts_only(
+    studio_chat, monkeypatch, prior, current, expected
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    history = [
+        turn
+        for text in prior
+        for turn in (
+            {"role": "user", "content": text},
+            {"role": "assistant", "content": "Sprawdzone, wynik 999 zł i 999 cm."},
+        )
+    ]
+    assert chat(current, history, verify_history=True) == expected
+    assert not sent and not replies
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Ile cm folii potrzeba na dwa długie paski po 55 cm i trzy krótkie po 18 cm? Dodaj 10% zapasu.",
+        "Mam cztery listwy po 27 cm i około trzy listwy po 18 cm. Ile razem centymetrów?",
+        "Ile razem metrów na dwa długie paski po 55 cm i trzy krótkie po 18 cm?",
+        "Przeredaguj ten tekst: „Odczyty szerokości: Sowa 0,7 m i Sroka 685 mm. Wskaż najszerszą.”",
+    ],
+)
+def test_studio_calculator_defers_unbound_inputs(prompt):
+    assert plan_studio_calculation(prompt, ()) is None

@@ -71,6 +71,7 @@ from venom_core.services.chat_policy.review_draft import (
     ReviewDraft,
     parse_review_draft,
 )
+from venom_core.services.chat_policy.studio_calculator import plan_studio_calculation
 from venom_core.services.chat_policy.studio_claims import (
     prepare_studio_claim_check,
     stated_packaging_reply,
@@ -1871,6 +1872,20 @@ def _direct_calculator_response(
     request_id: UUID,
     system_context: str,
 ) -> StreamingResponse | None:
+    if (
+        SETTINGS.ACADEMY_GEMMA_REVIEW_RETRY_ENABLED
+        and model_name.casefold() == QUALIFIED_MODEL
+        and request.studio_normal
+        and not request.use_notes
+        and not request._studio_public_scope_reply
+        and PUBLIC_SOURCE_BLOCK not in system_context
+        and _qualified_request(request, runtime)
+    ):
+        studio_plan = plan_studio_calculation(request.content, request.history)
+        if studio_plan is not None:
+            return _local_direct_stream(
+                request, runtime, model_name, request_id, studio_plan.publish
+            )
     if not _allows_local_direct_reply(request, system_context):
         return None
     history = [turn.model_dump(include={"role", "content"}) for turn in request.history]

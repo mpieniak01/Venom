@@ -128,6 +128,7 @@ _PACKING_TRIP_ADVICE = re.compile(
     rf"jak doradzić zabranie (?P<item>{_SUBJECT}?) w podróż", re.I
 )
 _UNSUPPORTED_FIT = re.compile(r"\b(?:zbyt (?:duż|mał)\w*|inny kształt)\b", re.I)
+_FIT_CONDITION = re.compile(r"\b(?:jeśli|jeżeli|gdyby|o ile)\b", re.I)
 _PACKED_DONE = re.compile(
     r"\b(?:(?:są|jest|został[yao]?) (?:już )?(?:zapakowan|spakowan)[yea]|"
     r"zapakowano|zapakowaliśmy)\b",
@@ -474,7 +475,10 @@ class _PackagingCheck:
 
     def publish(self, draft: str) -> str:
         for sentence in _clauses(draft):
-            if _UNSUPPORTED_FIT.search(sentence) and not _GUARDED.search(sentence):
+            unsupported = _UNSUPPORTED_FIT.search(sentence)
+            if unsupported and not _FIT_CONDITION.search(
+                sentence[: unsupported.start()]
+            ):
                 return self._grounded_alternative()
             packed_done = _PACKED_DONE.search(sentence)
             if (

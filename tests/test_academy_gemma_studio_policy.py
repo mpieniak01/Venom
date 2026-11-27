@@ -172,3 +172,24 @@ def test_packaging_uses_the_declared_subject_and_asks_for_missing_material(
         "Czy macie papier ochronny albo pudełka, żeby zabezpieczyć je na czas podróży?"
     )
     assert not sent and not replies
+
+
+def test_packaging_does_not_infer_size_from_missing_package(studio_chat, monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    history = [
+        {
+            "role": "user",
+            "content": "Na wyjeździe są ceramiczne miseczki i długopisy. Do długopisów mamy pokrowce. Jak je zabezpieczyć?",
+        },
+        {"role": "assistant", "content": "Długopisy można zabrać w pokrowcu."},
+    ]
+    replies.append(
+        native("Miseczek nie można zabezpieczyć w pokrowcu, ponieważ są zbyt duże.")
+    )
+    assert chat("A z miseczkami pod tym samym względem?", history) == (
+        "Czy macie papier ochronny albo pudełka, żeby zabezpieczyć je na czas podróży?"
+    )
+    assert len(sent) == 1 and not replies

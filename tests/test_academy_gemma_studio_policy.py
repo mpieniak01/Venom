@@ -247,3 +247,6 @@ def test_studio_retries_a_truncated_draft_with_default_transport(
         chat("Po co jest zadaszenie?", verify_history=True) == "Pod dachem jest sucho."
     )
     assert len(sent) == 2 and all(not call["payload"]["stream"] for call in sent)
+    instruction = sent[0]["payload"]["messages"][0]["content"]
+    assert "zachowaj wszystkie pozostałe ustalenia, liczby i warunki" in instruction
+    assert "Plan, warunkowa zgoda, brak dowodu i wykonanie" in instruction

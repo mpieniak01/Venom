@@ -1533,6 +1533,20 @@ def _qualified_studio_request(
     return request.studio_normal and not request.use_notes and profile is not None
 
 
+_STUDIO_ORDINARY_DRAFT_POLICY = (
+    "Odpowiadaj krótko i od razu w żądanej formie, bez wstępu, podsumowania "
+    "ani kilku wersji, chyba że użytkownik ich chce. Bez wskazania formy zwykle "
+    "wystarczą najwyżej trzy krótkie zdania. "
+    "Przy korekcie zachowaj wszystkie pozostałe ustalenia, liczby i warunki. "
+    "Obowiązek dotyczy wyłącznie wskazanej osoby lub rzeczy. Gdy ją usunięto, "
+    "usuń także przypisany do niej obowiązek. "
+    "Plan, warunkowa zgoda, brak dowodu i wykonanie to odrębne stany. "
+    "Po zmianie warunku porównaj możliwości od nowa według celu użytkownika. "
+    "W razie braku rozstrzygającego faktu zaznacz warunek lub dopytaj. "
+    "Pełna odpowiedź ma zachować wymagane szczegóły także wtedy, gdy jest krótka."
+)
+
+
 def _prepare_qualified_reply(
     request: SimpleChatRequest,
     runtime: LLMRuntimeInfo,
@@ -1602,7 +1616,11 @@ def _prepare_qualified_reply(
         SETTINGS.ACADEMY_GEMMA_STUDIO_TRUNCATION_RETRY_ENABLED
         and not original.requires_complete_draft
     ):
-        return replace(original, retry_truncated=True)
+        return replace(
+            original,
+            hint=" ".join(filter(None, (original.hint, _STUDIO_ORDINARY_DRAFT_POLICY))),
+            retry_truncated=True,
+        )
     return original
 
 

@@ -274,6 +274,14 @@ def test_studio_retries_a_truncated_draft_with_default_transport(
         ),
         (
             (
+                "Pakuję odważniki. Czerwony waży 1,2 kg, niebieski 670 g, "
+                "sztywne etui 115 g. Ile ważą same odważniki w gramach?",
+            ),
+            "Czerwony waży teraz 1,05 kg. Podaj masę kompletu z etui.",
+            "1050 g + 670 g + 115 g = 1835 g.",
+        ),
+        (
+            (
                 "Odczyty szerokości: Sowa 0,7 m, Sroka 685 mm i Jaskółka 69 cm. Wskaż najszerszą.",
             ),
             "Poszerzono Srokę do 71 cm. Która jest teraz najwęższa?",

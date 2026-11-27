@@ -90,6 +90,28 @@ _RATE_TOTAL = re.compile(
     re.I,
 )
 
+_MASS = rf"(?P<value>{_NUMBER})\s*(?P<unit>kg|g)\b"
+_MASS_VALUE = re.compile(rf"\b{_MASS}", re.I)
+_MASS_SCOPE = re.compile(r"\b(?:obciążniki|odważniki)\b", re.I)
+_MASS_ENTRY = re.compile(
+    rf"(?:^|,\s*)(?P<label>{_WORD}(?:\s+{_WORD}){{0,2}}?)\s+(?:waży\s+)?{_MASS}",
+    re.I,
+)
+_MASS_UPDATE = re.compile(
+    rf"^(?P<label>{_WORD})\s+(?:pomylon\w*[^.!?]{{0,42}},\s*właściw\w* waży"
+    rf"|jednak waży|waży teraz)\s+{_MASS}[.!]",
+    re.I,
+)
+_MASS_WITH_CASE = re.compile(
+    r"\b(?:mas[ęay]|waż\w*)\b[^.!?]{0,45}\bkomplet\w*\s+z\s+"
+    r"(?:pokrowcem|etui|opakowaniem)\b",
+    re.I,
+)
+_MASS_WITHOUT_CASE = re.compile(
+    r"\bile ważą same (?:obciążniki|odważniki) w gramach\b", re.I
+)
+_MASS_CASE = re.compile(r"\b(?:pokrowiec|etui|opakowanie)$", re.I)
+
 _WIDTHS = re.compile(r"\b(?:odczyty\s+szerokości|szerokości)\s*:\s*", re.I)
 _WIDTH = re.compile(
     rf"(?:^|[,;]\s*|\s+(?:i|oraz)\s+)(?P<label>{_WORD}(?:\s+{_WORD}){{0,3}}?)"
@@ -334,6 +356,50 @@ def _width_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     )
 
 
+def _grams(match: re.Match[str]) -> Decimal:
+    value = _decimal(match["value"])
+    return value.scaleb(3) if match["unit"].casefold() == "kg" else value
+
+
+def _mass_start(text: str) -> tuple[dict[str, Decimal], str] | None:
+    *lead, rest = text.split(". ", 1)
+    if not lead or not _MASS_SCOPE.search(lead[0]):
+        return None
+    raw, _, _ = rest.partition(". ")
+    fields = list(_MASS_ENTRY.finditer(raw))
+    if len(fields) != 3 or _MASS_ENTRY.sub("", raw).strip(" ,."):
+        return None
+    weights = {entry["label"].casefold(): _grams(entry) for entry in fields}
+    containers = [label for label in weights if _MASS_CASE.search(label)]
+    return (
+        (weights, containers[0]) if len(weights) == 3 and len(containers) == 1 else None
+    )
+
+
+def _mass_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    current = turns[-1]
+    if not (_MASS_WITHOUT_CASE.search(current) or _MASS_WITH_CASE.search(current)):
+        return None
+    initial = _mass_start(current)
+    start = initial or (_mass_start(turns[-2]) if len(turns) > 1 else None)
+    if start is None:
+        return None
+    weights, container = start
+    if initial is None:
+        update = _MASS_UPDATE.match(current)
+        if update is None or len(_MASS_VALUE.findall(current)) != 1:
+            return None
+        label = update["label"].casefold()
+        if label not in weights or label == container:
+            return None
+        weights[label] = _grams(update)
+    if not _MASS_WITH_CASE.search(current):
+        del weights[container]
+    expression = "+".join(_number(value) for value in weights.values())
+    formula = " + ".join(f"{_polish(value)} g" for value in weights.values())
+    return StudioCalculation(expression, "g", lambda result: f"{formula} = {result}.")
+
+
 def plan_studio_calculation(
     content: str, history: Sequence[HistoryMessage]
 ) -> StudioCalculation | None:
@@ -359,4 +425,5 @@ def plan_studio_calculation(
         _length_calculation(active)
         or _rate_calculation(active)
         or _width_calculation(active)
+        or _mass_calculation(active)
     )

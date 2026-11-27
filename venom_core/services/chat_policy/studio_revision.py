@@ -471,6 +471,22 @@ def _quoted_rules_reply(current: str, history: Sequence[HistoryMessage]) -> str 
     return "\n".join(f"- {line}" for line in lines) if lines else None
 
 
+_EXPLICIT_REMOVAL = re.compile(
+    r"(?:jednak )?(?P<item>[^.!?]{4,65}?)\s+(?:zabraliśmy|usunięto|wycofano)[.!]\s*"
+    r"popraw zdanie:\s*(?P<replacement>[^.!?]{4,140})[.!]",
+    re.I,
+)
+
+
+def _replacement_after_removal(text: str, prior: str) -> str | None:
+    if (change := _EXPLICIT_REMOVAL.fullmatch(text)) and re.search(
+        rf"\btylko\s+{re.escape(change['item'])}\s+(?:trzeba|należy)\b", prior, re.I
+    ):
+        replacement = change["replacement"]
+        return f"{replacement[0].upper()}{replacement[1:]}."
+    return None
+
+
 def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve only recognized edits, using adjacent user turns as evidence."""
     current = " ".join(text.split())
@@ -478,6 +494,7 @@ def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     origin = _prior_user(history, 2) if prior else ""
     return (
         _quoted_rules_reply(current, history)
+        or _replacement_after_removal(current, prior)
         or _rewrite(current, prior, origin)
         or _review_revision(current, prior, origin)
     )

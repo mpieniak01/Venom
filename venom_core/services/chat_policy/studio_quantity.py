@@ -49,6 +49,10 @@ _PRICE_PRIORITY = re.compile(
     r"(?:liczę każdy grosz|zależy mi na najniższej cenie|wybieram niższą cenę)",
     re.I,
 )
+_OFFER_PICKUP_DAY = re.compile(
+    rf"(?:a )?(?:gdybym odebrał(?:a)?|gdyby odbiór był) (?P<day>(?:w|we) (?:{_DAY}))\?",
+    re.I,
+)
 _COUNT_WORDS = {"dwie": 2, "dwa": 2, "trzy": 3, "cztery": 4}
 
 _DURATION_VALUE = r"[0-9]{1,3}"
@@ -265,13 +269,12 @@ def _offer(clause: str, *, inherited_bundle: bool = False) -> _Offer | None:
     return _Offer(match["seller"], price, _DAY_NAMES.get(day, day))
 
 
-def _price_choice(parts: list[str]) -> str | None:
-    if len(parts) != 4:
+def _offer_pair(parts: list[str]) -> tuple[_Offer, _Offer] | None:
+    if len(parts) not in (3, 4):
         return None
     intent = _PURCHASE.fullmatch(parts[0])
-    priority = _PRICE_PRIORITY.fullmatch(parts[3])
     first = _offer(parts[1])
-    if intent is None or priority is None or first is None:
+    if intent is None or first is None:
         return None
     second = _offer(parts[2], inherited_bundle=first.price.scope is _Scope.BUNDLE)
     if second is None or first.seller.casefold() == second.seller.casefold():
@@ -280,9 +283,17 @@ def _price_choice(parts: list[str]) -> str | None:
     first_bundle, second_bundle = first.bundle(count), second.bundle(count)
     if first_bundle is None or second_bundle is None:
         return None
-    lower, higher = sorted(
-        (first_bundle, second_bundle), key=lambda offer: offer.price.value
-    )
+    return first_bundle, second_bundle
+
+
+def _price_choice(parts: list[str]) -> str | None:
+    if len(parts) != 4:
+        return None
+    priority = _PRICE_PRIORITY.fullmatch(parts[3])
+    offers = _offer_pair(parts)
+    if priority is None or offers is None:
+        return None
+    lower, higher = sorted(offers, key=lambda offer: offer.price.value)
     if (
         lower.day != _DAY_NAMES[priority["day"].casefold()]
         or lower.price.value == higher.price.value
@@ -294,6 +305,21 @@ def _price_choice(parts: list[str]) -> str | None:
     return (
         f"Wybierz ofertę u {lower.seller}. Całe zamówienie kosztuje {lower.price}, "
         f"czyli o {difference} mniej niż u {higher.seller}, a termin Ci odpowiada."
+    )
+
+
+def _offer_pickup_followup(current: str, previous: str) -> str | None:
+    request = _OFFER_PICKUP_DAY.fullmatch(current)
+    if request is None or (offers := _offer_pair(_clauses(previous))) is None:
+        return None
+    first, second = (
+        f"u {offer.seller} {offer.day if offer.day == 'jutro' else 'do ' + offer.day}"
+        for offer in offers
+    )
+    return (
+        f"Terminy gotowości: {first}, {second}. "
+        f"O którą datę odbioru {request['day'].lower()} chodzi "
+        "i czy któryś punkt wydaje wtedy zamówienia?"
     )
 
 
@@ -566,6 +592,8 @@ def studio_quantity(text: str, history: Sequence[HistoryMessage]) -> str | None:
     previous = _prior_user(history)
     if not previous or len(previous) > 640:
         return _pickup_notice(current, "")
+    if pickup := _offer_pickup_followup(current, previous):
+        return pickup
     scope = _comparison_scope(current)
     shorter = _SHORTER_ROUTE.fullmatch(current)
     if (scope is not None or shorter) and (

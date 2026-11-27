@@ -70,11 +70,40 @@ def test_explicit_per_item_price_is_compared_only_after_resolving_count():
         _BUNDLE.replace("96 zł", "118 zł"),
         _BUNDLE.replace("Wtorek mi pasuje", "Sobota mi pasuje"),
         _BUNDLE.replace("U Pracowni Północ", "U Linorytu"),
-        "A gdybym odebrała w sobotę?",
     ],
 )
 def test_unconfirmed_scope_currency_vendor_or_collection_day_is_not_guessed(prompt):
     assert studio_quantity(prompt, _history(_BUNDLE)) is None
+
+
+@pytest.mark.parametrize(
+    ("question", "source", "names"),
+    [
+        ("A gdybym odebrała w sobotę?", _BUNDLE, ("Linorytu", "Pracowni Północ")),
+        (
+            "A gdybym odebrał w niedzielę?",
+            _BUNDLE.replace("Linorytu", "Fali")
+            .replace("Pracowni Północ", "Iskry")
+            .replace("Wtorek mi pasuje", "Wtorek akceptuję"),
+            ("Fali", "Iskry"),
+        ),
+    ],
+)
+def test_offer_followup_asks_for_pickup_availability(question, source, names):
+    reply = studio_quantity(question, _history(source, "Punkt jest otwarty w weekend."))
+    assert reply is not None
+    assert all(name in reply for name in names)
+    assert "jutro" in reply and "do wtorku" in reply and "datę" in reply
+    assert "wydaje" in reply and "otwarty" not in reply
+    assert "wybierz" not in reply.casefold()
+    assert studio_quantity(question, _history("Chcę zamówić ramy.")) is None
+    assert (
+        studio_quantity(question, _history(source.replace(names[1], names[0]))) is None
+    )
+    assert (
+        studio_quantity(question + " Punkt potwierdził odbiór.", _history(source))
+        is None
+    )
 
 
 def test_route_comparison_keeps_walking_time_separate_from_entire_trip():

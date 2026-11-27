@@ -125,7 +125,6 @@ def test_studio_topic_sms_preserves_explicit_facts(studio_chat, monkeypatch):
     result = chat(
         "Napisz SMS do Leny o paczce. Jest gotowa do odbioru w aptece po 17.",
         verify_history=True,
-        stream=True,
     )
     assert result == draft
     assert len(sent) == 1 and not replies
@@ -214,7 +213,9 @@ def test_studio_retries_only_truncated_plain_draft_once(
     studio_chat, monkeypatch, flag, finish, replacement, expected
 ):
     monkeypatch.setattr(
-        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", flag
+        llm_simple_service.SETTINGS,
+        "ACADEMY_GEMMA_STUDIO_TRUNCATION_RETRY_ENABLED",
+        flag,
     )
     chat, sent, replies = studio_chat
     replies.append(native("Zadaszenie chroni przed deszczem.", reason=finish))
@@ -234,7 +235,9 @@ def test_studio_retries_a_truncated_draft_with_default_transport(
     studio_chat, monkeypatch
 ):
     monkeypatch.setattr(
-        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+        llm_simple_service.SETTINGS,
+        "ACADEMY_GEMMA_STUDIO_TRUNCATION_RETRY_ENABLED",
+        True,
     )
     chat, sent, replies = studio_chat
     replies.extend(

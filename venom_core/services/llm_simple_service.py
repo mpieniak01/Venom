@@ -1577,11 +1577,11 @@ def _prepare_qualified_reply(
     if profile is None or not profile.direct_drafts:
         return None
     original = prepare_reply(request.content, request.history)
-    if (
-        SETTINGS.ACADEMY_GEMMA_REVIEW_RETRY_ENABLED
-        and model_name.casefold() == QUALIFIED_MODEL
-        and _qualified_studio_request(request, profile)
+    if model_name.casefold() != QUALIFIED_MODEL or not _qualified_studio_request(
+        request, profile
     ):
+        return original
+    if SETTINGS.ACADEMY_GEMMA_REVIEW_RETRY_ENABLED:
         if not original.requires_complete_draft:
             review = parse_review_draft(
                 request.content,
@@ -1594,11 +1594,15 @@ def _prepare_qualified_reply(
             ):
                 return replace(original, claim_check=claim_check)
         hint = studio_concise_hint(request.content, original.count is not None)
-        return replace(
-            original,
-            hint=" ".join(filter(None, (original.hint, hint))),
-            retry_truncated=not original.requires_complete_draft,
-        )
+        if hint:
+            original = replace(
+                original, hint=" ".join(filter(None, (original.hint, hint)))
+            )
+    if (
+        SETTINGS.ACADEMY_GEMMA_STUDIO_TRUNCATION_RETRY_ENABLED
+        and not original.requires_complete_draft
+    ):
+        return replace(original, retry_truncated=True)
     return original
 
 

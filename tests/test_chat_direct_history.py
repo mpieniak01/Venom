@@ -745,6 +745,13 @@ def test_studio_normal_keeps_older_complete_turns_within_the_context_budget(tmp_
     ]
     assert recent_turns(store, "foreign", 4096) == []
 
+    evidence = recent_turns(store, "own", 110, user_facts_only=True)
+    assert [(turn.role, turn.content) for turn in evidence] == [
+        ("user", "question 13"),
+        ("user", "question 14"),
+    ]
+    assert recent_turns(store, "foreign", 110, user_facts_only=True) == []
+
 
 def test_note_lookup_embeds_only_when_exact_matches_need_ranking(tmp_path):
     from venom_core.memory.vector_store import VectorStore

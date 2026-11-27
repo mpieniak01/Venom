@@ -97,6 +97,8 @@ def test_offer_followup_asks_for_pickup_availability(question, source, names):
     assert "wydaje" in reply and "otwarty" not in reply
     assert "wybierz" not in reply.casefold()
     assert studio_quantity(question, _history("Chcę zamówić ramy.")) is None
+    cancelled = source.rsplit(". ", 1)[0] + ". Druga oferta jest już nieaktualna."
+    assert studio_quantity(question, _history(cancelled)) is None
     assert (
         studio_quantity(question, _history(source.replace(names[1], names[0]))) is None
     )

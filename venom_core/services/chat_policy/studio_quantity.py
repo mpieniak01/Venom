@@ -45,7 +45,7 @@ _OFFER = re.compile(
     re.I,
 )
 _PRICE_PRIORITY = re.compile(
-    rf"(?P<day>{_DAY}) mi pasuje, "
+    rf"(?P<day>{_DAY}) (?:mi pasuje|akceptuję), "
     r"(?:liczę każdy grosz|zależy mi na najniższej cenie|wybieram niższą cenę)",
     re.I,
 )
@@ -310,7 +310,12 @@ def _price_choice(parts: list[str]) -> str | None:
 
 def _offer_pickup_followup(current: str, previous: str) -> str | None:
     request = _OFFER_PICKUP_DAY.fullmatch(current)
-    if request is None or (offers := _offer_pair(_clauses(previous))) is None:
+    parts = _clauses(previous)
+    if (
+        request is None
+        or (len(parts) == 4 and _PRICE_PRIORITY.fullmatch(parts[3]) is None)
+        or (offers := _offer_pair(parts)) is None
+    ):
         return None
     first, second = (
         f"u {offer.seller} {offer.day if offer.day == 'jutro' else 'do ' + offer.day}"

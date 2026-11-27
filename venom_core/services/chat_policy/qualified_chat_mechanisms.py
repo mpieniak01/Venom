@@ -13,7 +13,18 @@ from venom_core.services.chat_policy.qualified_chat_explanations import (
     explanation_hint,
 )
 from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_sources import read_card
 
+_PUMP_VALVE = re.compile(
+    r"(?:co robi|do czego służy|po co jest) zawór(?: zwrotny)? "
+    r"(?:w (?:ręcznej )?pompce|wewnątrz (?:ręcznej )?pompki) "
+    r"(?:rowerowej|do materaca)\?"
+    r"(?: (?:w jednym krótkim akapicie(?: dla osoby, która nigdy jej nie używała)?"
+    r"|wyjaśnij krótko początkującemu|w dwóch prostych zdaniach)[.!]?)?",
+)
+_PUMP_SIMPLE = re.compile(
+    r"teraz prościej(?:, bez analogii)?(?: i|,) w dwóch (?:prostych )?zdaniach[.!]?"
+)
 _OTHER_TASK = re.compile(
     r"\b(?:zacytuj|przetłumacz|streść|sprawdź|zweryfikuj|oblicz|"
     r"źródł\w*|cytat\w*|internet\w*|szczegółow\w*|a potem|"
@@ -456,6 +467,27 @@ def _explanation_for_example(topic: str, example: str) -> CheckedExplanation | N
         or _braking(topic, example)
         or _refraction(topic, example)
     )
+
+
+def pump_valve_reply(
+    question: str, history: Sequence[HistoryMessage], *, token_budget: int | None = None
+) -> str | None:
+    if token_budget is not None and token_budget < 96:
+        return None
+    visible = _visible(question)
+    if _PUMP_SIMPLE.fullmatch(visible):
+        previous = next(
+            (turn for turn in reversed(history) if turn.role == "user"), None
+        )
+        if previous is None or previous.material_ids:
+            return None
+        visible = _visible(previous.content)
+    if not _PUMP_VALVE.fullmatch(visible) or (card := read_card("hand_pump")) is None:
+        return None
+    mechanism, effect = card.get("mechanism"), card.get("effect")
+    if isinstance(mechanism, str) and isinstance(effect, str):
+        return f"{mechanism} {effect}"
+    return None
 
 
 def checked_explanation(

@@ -20,6 +20,7 @@ from venom_core.services.chat_policy.qualified_chat_evidence import evidence_rep
 from venom_core.services.chat_policy.qualified_chat_mechanisms import (
     checked_explanation,
     ice_melting_reply,
+    pump_valve_reply,
     thermal_followup_reply,
 )
 from venom_core.services.chat_policy.qualified_chat_options import (
@@ -536,6 +537,7 @@ def prepare_studio_reply(
     if answer := (
         draft_reminder_reply(text)
         or draft_time_revision(text, history)
+        or pump_valve_reply(text, history, token_budget=token_budget)
         or ice_melting_reply(text, history, token_budget=token_budget)
         or thermal_followup_reply(text, history, token_budget=token_budget)
     ):

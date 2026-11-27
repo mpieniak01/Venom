@@ -128,3 +128,23 @@ def test_studio_topic_sms_preserves_explicit_facts(studio_chat, monkeypatch):
     )
     assert result == draft
     assert len(sent) == 1 and not replies
+
+
+def test_pump_explanation_uses_the_named_part_and_preserves_it_when_shortened(
+    studio_chat,
+):
+    chat, sent, replies = studio_chat
+    first = "Po co jest zawór zwrotny wewnątrz ręcznej pompki do materaca? Wyjaśnij krótko początkującemu."
+    expected = "Zawór zwrotny w pompce przepuszcza powietrze w jednym kierunku. Zamyka się, gdy powietrze próbuje się cofnąć."
+    history = [
+        {"role": "user", "content": first},
+        {"role": "assistant", "content": "Zawór materaca trzyma ciśnienie."},
+    ]
+    assert chat(first, verify_history=True) == expected
+    assert chat("Teraz prościej, bez analogii i w dwóch zdaniach.", history) == expected
+    assert not sent and not replies
+    target = "Zawór materaca wpuszcza powietrze. Po zamknięciu utrzymuje szczelność."
+    replies.append(streamed(target))
+    correction = "Pomyliłam element. Chodzi o zawór na materacu. Odpowiedz w dwóch prostych zdaniach."
+    assert chat(correction, history) == target
+    assert len(sent) == 1 and not replies

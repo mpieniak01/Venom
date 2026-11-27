@@ -355,3 +355,53 @@ def test_pickup_notice_updates_only_location_from_the_user():
         "(zmiana miejsca na gablotę w wejściu)."
     )
     assert studio_quantity("Zmień tylko miejsce na gablotę w wejściu.", []) is None
+
+
+def test_travel_comparison_keeps_protection_for_each_item():
+    prompt = (
+        "Na wystawie można wybrać miskę ceramiczną albo papierowy rysunek. "
+        "Obie rzeczy kosztują 17 zł. Do domu goście jadą autobusem. "
+        "Jak porównać ryzyko w podróży?"
+    )
+    assert studio_quantity(prompt, []) == (
+        "Obie rzeczy kosztują 17 zł. Miska ceramiczna: chroń przed uderzeniem i stłuczeniem. "
+        "Papierowy rysunek: zabezpiecz przed zgięciem."
+    )
+    assert studio_quantity(prompt.replace("ryzyko w podróży", "kolory"), []) is None
+    assert (
+        studio_quantity(prompt.replace("Obie rzeczy kosztują 17 zł.", ""), []) is None
+    )
+
+
+def test_new_pickup_day_uses_only_the_seller_that_confirmed_it():
+    prior = (
+        "Chcę zamówić dwa albumy. U Fali komplet kosztuje 70 zł, jest gotowy jutro. "
+        "U Iskry komplet kosztuje 41 zł i czeka się do środy. "
+        "Środę akceptuję, zależy mi na najniższej cenie."
+    )
+    prompt = (
+        "Chodzi o czwartek po tej środzie. Iskra potwierdziła, że tego dnia wydaje "
+        "zamówienia. Która opcja mieści się w 50 zł?"
+    )
+    assert studio_quantity(prompt, _history(prior)) == (
+        "Odbiór w czwartek jest potwierdzony u Iskry. Komplet kosztuje 41 zł i mieści się w budżecie."
+    )
+    assert studio_quantity(prompt.replace("50 zł", "40 zł"), _history(prior)) == (
+        "Odbiór w czwartek jest potwierdzony u Iskry. Komplet za 41 zł przekracza budżet o 1 zł."
+    )
+    assert studio_quantity(prompt.replace("Iskra", "Fala"), _history(prior)) == (
+        "Odbiór w czwartek jest potwierdzony u Fali. Komplet za 70 zł przekracza budżet o 20 zł."
+    )
+    assert studio_quantity(prompt.replace("Iskra", "Kreska"), _history(prior)) is None
+    assert (
+        studio_quantity(
+            prompt,
+            _history(
+                prior.replace(
+                    "Środę akceptuję, zależy mi na najniższej cenie",
+                    "Druga oferta została anulowana",
+                )
+            ),
+        )
+        is None
+    )

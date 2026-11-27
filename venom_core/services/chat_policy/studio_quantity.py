@@ -53,6 +53,43 @@ _OFFER_PICKUP_DAY = re.compile(
     rf"(?:a )?(?:gdybym odebrał(?:a)?|gdyby odbiór był) (?P<day>(?:w|we) (?:{_DAY}))\?",
     re.I,
 )
+_DAY_AFTER = {
+    "poniedziałku": "poniedziałku",
+    "wtorku": "wtorku",
+    "środzie": "środy",
+    "czwartku": "czwartku",
+    "piątku": "piątku",
+    "sobocie": "soboty",
+    "niedzieli": "niedzieli",
+}
+_CONFIRMED_OFFER = re.compile(
+    rf"chodzi o (?P<day>{_DAY}) po (?:tym|tej) (?P<ready>{'|'.join(_DAY_AFTER)})\. "
+    rf"(?P<seller>{_NAME}) potwierdził(?:a)?, że tego dnia wydaje zamówienia\. "
+    rf"która opcja mieści się w (?P<budget>{_MONEY}) zł\?",
+    re.I,
+)
+_TRAVEL_PAIR = re.compile(
+    r"\b(?:wybór między|można wybrać|wybieramy między) "
+    r"(?P<first>[\w -]{2,45}?) (?:i|albo|lub) (?P<second>[\w -]{2,45})(?=[.,])",
+    re.I,
+)
+_TRAVEL_PRICE = re.compile(
+    rf"\b(?:obie (?:rzeczy kosztują|po)) (?P<price>{_MONEY}) zł\b", re.I
+)
+_TRAVEL_REQUEST = re.compile(
+    r"jak (?:(?:na (?:tabliczce|kartce) )?pokazać różnice(?: na (?:tabliczce|kartce)"
+    r"(?: przy kasie)?)?|porównać ryzyko w podróży)\?",
+    re.I,
+)
+_TRAVEL_CONTEXT = re.compile(r"\b(?:pociąg|autobus|podróż)\w*\b", re.I)
+_TRAVEL_ITEMS = {
+    r"kub(?:ek|ek ceramiczny|kiem)": ("Kubek", "chroń przed uderzeniami"),
+    r"figurkę z porcelany": ("Figurka z porcelany", "zabezpiecz przed stłuczeniem"),
+    r"miskę ceramiczną": ("Miska ceramiczna", "chroń przed uderzeniem i stłuczeniem"),
+    r"plakat(?:em)?": ("Plakat", "zabezpiecz przed zgięciem"),
+    r"(?:dużą )?mapę z papieru": ("Papierowa mapa", "zabezpiecz przed zgięciem"),
+    r"papierowy rysunek": ("Papierowy rysunek", "zabezpiecz przed zgięciem"),
+}
 _COUNT_WORDS = {"dwie": 2, "dwa": 2, "trzy": 3, "cztery": 4}
 
 _DURATION_VALUE = r"[0-9]{1,3}"
@@ -328,6 +365,67 @@ def _offer_pickup_followup(current: str, previous: str) -> str | None:
     )
 
 
+def _confirmed_offer(current: str, previous: str) -> str | None:
+    match = _CONFIRMED_OFFER.fullmatch(current)
+    parts = _clauses(previous)
+    if (
+        match is None
+        or (len(parts) == 4 and _PRICE_PRIORITY.fullmatch(parts[3]) is None)
+        or (offers := _offer_pair(parts)) is None
+    ):
+        return None
+    seller = match["seller"].casefold()
+    named = [
+        offer
+        for offer in offers
+        if seller == offer.seller.casefold()
+        or (
+            " " not in seller
+            and seller.endswith("a")
+            and offer.seller.casefold() in {seller[:-1] + "y", seller[:-1] + "i"}
+        )
+    ]
+    if len(named) != 1:
+        return None
+    offer = named[0]
+    budget = _Amount(_number(match["budget"]), "zł", _Scope.BUNDLE)
+    difference = offer.price.difference(budget)
+    pickup = f"Odbiór w {match['day'].lower()} jest potwierdzony u {offer.seller}."
+    if difference is not None and difference.value > 0:
+        return f"{pickup} Komplet za {offer.price} przekracza budżet o {difference}."
+    if offer.day != _DAY_AFTER[match["ready"].casefold()]:
+        return f"{pickup} Trzeba jeszcze potwierdzić gotowość zamówienia na ten dzień."
+    return f"{pickup} Komplet kosztuje {offer.price} i mieści się w budżecie."
+
+
+def _travel_comparison(current: str) -> str | None:
+    details, _, question = current.rpartition(". ")
+    if not _TRAVEL_REQUEST.fullmatch(question) or not _TRAVEL_CONTEXT.search(details):
+        return None
+    pair = _TRAVEL_PAIR.search(details)
+    price = _TRAVEL_PRICE.search(details)
+    if pair is None or price is None:
+        return None
+    items = [
+        next(
+            (
+                item
+                for pattern, item in _TRAVEL_ITEMS.items()
+                if re.fullmatch(pattern, label, re.I)
+            ),
+            None,
+        )
+        for label in (pair["first"], pair["second"])
+    ]
+    first, second = items
+    if first is None or second is None or first[1] == second[1]:
+        return None
+    return (
+        f"Obie rzeczy kosztują {price['price']} zł. "
+        f"{first[0]}: {first[1]}. {second[0]}: {second[1]}."
+    )
+
+
 def _axis_amount(clause: str) -> tuple[_Amount, bool] | None:
     match = _AXIS_AMOUNT.fullmatch(clause)
     if match is None:
@@ -586,7 +684,7 @@ def studio_quantity(text: str, history: Sequence[HistoryMessage]) -> str | None:
         return None
     current = " ".join(text.split())
     pieces = _clauses(current)
-    if answer := _price_choice(pieces):
+    if answer := _travel_comparison(current) or _price_choice(pieces):
         return answer
     if route := _route_question(pieces):
         if route.scope is not None:
@@ -597,7 +695,9 @@ def studio_quantity(text: str, history: Sequence[HistoryMessage]) -> str | None:
     previous = _prior_user(history)
     if not previous or len(previous) > 640:
         return _pickup_notice(current, "")
-    if pickup := _offer_pickup_followup(current, previous):
+    if pickup := _confirmed_offer(current, previous) or _offer_pickup_followup(
+        current, previous
+    ):
         return pickup
     scope = _comparison_scope(current)
     shorter = _SHORTER_ROUTE.fullmatch(current)

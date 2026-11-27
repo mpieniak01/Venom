@@ -27,6 +27,12 @@ _SMS_DRAFT = re.compile(
     rf"(?:napisz|ułóż|przygotuj) (?:krótki )?sms do (?P<subject>{_NAME}?)(?=[,.!?]| o )",
     re.I,
 )
+_TOPIC_SMS = re.compile(
+    rf"(?:napisz|ułóż|przygotuj) (?:krótki )?sms do {_NAME} "
+    r"o (?P<topic>[^\W\d_]+(?:[- ][^\W\d_]+){0,5})"
+    r"(?:\. chcę (?:zobaczyć )?samą treść)?[.!]?",
+    re.I,
+)
 _PHONE = re.compile(
     rf"(?:(?:zdążył[ae]m (?:jednak )?zadzwonić|"
     rf"(?:przed chwilą )?zadzwonił[ae]m)(?: do (?P<subject>{_NAME}))?)",
@@ -523,6 +529,14 @@ def _packaging_check(text: str, users: Sequence[str]) -> StudioClaimCheck | None
             subject = row.subject
             break
     return _PackagingCheck(subject, evidence)
+
+
+def topic_only_sms(text: str, history: Sequence[HistoryMessage]) -> str | None:
+    """Draft a neutral opener when the request supplies only an SMS topic."""
+    if any(turn.role == "user" for turn in history):
+        return None
+    topic = _TOPIC_SMS.fullmatch(" ".join(text.split()))
+    return f"Cześć, piszę o {topic['topic']}." if topic else None
 
 
 def prepare_studio_claim_check(

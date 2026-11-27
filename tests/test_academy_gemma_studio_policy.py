@@ -96,3 +96,35 @@ def test_studio_claim_policy_keeps_bolt_streaming(studio_chat, monkeypatch):
     replies.append(streamed(_UNSUPPORTED))
     assert chat(_SMS, _HISTORY, verify_history=True) == _UNSUPPORTED
     assert len(sent) == 1 and sent[0]["payload"]["stream"] is True
+
+
+@pytest.mark.parametrize(
+    ("prompt", "topic"),
+    [
+        ("Przygotuj SMS do Ady o paczce. Chcę samą treść.", "paczce"),
+        ("Napisz SMS do Łucji o wizycie. Chcę zobaczyć samą treść.", "wizycie"),
+        ("Ułóż krótki SMS do Leny o spotkaniu zespołu.", "spotkaniu zespołu"),
+    ],
+)
+def test_studio_topic_only_sms_adds_no_claims(studio_chat, monkeypatch, prompt, topic):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    assert chat(prompt, verify_history=True) == f"Cześć, piszę o {topic}."
+    assert not sent and not replies
+
+
+def test_studio_topic_sms_preserves_explicit_facts(studio_chat, monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    draft = "Cześć, paczka jest gotowa do odbioru w aptece po 17."
+    replies.append(streamed(draft))
+    result = chat(
+        "Napisz SMS do Leny o paczce. Jest gotowa do odbioru w aptece po 17.",
+        verify_history=True,
+    )
+    assert result == draft
+    assert len(sent) == 1 and not replies

@@ -2312,7 +2312,20 @@ def test_only_user_facts_does_not_restate_unrelated_or_superseded_evidence(studi
         replies.append(streamed("W rozmowie nie podano tej informacji."))
         history = [turn(evidence), turn("Zrozumiałem.", "assistant")]
         assert chat(prompt, history) == "W rozmowie nie podano tej informacji."
-    assert len(sent) == 3 and not replies
+    replies.append(streamed("W rozmowie nie podano tej informacji."))
+    assert (
+        chat(
+            "Czy odbiór przesyłki AB-202 jest potwierdzony? Tylko na podstawie podanych informacji.",
+            [
+                turn(
+                    "Przesyłkę AB-101 przekazano przewoźnikowi. Nie ma pokwitowania odbioru."
+                ),
+                turn("Zrozumiałem.", "assistant"),
+            ],
+        )
+        == "W rozmowie nie podano tej informacji."
+    )
+    assert len(sent) == 4 and not replies
 
 
 @pytest.mark.parametrize(

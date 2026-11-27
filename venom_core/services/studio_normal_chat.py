@@ -113,6 +113,7 @@ _PENDING_STATUS = re.compile(
     re.I,
 )
 _TOPIC_WORD = re.compile(r"[^\W\d_]{5,}")
+_STATUS_REFERENCE = re.compile(r"\b[a-z][a-z0-9]*-\d+\b", re.I)
 _RSS_NOT_READ = "W tej turze nie odczytano nagłówków z publicznego kanału RSS."
 _SOURCE_STATUS_POLICY = (
     "\n\nPoniższy status pochodzi z aplikacji. Przekaż go własnymi słowami "
@@ -321,6 +322,13 @@ def _partial_user_status(message: str, history: list[HistoryMessage]) -> str | N
         not _OBSERVED_STATUS.search(observed)
         or _NONCURRENT_STATUS.search(observed)
         or not _PENDING_STATUS.search(pending)
+    ):
+        return None
+    refs = set(_STATUS_REFERENCE.findall(observed.casefold()))
+    pending_refs = set(_STATUS_REFERENCE.findall(pending.casefold()))
+    question_refs = set(_STATUS_REFERENCE.findall(question.casefold()))
+    if (pending_refs and pending_refs != refs) or (
+        question_refs and question_refs != refs
     ):
         return None
     question_terms = {word[:5] for word in _TOPIC_WORD.findall(question.casefold())}

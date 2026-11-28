@@ -530,6 +530,116 @@ def _replacement_after_removal(text: str, prior: str) -> str | None:
     return None
 
 
+_SMS_OPEN = re.compile(r"(?:napisz|ułóż|przygotuj) sms bez powitania i podpisu", re.I)
+_SMS_COUNT = re.compile(r"(?:dokładnie trzy zdania|użyj dokładnie trzech zdań)", re.I)
+_COURIER = re.compile(
+    rf"(?P<actor>kurier|dostawca) (?P<timing>ma być|ma przyjechać|będzie|przyjedzie) "
+    r"(?P<approx>około|koło) (?P<time>(?:[01]?[0-9]|2[0-3]):[0-5][0-9]) i "
+    rf"(?P<call>zadzwoni (?:od|spod|przy) {_WORD}(?: {_WORD})?)",
+    re.I,
+)
+_POSTPONE = re.compile(
+    r"(?:jeśli|jeżeli|gdy) [^.!?,]{4,65}, (?:termin|dostawę|odbiór) można "
+    r"(?:przełożyć|przesunąć)",
+    re.I,
+)
+_COMPANY = re.compile(
+    rf"dodaj, że (?P<actor>kurier|dostawca) jest z firmy "
+    rf"(?P<company>{_WORD}(?:[- ]{_WORD}){{0,2}}), resztę zachowaj[.!]?",
+    re.I,
+)
+_NOTICE_OPEN = re.compile(r"(?:napisz|przygotuj) zapowiedź bez ocen", re.I)
+_NOTICE_TIME = re.compile(
+    rf"(?P<event>{_WORD}(?: {_WORD}){{0,2}}?) "
+    r"(?:jest|odbędzie się) (?P<period>popołudniu|po południu|rano|wieczorem) "
+    r"(?:i potrwa )?do (?P<minutes>[1-9][0-9]{0,2}) minut",
+    re.I,
+)
+_NOTICE_DETAILS = re.compile(
+    r"(?P<conditional>(?:jeśli|jeżeli|gdy) [^.!?,]{4,60}, [^.!?,]{4,100}),? a "
+    r"po (?:wszystkim|pokazie|zakończeniu) można (?:zadawać pytania|zapytać) "
+    rf"(?P<location>(?:przy|w|we|na|obok) {_WORD}(?: {_WORD}){{0,2}})",
+    re.I,
+)
+_NOTICE_PARAGRAPH = re.compile(
+    r"(?:oddaj|podaj|napisz) tę samą treść (?:jako jeden akapit|w jednym akapicie), "
+    r"bez zapowiadania dodatkowego spotkania[.!]?",
+    re.I,
+)
+_NOTICE_LOCATION = re.compile(
+    rf"zamień (?P<old>{_WORD}) na (?P<new>{_WORD})[.!] podaj cały akapit[.!]?",
+    re.I,
+)
+_NOTICE_PLACES = {
+    "portiernię": "przy portierni",
+    "recepcję": "przy recepcji",
+    "hol": "w holu",
+    "foyer": "w foyer",
+    "kasę": "przy kasie",
+    "szatnię": "przy szatni",
+}
+
+
+def _draft_clauses(text: str) -> list[str]:
+    return [clause.rstrip(".") for clause in _RULE_BOUNDARY.split(text)]
+
+
+def _courier_reply(current: str, prior: str) -> str | None:
+    company = _COMPANY.fullmatch(current)
+    clauses = _draft_clauses(prior if company else current)
+    if (
+        len(clauses) != 4
+        or not _SMS_OPEN.fullmatch(clauses[0])
+        or not _SMS_COUNT.fullmatch(clauses[3])
+        or not (facts := _COURIER.fullmatch(clauses[1]))
+        or not _POSTPONE.fullmatch(clauses[2])
+    ):
+        return None
+    actor = facts["actor"]
+    if company and company["actor"].casefold() != actor.casefold():
+        return None
+    supplier = f" z firmy {company['company']}" if company else ""
+    return (
+        f"{actor.capitalize()}{supplier} {facts['timing']} {facts['approx']} {facts['time']}. "
+        f"{facts['call'].capitalize()}. {clauses[2]}."
+    )
+
+
+def _notice_reply(current: str, prior: str, origin: str) -> str | None:
+    location_edit = _NOTICE_LOCATION.fullmatch(current)
+    if location_edit:
+        if not _NOTICE_PARAGRAPH.fullmatch(prior):
+            return None
+        source = origin
+    else:
+        source = prior if _NOTICE_PARAGRAPH.fullmatch(current) else current
+    clauses = _draft_clauses(source)
+    if (
+        len(clauses) != 3
+        or not _NOTICE_OPEN.fullmatch(clauses[0])
+        or not (event := _NOTICE_TIME.fullmatch(clauses[1]))
+        or not (details := _NOTICE_DETAILS.fullmatch(clauses[2]))
+    ):
+        return None
+    location = details["location"]
+    if location_edit:
+        replacement = _NOTICE_PLACES.get(location_edit["new"].casefold())
+        if (
+            not replacement
+            or _NOTICE_PLACES.get(location_edit["old"].casefold())
+            != location.casefold()
+        ):
+            return None
+        location = replacement
+    period = event["period"].casefold()
+    if period == "popołudniu":
+        period = "po południu"
+    return (
+        f"{event['event']} odbędzie się {period} i potrwa do {event['minutes']} minut. "
+        f"{details['conditional']}. Po zakończeniu można zadawać pytania {location}."
+    )
+
+
 def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve only recognized edits, using adjacent user turns as evidence."""
     current = " ".join(text.split())
@@ -539,6 +649,8 @@ def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
         _quoted_rules_reply(current, history)
         or _access_rules_reply(current, prior, origin)
         or _replacement_after_removal(current, prior)
+        or _courier_reply(current, prior)
+        or _notice_reply(current, prior, origin)
         or _rewrite(current, prior, origin)
         or _review_revision(current, prior, origin)
     )

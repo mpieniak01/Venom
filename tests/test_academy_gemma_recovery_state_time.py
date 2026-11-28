@@ -647,3 +647,116 @@ def test_old_published_hour_is_not_the_current_hour_after_condition_was_met():
         "Na gablocie nadal widnieje godzina 9:30."
     )
     assert studio_followup(update.replace("listy", "grafiku"), _history(draft)) is None
+
+
+def test_call_log_keeps_named_observer_and_unresolved_result():
+    pending = (
+        "Na liście „zadzwonić do warsztatu” jest pole na datę połączenia. "
+        "Nie ma potwierdzenia rozmowy. Co wpisać w polu?"
+    )
+    report = (
+        "Nina zgłosiła, że rozmowa odbyła się o 14:15, ale dostępność nie została "
+        "ustalona. Co wpisać w notatce?"
+    )
+    assert studio_followup(pending, []) == (
+        "Wpis opisuje zadanie do wykonania. Datę rozmowy zostaw pustą do czasu potwierdzenia połączenia."
+    )
+    assert studio_followup(report, _history(pending)) == (
+        "Nina zgłosiła, że rozmowa odbyła się o 14:15. Dostępność nie została ustalona."
+    )
+    assert studio_followup(report, _history(_REQUEST)) is None
+
+
+def test_only_explicit_confirmation_of_the_held_field_releases_print():
+    held = (
+        "Redaktor podpisał ostateczną treść programu. Druk trzeba wstrzymać do "
+        "potwierdzenia koloru przez drukarnię. Podsumuj w jednym zdaniu."
+    )
+    praise = "Kolor pochwalił grafik, ale drukarnia jeszcze milczy. Czy można uznać warunek za spełniony?"
+    confirm = "Drukarnia już potwierdziła kolor. Czy można już rozpocząć druk?"
+    assert studio_followup(held, []) == (
+        "Treść programu zatwierdzono, a druk pozostaje wstrzymany do potwierdzenia koloru przez drukarnię."
+    )
+    assert studio_followup(praise, _history(held)) == (
+        "Pochwała nie zastępuje potwierdzenia koloru przez drukarnię. Druk pozostaje wstrzymany."
+    )
+    assert studio_followup(confirm, _history(held, praise)) == (
+        "Drukarnia potwierdziła kolor, więc warunek zdjęcia wstrzymania jest spełniony. "
+        "Brak potwierdzenia, że druk się rozpoczął."
+    )
+    assert (
+        studio_followup(confirm.replace("kolor", "format"), _history(held, praise))
+        is None
+    )
+    assert (
+        studio_followup(confirm, _history(held, praise.replace("Kolor", "Format")))
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("checked", "result"),
+    [
+        ("sześć", "Spełniono oba warunki odbioru."),
+        ("pięć", "Odbiór pozostaje otwarty."),
+    ],
+)
+def test_signed_acceptance_uses_verified_counts_and_preserves_declared_units(
+    checked, result
+):
+    source = (
+        "W formularzu wpisano 4 palety. Odbiór wymaga porównania sześciu kolorów "
+        "i podpisu. Nikt jeszcze tego nie zrobił. Co widać na pewno?"
+    )
+    comparison = (
+        f"Porównano {checked} pasujących kolorów, ale podpis złoży opiekun sali."
+    )
+    signed = (
+        "Karta została podpisana. Liczba palet nadal pochodzi z formularza. "
+        "Podaj, które warunki odbioru spełniono."
+    )
+    assert studio_followup(source, []) == (
+        "W formularzu zapisano 4 palety. Do odbioru pozostają porównanie 6 kolorów i podpis."
+    )
+    assert studio_followup(comparison, _history(source)).endswith(
+        "Podpis jest nadal oczekiwany."
+    )
+    status = studio_followup(signed, _history(source, comparison))
+    assert result in status
+    assert status.endswith("Liczba palet (4) nadal pochodzi z formularza.")
+    assert studio_followup(signed, _history(source)) is None
+    assert (
+        studio_followup(comparison.replace("kolorów", "odcieni"), _history(source))
+        is None
+    )
+    assert (
+        studio_followup(signed.replace("palet", "kopert"), _history(source, comparison))
+        is None
+    )
+
+
+def test_replacement_is_preserved_without_implying_successful_review():
+    queued = (
+        "Na etykiecie „do sprawdzenia” umieściliśmy kartę kontroli. "
+        "Brak podpisów i adnotacji o wyniku. Czy partia ma status sprawdzona?"
+    )
+    signed = "Inspektorka podpisała kartę i dopisała „przejrzano, do korekty tabliczka”. Co wpisać?"
+    replaced = (
+        "Teraz zespół wymienił tabliczkę, a inspektorka jeszcze jej nie sprawdziła ponownie. "
+        "Czy można wpisać bez uwag?"
+    )
+    assert studio_followup(queued, []) == (
+        "Materiał czeka na sprawdzenie. Brak potwierdzenia zakończenia kontroli oraz jej wyniku."
+    )
+    assert studio_followup(signed, _history(queued)) == (
+        "Kontrolę wykonano z uwagą. Do korekty pozostaje tabliczka."
+    )
+    assert studio_followup(replaced, _history(queued, signed)) == (
+        "Wymieniono tabliczkę, lecz ponowna kontrola wciąż jest otwarta. Status „bez uwag” czeka na jej wynik."
+    )
+    assert (
+        studio_followup(
+            replaced.replace("tabliczkę", "naklejkę"), _history(queued, signed)
+        )
+        is None
+    )

@@ -638,11 +638,55 @@ _PREFERENCE_ONLY = re.compile(
     re.I,
 )
 
+_REQUIRED_COUNT = rf"(?:{'|'.join(_EXPECTED_FORMS)}|[1-9][0-9]{{0,3}})"
+_VERIFIED_COUNT = rf"(?:{'|'.join(_NUMBER_FORMS)}|[1-9][0-9]{{0,3}})"
+_DECLARED_ITEMS = r"pojemników|paczek|pudełek|kopert|palet"
+_DECLARED_UNIT_FORMS = {
+    "pojemniki": "pojemników",
+    "paczki": "paczek",
+    "pudełka": "pudełek",
+    "koperty": "kopert",
+    "palety": "palet",
+}
+_DECLARED_COUNT_UNITS = rf"{_DECLARED_ITEMS}|{'|'.join(_DECLARED_UNIT_FORMS)}"
+_COMPARED_ITEMS = r"wzorów|próbek|kolorów|odcieni|etykiet"
+_COMPARED_UNIT_FORMS = {
+    "wzory": "wzorów",
+    "próbki": "próbek",
+    "kolory": "kolorów",
+    "odcienie": "odcieni",
+    "etykiety": "etykiet",
+}
+_COMPARED_COUNT_UNITS = rf"{_COMPARED_ITEMS}|{'|'.join(_COMPARED_UNIT_FORMS)}"
+_ACCEPTANCE_REQUIREMENTS = re.compile(
+    rf"w formularzu (?:wpisano|podano) (?P<declared>[1-9][0-9]{{0,3}}) "
+    rf"(?P<declared_unit>{_DECLARED_COUNT_UNITS})[.!] odbiór wymaga "
+    rf"porównania (?P<required>{_REQUIRED_COUNT}) (?P<compared_unit>{_COMPARED_ITEMS}) "
+    r"i podpisu[.!] (?:nikt jeszcze tego nie zrobił|jeszcze nie porównano ani nie podpisano)[.!] "
+    r"co (?:widać na pewno|jest potwierdzone)\?",
+    re.I,
+)
+_ACCEPTANCE_COMPARISON = re.compile(
+    rf"(?:zweryfikowano|sprawdzono|porównano) (?P<checked>{_VERIFIED_COUNT}) "
+    rf"pasując(?:ych|e) (?P<compared_unit>{_COMPARED_COUNT_UNITS}), ale podpis złoży "
+    r"(?P<signer>[^.!?]{3,65})[.!]?",
+    re.I,
+)
+_ACCEPTANCE_SIGNATURE = re.compile(
+    r"(?:kartę właśnie podpisano|kartę już podpisano|karta została podpisana)[.!] "
+    rf"liczba (?P<declared_unit>{_DECLARED_ITEMS}) nadal (?:jest liczbą|pochodzi) z formularza[.!] "
+    r"(?:zaznacz|podaj), które warunki odbioru spełniono[.!]?",
+    re.I,
+)
+
+
+def _required_count(text: str) -> int:
+    return int(text) if text.isdecimal() else _EXPECTED_FORMS[text.casefold()]
+
 
 def _expected_colors(text: str) -> int | None:
     if required := _EXPECTED_COLORS.search(text):
-        amount = required["count"].casefold()
-        return int(amount) if amount.isdecimal() else _EXPECTED_FORMS[amount]
+        return _required_count(required["count"])
     return None
 
 
@@ -695,6 +739,61 @@ def _checklist_status(text: str, history: Sequence[HistoryMessage]) -> str | Non
     return None
 
 
+def _declared_acceptance_status(
+    text: str, history: Sequence[HistoryMessage]
+) -> str | None:
+    if requirement := _ACCEPTANCE_REQUIREMENTS.fullmatch(text):
+        required = _required_count(requirement["required"])
+        return (
+            f"W formularzu zapisano {requirement['declared']} {requirement['declared_unit']}. "
+            f"Do odbioru pozostają porównanie {required} {requirement['compared_unit']} i podpis."
+        )
+    if (comparison := _ACCEPTANCE_COMPARISON.fullmatch(text)) and (
+        previous := _last_users(history, 1)
+    ):
+        return _acceptance_progress(previous[0], comparison)
+    if (
+        (signature := _ACCEPTANCE_SIGNATURE.fullmatch(text))
+        and (stages := _last_users(history, 2))
+        and (comparison := _ACCEPTANCE_COMPARISON.fullmatch(stages[1]))
+    ):
+        return _acceptance_progress(stages[0], comparison, signature=signature)
+    return None
+
+
+def _acceptance_progress(
+    source: str, checked: re.Match[str], *, signature: re.Match[str] | None = None
+) -> str | None:
+    if not (requirement := _ACCEPTANCE_REQUIREMENTS.fullmatch(source)):
+        return None
+    unit = requirement["compared_unit"].casefold()
+    checked_unit = checked["compared_unit"].casefold()
+    if _COMPARED_UNIT_FORMS.get(checked_unit, checked_unit) != unit:
+        return None
+    required = _required_count(requirement["required"])
+    confirmed = _recorded_count(checked["checked"])
+    comparison_status = f"Liczba potwierdzonych pasujących {unit}: {confirmed}."
+    if confirmed != required:
+        comparison_status += (
+            f" Wymagana liczba to {required}, więc warunek zgodności pozostaje otwarty."
+        )
+    if signature is None:
+        return f"{comparison_status} Podpis jest nadal oczekiwany."
+    declared_unit = requirement["declared_unit"].casefold()
+    declared_unit = _DECLARED_UNIT_FORMS.get(declared_unit, declared_unit)
+    if signature["declared_unit"].casefold() != declared_unit:
+        return None
+    acceptance = (
+        "Spełniono oba warunki odbioru."
+        if confirmed == required
+        else "Odbiór pozostaje otwarty."
+    )
+    return (
+        f"{comparison_status} Kartę podpisano. {acceptance} "
+        f"Liczba {declared_unit} ({requirement['declared']}) nadal pochodzi z formularza."
+    )
+
+
 def _recorded_operational_status(
     text: str, history: Sequence[HistoryMessage]
 ) -> str | None:
@@ -744,6 +843,7 @@ def studio_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
         _pending_log_field(text)
         or _explicit_pending_status(text)
         or _checklist_status(text, history)
+        or _declared_acceptance_status(text, history)
         or _recorded_operational_status(text, history)
         or _request_status(text, history)
         or _pickup_status(text, history)

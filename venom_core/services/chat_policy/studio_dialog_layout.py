@@ -16,16 +16,35 @@ _DISPLAY_OPTIONS = re.compile(
     r"(?:ma|przewiduje) [^.!?]{1,85}?\bw dwóch (?:osobnych|odrębnych) salach\b",
     re.I,
 )
+_ROW_PROJECTS = re.compile(
+    rf"(?:na [^.!?]{{2,45}} są|mamy|rozważam) dwa (?:projekty|układy): "
+    rf"(?P<line>{_NAME}) to (?:jedna kolejka|jeden rząd|jedna linia) "
+    rf"(?:stanowisk|stoisk), (?:a )?(?P<rooms>{_NAME}) to kilka (?:stołów|stanowisk|stoisk) "
+    r"w dwóch (?:pokojach|salach)[.]",
+    re.I,
+)
 _ORIENTATION_GOAL = re.compile(
     r"(?:[.!]\s*|[,;] (?:a )?)(?:zależy mi na (?:prostej|łatwej) orientacji"
-    r"|chcę ułatwić orientację(?: [^.!?]{1,55})?)[.!]\s*"
+    r"|chcę ułatwić orientację(?: [^.!?]{1,55})?"
+    r"|zależy mi na tym, żeby (?:osoba pierwszy raz|nowa osoba) (?:łatwo|od razu) "
+    r"zobaczyła wszystkie (?:stanowiska|stoiska))[.!]\s*"
     r"(?:który (?:wariant|plan) (?:bardziej do tego pasuje|(?:będzie )?lepszy)"
-    r"|który wybrać)\?$",
+    r"|który wybrać|co wybrać)\?$",
     re.I,
 )
 _BOTH_ENTRANCES = re.compile(
     rf"(?:W {_NAME} )?(?:da się (?:jednak )?wejść|można wejść) do rzędu z obu stron"
     r"[.!]\s*czy (?:jedna )?strzałka od wejścia (?:nadal )?jest dobrym pomysłem\?",
+    re.I,
+)
+_AMBIGUOUS_DOORS = re.compile(
+    rf"do (?P<name>{_NAME}) (?:wchodzi się|można wejść) z (?:dwóch|obu) końców[.] "
+    r"czy (?:informacja|napis) [„\"]zacznij przy (?:drzwiach|wejściu)[”\"] wystarczy\?",
+    re.I,
+)
+_NEUTRAL_PLAN = re.compile(
+    r"(?:daj|podaj) jeden neutralny sposób (?:na pokazanie|pokazania) układu "
+    r"bez narzucania kolejności[.!?]",
     re.I,
 )
 _UNDIRECTED_SIGN = re.compile(
@@ -84,12 +103,40 @@ _TABLE_SIGN = re.compile(
 )
 
 
+_BROWSE_EXHIBITS = re.compile(
+    r"(?:przeglądający|oglądający) (?:plakaty|zdjęcia|wydruki|ilustracje) mogą szukać "
+    r"konkretnego (?:autora|twórcy) albo (?:poznawać temat, którego wcześniej nie widzieli"
+    r"|odkrywać nowe tematy)[.] "
+    r"po co grupować według (?:autorów|twórców), a po co według tematów\?",
+    re.I,
+)
+_THEME_CHOICE = re.compile(
+    r"(?:zostajemy przy tematach|wybieramy podział tematyczny)[.] "
+    r"(?:na (?:płaskim )?stole chcę prosty sposób orientacji"
+    r"|na stole potrzebujemy czytelnych oznaczeń)[.!]",
+    re.I,
+)
+_THEME_LABEL = re.compile(
+    r"(?:wybierz|podaj) jeden sposób, bez (?:aplikacji, )?(?:wiszących tablic i strzałek"
+    r"|strzałek i wiszących tablic)[.!]",
+    re.I,
+)
+
+
 def _display_plan(text: str) -> str | None:
-    options = _DISPLAY_OPTIONS.search(text)
+    options = _DISPLAY_OPTIONS.search(text) or _ROW_PROJECTS.match(text)
     if _ORIENTATION_GOAL.search(text) and options:
         if options["line"].casefold() != options["rooms"].casefold():
             return options["line"]
     return None
+
+
+def _door_question(text: str, plan: str | None) -> bool:
+    doors = _AMBIGUOUS_DOORS.fullmatch(text)
+    if doors and plan:
+        name = plan.casefold()
+        return doors["name"].casefold() in {name, f"{name}u", f"{name}a"}
+    return False
 
 
 def _display_reply(text: str, previous: str, earlier: str) -> str | None:
@@ -109,6 +156,15 @@ def _display_reply(text: str, previous: str, earlier: str) -> str | None:
         and _display_plan(earlier)
     ):
         return "Umieść przy obu wejściach ten sam prosty schemat pokazujący układ ekspozycji w jednym rzędzie."
+    if _door_question(text, _display_plan(previous)):
+        return (
+            "Sama wskazówka nie wystarczy. Są dwa wejścia, więc nie wiadomo, "
+            "przy którym zacząć."
+        )
+    if _NEUTRAL_PLAN.fullmatch(text) and _door_question(
+        previous, _display_plan(earlier)
+    ):
+        return "Umieść przy obu wejściach ten sam prosty plan jednego rzędu stanowisk."
     return None
 
 
@@ -188,6 +244,21 @@ def _music_reply(text: str, previous: str, earlier: str) -> str | None:
     return None
 
 
+def _theme_reply(text: str, previous: str, earlier: str) -> str | None:
+    if _BROWSE_EXHIBITS.fullmatch(text):
+        return (
+            "Grupy według autorów pomagają znaleźć prace konkretnej osoby. "
+            "Podział tematyczny pomaga odkrywać nowe tematy."
+        )
+    if (_THEME_CHOICE.fullmatch(text) and _BROWSE_EXHIBITS.fullmatch(previous)) or (
+        _THEME_LABEL.fullmatch(text)
+        and _THEME_CHOICE.fullmatch(previous)
+        and _BROWSE_EXHIBITS.fullmatch(earlier)
+    ):
+        return "Ustaw na stole przy każdej grupie kartę z nazwą tematu."
+    return None
+
+
 _DISPLAY_FIELDS = re.compile(
     r"do (?P<first>gabloty|witryny|szafki) pasuje etykieta z (?P<label>nazwą [^\W\d_]+) i "
     r"(?P<field>datą|godziną), a do (?P<second>katalogu|rejestru) nazwa i "
@@ -257,4 +328,5 @@ def layout_reply(text: str, history: Sequence[HistoryMessage]) -> str | None:
         or _display_field_reply(text, previous, earlier)
         or _courtyard_reply(text, previous, earlier)
         or _music_reply(text, previous, earlier)
+        or _theme_reply(text, previous, earlier)
     )

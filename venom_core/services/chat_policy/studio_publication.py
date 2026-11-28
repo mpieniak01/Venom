@@ -20,10 +20,34 @@ _BULLETIN = re.compile(
     r"(?:nie używaj|bez) pierwszej osoby[.!]?)?",
     re.I,
 )
+_SOURCE_TEASER = re.compile(
+    r"źródło do zajawki\s*[.!:]?\s*napisz dwa zdania w bezosobowym stylu[.!]?",
+    re.I,
+)
+_DAYS = {
+    "poniedziałek": "w poniedziałek",
+    "wtorek": "we wtorek",
+    "środa": "w środę",
+    "czwartek": "w czwartek",
+    "piątek": "w piątek",
+    "sobota": "w sobotę",
+    "niedziela": "w niedzielę",
+}
+_DAY_ACCUSATIVE = {"środę": "środa", "sobotę": "sobota", "niedzielę": "niedziela"}
+_PLAN_DATE_EDIT = re.compile(
+    r"nie zmieniaj liczb ani liczby zdań[.!] (?P<new>[^\W\d_]+) zastąpi "
+    r"(?P<old>[^\W\d_]+) w planie (?:ogłoszenia|publikacji)[.!]?",
+    re.I,
+)
 _IMPERSONAL = re.compile(r"napisz od strony czytelnika,\s*bez\s+i\s*[.!]?", re.I)
 _PENDING = re.compile(
     r"(?P<detail>[^.!?]{4,120}?\bbez\s+[^.!?]{2,65}?)\s+"
     r"(?:jeszcze|nadal|wciąż)\s+(?:weryfikujemy|sprawdzamy)[.!]?",
+    re.I,
+)
+_PENDING_PASSIVE = re.compile(
+    r"(?P<detail>[^.!?]{4,120}?\bbez\s+[^.!?]{2,65}?)\s+"
+    r"(?:jest|są)\s+(?:jeszcze|nadal|wciąż)\s+(?:sprawdzan(?:e|y|ych)|weryfikowan(?:e|y|ych))[.!]?",
     re.I,
 )
 _PLAN = re.compile(
@@ -116,11 +140,14 @@ class PublicationCheck:
         return draft
 
 
-def _bulletin(source: str) -> PublicationCheck | None:
+def _bulletin(
+    source: str, *, date_edit: re.Match[str] | None = None
+) -> PublicationCheck | None:
     lines = _sentences(source)
     if len(lines) != 3 or not _PROVISIONAL.search(lines[0]):
         return None
-    pending = _PENDING.fullmatch(lines[1])
+    passive = _PENDING_PASSIVE.fullmatch(lines[1])
+    pending = _PENDING.fullmatch(lines[1]) or passive
     plan = _PLAN.fullmatch(lines[2])
     if not pending or not plan:
         return None
@@ -131,24 +158,46 @@ def _bulletin(source: str) -> PublicationCheck | None:
         opening = "Wstępna liczba to " + opening[len("przed nami wstępnie ") :]
     if _FIRST_PERSON.search(opening):
         return None
+    timing = plan["time"]
+    if date_edit:
+        old = date_edit["old"].casefold()
+        old = _DAY_ACCUSATIVE.get(old, old)
+        new = date_edit["new"].casefold()
+        if timing.casefold() != _DAYS.get(old) or new not in _DAYS:
+            return None
+        timing = _DAYS[new]
     detail = pending["detail"][:1].lower() + pending["detail"][1:]
     fallback = (
         f"{opening}, a nadal sprawdza się {detail}. "
-        f"{plan['subject']} planuje się {plan['action']} {plan['time']}."
+        f"{plan['subject']} planuje się {plan['action']} {timing}."
     )
     # Keep the plan, its action and the date in one sentence.
-    planning = re.compile(
+    plan_pattern = (
         rf"\b{re.escape(plan['subject'])}\b[^.!?]{{0,35}}{_PLANNING_WORD.pattern}"
         rf"[^.!?]{{0,32}}\b{re.escape(plan['action'])}\b[^.!?]{{0,20}}"
-        rf"\b{re.escape(plan['time'])}\b",
-        re.I,
+        rf"\b{re.escape(timing)}\b"
     )
+    if passive:
+        # The detail and its unresolved verification must remain in one sentence.
+        anchor = re.escape(pending["detail"])
+        pending_pattern = (
+            rf"(?:\b{anchor}\b[^.!?]{{0,38}}\b"
+            r"(?:jest|są) (?:jeszcze|nadal|wciąż) (?:sprawdzan(?:e|y|ych)|weryfikowan(?:e|y|ych))"
+            rf"|\b(?:jeszcze|nadal|wciąż) sprawdza się {anchor}\b)"
+        )
+        plan_pattern = rf"(?=.*{pending_pattern})(?=.*{plan_pattern})"
+    forbidden = _FIRST_PERSON
+    if date_edit and timing.casefold() != plan["time"].casefold():
+        forbidden = re.compile(
+            rf"(?:{_FIRST_PERSON.pattern}|\b{re.escape(plan['time'])}\b)", re.I
+        )
+    planning = re.compile(plan_pattern, re.I)
     return PublicationCheck(
         fallback,
         (opening, pending["detail"]),
         sentences=2,
         modality=planning,
-        forbidden=_FIRST_PERSON,
+        forbidden=forbidden,
         expected_numbers=tuple(sorted(_NUMERIC_LITERAL.findall(source))),
     )
 
@@ -208,7 +257,7 @@ def publication_check(
     text: str, history: Sequence[HistoryMessage]
 ) -> PublicationCheck | None:
     """Bind a constrained editorial request to the active source text."""
-    if source := _source(text, _BULLETIN):
+    if source := _source(text, _BULLETIN) or _source(text, _SOURCE_TEASER):
         return _bulletin(source)
     if source := _source(text, _CAP_COMMAND):
         return _capped(source, remove_word=False)
@@ -221,6 +270,9 @@ def publication_check(
         return None
     previous = history[-2].content
     visible = " ".join(without_quotes(text).split())
+    if date_edit := _PLAN_DATE_EDIT.fullmatch(visible):
+        source = _source(previous, _BULLETIN) or _source(previous, _SOURCE_TEASER)
+        return _bulletin(source, date_edit=date_edit) if source else None
     if _IMPERSONAL.fullmatch(visible) and (source := _source(previous, _BULLETIN)):
         return _bulletin(source)
     if (

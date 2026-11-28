@@ -10,6 +10,7 @@ from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services import llm_simple_service
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.chat_policy.studio_dialog import studio_dialog
+from venom_core.services.chat_policy.studio_dialog_compare import studio_comparison
 from venom_core.services.ollama_text_adapter import QUALIFIED_BOLT_MODEL
 
 studio_chat = qualified_studio_chat
@@ -554,3 +555,126 @@ def test_studio_replays_removal_before_moving_only_the_loan_location(
         == "1. Wiek od 16 lat.\n2. Osoby bez własnego kasku wypożyczają go przy biurku."
     )
     assert not sent
+
+
+_SHARED_REFERENCES = (
+    "Do wspólnego użytku jest słownik podpisów oraz mapa symboli. "
+    "Słownik objaśnia skróty, mapa pokazuje, gdzie są na planszy. "
+    "Oba dostaną kopię, ale tylko mapa ma mieć dużą wersję. Jak to przekazać kolegom?"
+)
+_CARRY_OPTIONS = (
+    "W ofercie Fala jest długi uchwyt i niewielki worek, a w ofercie Kamyk "
+    "krótki uchwyt i duży worek. Obydwie kosztują 38 zł. "
+    "Potrzebuję zmieścić ręczniki i nie zależy mi na długości uchwytu. Który wariant?"
+)
+_PROJECT_ROW = (
+    "Na wydarzenie są dwa projekty: Tor to jedna kolejka stanowisk, Krąg to kilka "
+    "stołów w dwóch pokojach. Zależy mi na tym, żeby osoba pierwszy raz łatwo "
+    "zobaczyła wszystkie stanowiska. Co wybrać?"
+)
+_PROJECT_DOORS = "Do Toru wchodzi się z dwóch końców. Czy informacja „zacznij przy drzwiach” wystarczy?"
+_NEUTRAL_MAP = (
+    "Daj jeden neutralny sposób na pokazanie układu bez narzucania kolejności."
+)
+_THEMES = (
+    "Przeglądający plakaty mogą szukać konkretnego autora albo poznawać temat, "
+    "którego wcześniej nie widzieli. Po co grupować według autorów, a po co "
+    "według tematów?"
+)
+
+
+def test_studio_copy_and_download_are_bound_to_the_correct_sources():
+    summary = studio_comparison(_SHARED_REFERENCES, [])
+    assert summary == (
+        "Słownik podpisów objaśnia skróty. Mapa symboli pokazuje, gdzie są na planszy. "
+        "Dla obu przewidziano po kopii. Tylko „mapa symboli” ma mieć dużą wersję."
+    )
+    history = _history(_SHARED_REFERENCES, "Oba pliki można pobrać jako PDF.")
+    assert (
+        studio_comparison(
+            "Dodaj informację, że ten pierwszy można też pobrać jako plik tekstowy.",
+            history,
+        )
+        == summary + " Materiał „słownik podpisów” można też pobrać jako plik tekstowy."
+    )
+    assert (
+        studio_comparison("Dopisz, że drugą można również pobrać jako PDF.", history)
+        == summary + " Materiał „mapa symboli” można też pobrać jako PDF."
+    )
+    assert (
+        studio_comparison(
+            _SHARED_REFERENCES.replace("tylko mapa ma mieć", "tylko plansza ma mieć"),
+            [],
+        )
+        is None
+    )
+
+
+def test_studio_changed_carrying_requirement_does_not_infer_fit():
+    assert studio_comparison(_CARRY_OPTIONS, []) == (
+        "Wybierz wariant Kamyk. Ma większy worek, a cena obu jest taka sama."
+    )
+    followup = (
+        "Jeżeli zamiast ręczników zabraliśmy jedną małą ściereczkę, a teraz "
+        "zależy mi na noszeniu przez ramię, którą cechę porównać?"
+    )
+    history = _history(_CARRY_OPTIONS, "Fala na pewno pasuje na ramię.")
+    assert studio_comparison(followup, history) == (
+        "Porównaj długość uchwytów. Sprawdź, czy któryś z uchwytów "
+        "pozwala wygodnie nosić worek na ramieniu."
+    )
+    assert studio_comparison(followup, _history("Wybieram koszyk.", "Jasne.")) is None
+    assert (
+        studio_comparison(_CARRY_OPTIONS.replace("duży worek", "mały worek"), [])
+        is None
+    )
+
+
+def test_studio_theme_labels_follow_explicit_display_choice():
+    comparison = studio_dialog(_THEMES, [])
+    assert (
+        comparison
+        and "prace konkretnej osoby" in comparison
+        and "odkrywać nowe tematy" in comparison
+    )
+    history = _history(_THEMES, comparison)
+    change = "Zostajemy przy tematach. Na płaskim stole chcę prosty sposób orientacji."
+    label = "Ustaw na stole przy każdej grupie kartę z nazwą tematu."
+    assert studio_dialog(change, history) == label
+    assert (
+        studio_dialog(
+            "Wybierz jeden sposób, bez aplikacji, wiszących tablic i strzałek.",
+            history + _history(change, "Zawieś strzałkę."),
+        )
+        == label
+    )
+    assert (
+        studio_dialog(
+            "Wybierz jeden sposób, bez aplikacji, wiszących tablic i strzałek.", history
+        )
+        is None
+    )
+
+
+def test_studio_two_ended_project_needs_a_plan_of_the_actual_row(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, calls, replies = studio_chat
+    session = str(uuid4())
+    for prompt, expected in [
+        (_PROJECT_ROW, "Wariant Tor"),
+        (_PROJECT_DOORS, "Są dwa wejścia"),
+        (
+            _NEUTRAL_MAP,
+            "Umieść przy obu wejściach ten sam prosty plan jednego rzędu stanowisk.",
+        ),
+    ]:
+        answer = chat(prompt, session=session, verify_history=True, stream=False)
+        assert expected in answer
+    assert not calls and not replies
+    history = _history(_PROJECT_ROW, "Wariant Tor.")
+    assert studio_dialog(_PROJECT_DOORS.replace("Toru", "Kręgu"), history) is None
+    assert studio_dialog(_NEUTRAL_MAP, history) is None

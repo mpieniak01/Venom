@@ -4,9 +4,12 @@ import pytest
 
 from tests.test_academy_qualified_chat import native, streamed
 from tests.test_academy_qualified_chat import studio_chat as qualified_studio_chat
+from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services import llm_simple_service
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.chat_policy.studio_calculator import plan_studio_calculation
+from venom_core.services.chat_policy.studio_publication import publication_check
+from venom_core.services.chat_policy.studio_revision import studio_revision
 from venom_core.services.chat_policy.studio_visibility import studio_visibility
 from venom_core.services.ollama_text_adapter import QUALIFIED_BOLT_MODEL
 
@@ -633,3 +636,142 @@ def test_studio_notice_variants_preserve_the_same_place(studio_chat, monkeypatch
         verify_history=True,
     ) == ("1. Plecaki zostawiamy przy kasie.\n2. Plecaki prosimy zostawiać przy kasie.")
     assert not sent and not replies
+
+
+_PENDING_TEASER = (
+    "Źródło do zajawki „Wstępnie zapisano około 41 osób. "
+    "Sześć wpisów bez pieczęci jest jeszcze sprawdzanych. "
+    "Listę zamierzamy opublikować w niedzielę”. Napisz dwa zdania w bezosobowym stylu."
+)
+_WRONG_TEASER = (
+    "Wstępnie zapisano około 41 osób, w tym sześć wpisów bez pieczęci. "
+    "Listę planuje się opublikować w niedzielę."
+)
+_SAFE_TEASER = (
+    "Wstępnie zapisano około 41 osób, a nadal sprawdza się sześć wpisów bez pieczęci. "
+    "Listę planuje się opublikować w niedzielę."
+)
+_TEASER_DATE_EDIT = (
+    "Nie zmieniaj liczb ani liczby zdań. Wtorek zastąpi niedzielę w planie publikacji."
+)
+
+
+def test_teaser_publication_requires_the_pending_clause_and_updated_date(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    replies.extend((native(_WRONG_TEASER), native(_SAFE_TEASER)))
+    assert chat(_PENDING_TEASER, verify_history=True) == _SAFE_TEASER
+    history = [
+        {"role": "user", "content": _PENDING_TEASER},
+        {"role": "assistant", "content": _WRONG_TEASER},
+    ]
+    updated = _SAFE_TEASER.replace("w niedzielę", "we wtorek")
+    assert chat(_TEASER_DATE_EDIT, history, verify_history=True) == updated
+    assert len(sent) == 2 and not replies
+    assert publication_check(_TEASER_DATE_EDIT, []) is None
+    bound = [HistoryMessage(**turn) for turn in history]
+    assert (
+        publication_check(_TEASER_DATE_EDIT.replace("niedzielę", "środę"), bound)
+        is None
+    )
+    checked = publication_check(_TEASER_DATE_EDIT, bound)
+    assert checked is not None and checked.publish(updated) == updated
+    assert (
+        checked.publish(updated.replace("we wtorek", "we wtorek lub w niedzielę"))
+        == updated
+    )
+
+
+_SMS_DRAFT = (
+    "Przygotuj SMS bez powitania i podpisu. Kurier ma przyjechać około 8:55 i zadzwoni od bramy. "
+    "Gdy podjazd będzie zajęty, dostawę można przesunąć. Użyj dokładnie trzech zdań."
+)
+_EXPECTED_SMS = (
+    "Kurier ma przyjechać około 8:55. Zadzwoni od bramy. "
+    "Gdy podjazd będzie zajęty, dostawę można przesunąć."
+)
+_NOTICE = (
+    "Przygotuj zapowiedź bez ocen. Pokaz odbędzie się rano i potrwa do 30 minut. "
+    "Jeśli wystarczy czasu, pokażemy formę, a po zakończeniu można zadawać pytania przy recepcji."
+)
+_EXPECTED_NOTICE = (
+    "Pokaz odbędzie się rano i potrwa do 30 minut. Jeśli wystarczy czasu, pokażemy formę. "
+    "Po zakończeniu można zadawać pytania przy recepcji."
+)
+_PARAGRAPH = (
+    "Podaj tę samą treść w jednym akapicie, bez zapowiadania dodatkowego spotkania."
+)
+
+
+@pytest.mark.parametrize(
+    ("source", "base", "edits"),
+    [
+        (
+            _SMS_DRAFT,
+            _EXPECTED_SMS,
+            [
+                (
+                    "Dodaj, że kurier jest z firmy Dąb i Las, resztę zachowaj.",
+                    _EXPECTED_SMS.replace("Kurier", "Kurier z firmy Dąb i Las"),
+                )
+            ],
+        ),
+        (
+            _NOTICE,
+            _EXPECTED_NOTICE,
+            [
+                (_PARAGRAPH, _EXPECTED_NOTICE),
+                (
+                    "Zamień recepcję na foyer. Podaj cały akapit.",
+                    _EXPECTED_NOTICE.replace("przy recepcji", "w foyer"),
+                ),
+            ],
+        ),
+    ],
+)
+def test_studio_revises_source_clauses_without_inventing_actions(
+    studio_chat, monkeypatch, source, base, edits
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    history = []
+    for prompt, expected in [(source, base), *edits]:
+        assert chat(prompt, history, stream=False, verify_history=True) == expected
+        history.extend(
+            (
+                {"role": "user", "content": prompt},
+                {
+                    "role": "assistant",
+                    "content": "Potwierdzam dodatkowe spotkanie przy kasie.",
+                },
+            )
+        )
+    assert not sent and not replies
+
+
+def test_studio_rejects_mismatched_source_edits():
+    sms = [
+        HistoryMessage(role="user", content=_SMS_DRAFT),
+        HistoryMessage(role="assistant", content="Odbiór przy bramie."),
+    ]
+    notice = [
+        HistoryMessage(role="user", content=_NOTICE),
+        HistoryMessage(role="assistant", content=_EXPECTED_NOTICE),
+        HistoryMessage(role="user", content=_PARAGRAPH),
+        HistoryMessage(role="assistant", content=_EXPECTED_NOTICE),
+    ]
+    assert (
+        studio_revision("Dodaj, że dostawca jest z firmy Spokój, resztę zachowaj.", sms)
+        is None
+    )
+    assert studio_revision("Zamień kasę na foyer. Podaj cały akapit.", notice) is None
+    assert (
+        studio_revision("Zamień recepcję na foyer. Podaj cały akapit.", notice[:2])
+        is None
+    )

@@ -148,6 +148,67 @@ _WITHDRAWN_DISPATCH = re.compile(
 
 _VERSION = {"pierwszą": "Pierwsza", "drugą": "Druga"}
 
+_CALL_LOG_PENDING = re.compile(
+    r"na (?:wydruku|liście|karcie) [„\"]zadzwonić do [^”\"]{2,45}[”\"] "
+    r"jest (?:rubryka|pole) na datę (?:rozmowy|połączenia)[.!] "
+    r"(?:nikt nie zapisał połączenia|nie ma potwierdzenia rozmowy)[.!] "
+    r"co wpisać w (?:rubryce|polu)\?",
+    re.I,
+)
+_CALL_LOG_REPORTED = re.compile(
+    rf"(?:teraz )?(?P<source>{_PERSON}) (?P<verb>napisał[ao]?|zgłosił[ao]?), "
+    rf"że (?:połączenie|rozmowa) odbył[oa] się o (?P<time>{_TIME}), "
+    r"ale (?P<unknown>[^.!?]{2,75} nie został(?:a|o)? ustalon(?:y|a|e))[.!] "
+    r"co (?:możemy odnotować|wpisać w notatce)\?",
+    re.I,
+)
+_PRINT_MATERIALS = {
+    "papieru": "papier",
+    "formatu": "format",
+    "gramatury": "gramaturę",
+    "koloru": "kolor",
+}
+_PRINT_APPROVAL = re.compile(
+    r"(?:kierowniczka|kierownik|koordynatorka|koordynator|redaktorka|redaktor) "
+    r"podpisał[ao]? ostateczną treść (?P<item>[^.!?]{2,55})[.!] "
+    rf"druk trzeba wstrzymać do potwierdzenia (?P<material>{'|'.join(_PRINT_MATERIALS)}) "
+    r"przez drukarnię[.!] podsumuj w jednym zdaniu[.!]?",
+    re.I,
+)
+_PRINT_PRAISE = re.compile(
+    r"(?P<material>[^.!?]{2,20}) pochwalił[ao]? [^.!?,]{2,45}, "
+    r"ale drukarnia (?:jeszcze milczy|niczego jeszcze nie potwierdziła)[.!] "
+    r"czy można uznać warunek za spełniony\?",
+    re.I,
+)
+_PRINT_CONFIRMATION = re.compile(
+    r"drukarnia (?:już )?potwierdziła (?P<material>[^.!?]{2,20})[.!] "
+    r"(?:czy można (?:już )?rozpocząć druk|czy warunek został spełniony)\?",
+    re.I,
+)
+_REVIEW_QUEUED = re.compile(
+    r"na etykiecie [„\"]do sprawdzenia[”\"] umieściliśmy kartę (?:przeglądu|kontroli)[.!] "
+    r"brak podpisów i adnotacji o wyniku[.!] czy [^.!?]{2,45} ma status sprawdzon(?:y|a|e)\?",
+    re.I,
+)
+_REVIEW_FIELDS = {
+    "etykieta": "etykietę",
+    "naklejka": "naklejkę",
+    "tabliczka": "tabliczkę",
+    "opis": "opis",
+}
+_REVIEW_SIGNED = re.compile(
+    r"(?P<inspector>kontroler(?:ka)?|inspektor(?:ka)?) podpisał[ao]? kartę i dopisał[ao]? "
+    rf"[„\"]przejrzano, do korekty (?P<field>{'|'.join(_REVIEW_FIELDS)})[”\"][.!] co wpisać\?",
+    re.I,
+)
+_REVIEW_AFTER_CHANGE = re.compile(
+    rf"(?:teraz )?zespół wymienił (?P<field>{'|'.join(_REVIEW_FIELDS.values())}), "
+    r"a (?P<inspector>kontroler(?:ka)?|inspektor(?:ka)?) jeszcze (?:jej|go) "
+    r"nie sprawdził[ao]? (?:drugi raz|ponownie)[.!] czy można wpisać bez uwag\?",
+    re.I,
+)
+
 
 @dataclass(frozen=True)
 class _MessageApproval:
@@ -354,8 +415,78 @@ def _numbering_status(text: str, earlier: Sequence[str]) -> str | None:
     return f"Rejestr nadal jest niekompletny. {status}"
 
 
+def _call_log_status(text: str, previous: str) -> str | None:
+    if _CALL_LOG_PENDING.fullmatch(text):
+        return "Wpis opisuje zadanie do wykonania. Datę rozmowy zostaw pustą do czasu potwierdzenia połączenia."
+    if _CALL_LOG_PENDING.fullmatch(previous) and (
+        report := _CALL_LOG_REPORTED.fullmatch(text)
+    ):
+        return (
+            f"{report['source']} {report['verb']}, że rozmowa odbyła się o {report['time']}. "
+            f"{report['unknown'][0].upper() + report['unknown'][1:]}."
+        )
+    return None
+
+
+def _print_status(text: str, earlier: Sequence[str]) -> str | None:
+    if draft := _PRINT_APPROVAL.fullmatch(text):
+        return (
+            f"Treść {draft['item']} zatwierdzono, a druk pozostaje wstrzymany "
+            f"do potwierdzenia {draft['material']} przez drukarnię."
+        )
+    if not earlier:
+        return None
+    preceding_praise = (
+        _PRINT_PRAISE.fullmatch(earlier[-1]) if len(earlier) == 2 else None
+    )
+    if not (
+        draft := _PRINT_APPROVAL.fullmatch(
+            earlier[0] if preceding_praise else earlier[-1]
+        )
+    ):
+        return None
+    material = _PRINT_MATERIALS[draft["material"].casefold()]
+    if preceding_praise and preceding_praise["material"].casefold() != material:
+        return None
+    if (praise := _PRINT_PRAISE.fullmatch(text)) and praise[
+        "material"
+    ].casefold() == material:
+        return (
+            f"Pochwała nie zastępuje potwierdzenia {draft['material']} przez drukarnię. "
+            "Druk pozostaje wstrzymany."
+        )
+    if (confirmation := _PRINT_CONFIRMATION.fullmatch(text)) and confirmation[
+        "material"
+    ].casefold() == material:
+        return (
+            f"Drukarnia potwierdziła {material}, więc warunek zdjęcia wstrzymania jest spełniony. "
+            "Brak potwierdzenia, że druk się rozpoczął."
+        )
+    return None
+
+
+def _review_status(text: str, previous: str) -> str | None:
+    if _REVIEW_QUEUED.fullmatch(text):
+        return "Materiał czeka na sprawdzenie. Brak potwierdzenia zakończenia kontroli oraz jej wyniku."
+    if review := _REVIEW_SIGNED.fullmatch(text):
+        return f"Kontrolę wykonano z uwagą. Do korekty pozostaje {review['field']}."
+    if (
+        (review := _REVIEW_SIGNED.fullmatch(previous))
+        and (replacement := _REVIEW_AFTER_CHANGE.fullmatch(text))
+        and replacement["field"].casefold()
+        == _REVIEW_FIELDS[review["field"].casefold()]
+        and replacement["inspector"].casefold() == review["inspector"].casefold()
+    ):
+        return (
+            f"Wymieniono {replacement['field']}, lecz ponowna kontrola wciąż jest otwarta. "
+            "Status „bez uwag” czeka na jej wynik."
+        )
+    return None
+
+
 def status_transition_reply(text: str, earlier: Sequence[str]) -> str | None:
     """Summarize linked status updates using only adjacent user messages."""
+    previous = earlier[-1] if earlier else ""
     return (
         _duty_status(text, earlier)
         or _message_status(text, earlier)
@@ -363,4 +494,7 @@ def status_transition_reply(text: str, earlier: Sequence[str]) -> str | None:
         or _version_status(text, earlier)
         or _conditional_hours(text, earlier)
         or _numbering_status(text, earlier)
+        or _call_log_status(text, previous)
+        or _print_status(text, earlier)
+        or _review_status(text, previous)
     )

@@ -93,8 +93,8 @@ _EXPLAIN = re.compile(
     _FLAGS,
 )
 _DEFINITION = re.compile(
-    rf"(?P<term>{_TERM}) (?P<relation>mówi,|pokazuje,|informuje,|"
-    r"określa|oznacza|to) (?P<meaning>[^.!?]{7,155})",
+    rf"(?P<term>{_TERM}) (?P<relation>mówi,|pokazuje,?|informuje,|objaśnia|wyjaśnia|zawiera|"
+    r"określa|oznacza|to) (?P<meaning>[^.!?]{3,155})",
     _FLAGS,
 )
 _TERM_FOLLOWUP = re.compile(
@@ -353,6 +353,130 @@ def _definition_reply(current: str, previous: str) -> str | None:
     return f"Wybierz {ordinal} pojęcie, „{result.name}”. {result.statement()}"
 
 
+_SHARED_MATERIALS = re.compile(
+    rf"(?:do wspólnego użytku (?:jest|są)|do dyspozycji (?:jest|są)|mamy do wspólnego użytku) "
+    rf"(?P<first>{_TERM}) (?:oraz|i) (?P<second>{_TERM})[.]",
+    _FLAGS,
+)
+_COPY_SCOPE = re.compile(
+    rf"(?:oba|obie|obydwa|obydwie) (?:dostaną|mają dostać) (?:po )?kopi[ęei], "
+    rf"ale tylko (?P<label>{_TERM}) (?:ma mieć|dostanie) (?P<size>dużą|powiększoną) wersję[.]",
+    _FLAGS,
+)
+_TELL_GROUP = re.compile(
+    r"jak (?:to przekazać (?:kolegom|zespołowi|grupie)|to zapisać dla (?:kolegów|zespołu|grupy))\?",
+    _FLAGS,
+)
+_ADD_SHARED_DOWNLOAD = re.compile(
+    r"(?:dodaj informację|dopisz),? że (?:t(?:en|a|o) )?"
+    r"(?P<ordinal>pierwsz[aąy]|drug[aąi]) można (?:też |również )?pobrać "
+    r"jako (?P<format>plik tekstowy|PDF)[.!]?",
+    _FLAGS,
+)
+
+
+def _shared_references(
+    parts: list[str],
+) -> tuple[_Definition, _Definition, str, str] | None:
+    if len(parts) != 4 or not _TELL_GROUP.fullmatch(parts[3]):
+        return None
+    names = _SHARED_MATERIALS.fullmatch(parts[0])
+    copies = _COPY_SCOPE.fullmatch(parts[2])
+    if not names or not copies:
+        return None
+    first, second = names["first"], names["second"]
+    selected = copies["label"].casefold()
+    target = [
+        label
+        for label in (first, second)
+        if selected in {label.casefold(), label.split()[0].casefold()}
+    ]
+    if len(target) != 1:
+        return None
+    source = parts[1].removesuffix(".")
+    valid = []
+    for separator in re.finditer(r", (?:a )?", source, _FLAGS):
+        left = _definition(first, second, source[: separator.start()])
+        right = _definition(second, first, source[separator.end() :])
+        if left and right:
+            valid.append((left, right, target[0], copies["size"]))
+    return valid[0] if len(valid) == 1 else None
+
+
+def _shared_reference_reply(current: str, previous: str) -> str | None:
+    download = _ADD_SHARED_DOWNLOAD.fullmatch(current)
+    references = _shared_references(_parts(previous if download else current))
+    if not references:
+        return None
+    first, second, large_version, size = references
+    text = (
+        f"{first.statement()} {second.statement()} "
+        f"Dla obu przewidziano po kopii. Tylko „{large_version}” ma mieć {size} wersję."
+    )
+    if not download:
+        return text
+    selected = first if download["ordinal"].casefold().startswith("pierwsz") else second
+    return (
+        f"{text} Materiał „{selected.name}” można też pobrać jako {download['format']}."
+    )
+
+
+_CARRY_FEATURES = r"(?:długi|krótki) uchwyt i (?P<{side}>niewielki|mały|duży) worek"
+_CARRY_PAIR = re.compile(
+    rf"w ofercie (?P<first>{_WORD}) jest {_CARRY_FEATURES.format(side='first_size')}, "
+    rf"a w ofercie (?P<second>{_WORD}) (?:jest )?{_CARRY_FEATURES.format(side='second_size')}[.]",
+    _FLAGS,
+)
+_CARRY_COST = re.compile(
+    rf"(?:obydwie|obie|oba|obydwa) kosztują {_NUMBER} zł[.]",
+    _FLAGS,
+)
+_NEED_CAPACITY = re.compile(
+    r"(?:potrzebuję|muszę|chcę) zmieścić [^,.!?]{3,55} "
+    r"i nie zależy mi na długości uchwytu[.]",
+    _FLAGS,
+)
+_CARRY_CHOICE = re.compile(r"który (?:wariant|model)(?: wybrać)?\?", _FLAGS)
+_SHOULDER_CHANGE = re.compile(
+    r"(?:(?:jeśli|jeżeli|teraz) [^.!?]{1,95}, a )?(?:od )?teraz zależy mi na "
+    r"noszeniu (?:przez|na) ramię[,.]\s*"
+    r"którą cechę (?:porównać|sprawdzić)\?",
+    _FLAGS,
+)
+
+
+def _carry_pair(parts: list[str]) -> re.Match[str] | None:
+    if (
+        len(parts) == 4
+        and _CARRY_COST.fullmatch(parts[1])
+        and _NEED_CAPACITY.fullmatch(parts[2])
+        and _CARRY_CHOICE.fullmatch(parts[3])
+        and (pair := _CARRY_PAIR.fullmatch(parts[0]))
+        and pair["first"].casefold() != pair["second"].casefold()
+    ):
+        return pair
+    return None
+
+
+def _carry_reply(current: str, previous: str) -> str | None:
+    if _SHOULDER_CHANGE.fullmatch(current) and _carry_pair(_parts(previous)):
+        return (
+            "Porównaj długość uchwytów. Sprawdź, czy któryś z uchwytów "
+            "pozwala wygodnie nosić worek na ramieniu."
+        )
+    pair = _carry_pair(_parts(current))
+    if pair is None:
+        return None
+    larger = [
+        side
+        for side in ("first", "second")
+        if pair[f"{side}_size"].casefold() == "duży"
+    ]
+    if len(larger) == 1:
+        return f"Wybierz wariant {pair[larger[0]]}. Ma większy worek, a cena obu jest taka sama."
+    return None
+
+
 _LIST_DAY = r"poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę"
 _LIST_ITEM = r"[^\W\d_]+(?:-[^\W\d_]+)?"
 _ITEMS = rf"{_LIST_ITEM}(?:, {_LIST_ITEM}){{0,5}} i {_LIST_ITEM}"
@@ -433,6 +557,8 @@ def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | Non
         or _fits_reply(current, previous)
         or _material_reply(current, previous)
         or _definition_reply(current, previous)
+        or _shared_reference_reply(current, previous)
+        or _carry_reply(current, previous)
         or _list_comparison(
             current, [turn.content for turn in history[-4:] if turn.role == "user"]
         )

@@ -99,8 +99,30 @@ _WIKI_FACT_POLICY = (
 )
 _PROVIDED_INFORMATION_ONLY = re.compile(
     r"\b(?:tylko|wyłącznie|jedynie)\s+na podstawie\s+"
-    r"(?:tej\s+rozmowy|podanych informacji|informacji,?\s+które\s+(?:podałem|podałam))\b",
+    r"(?:tej\s+rozmowy|(?P<user_facts>podanych informacji|"
+    r"informacji,?\s+które\s+(?:podałem|podałam)))\b",
     re.I,
+)
+_OBSERVED_STATUS = re.compile(
+    r"\b(?:przekazano|wydano|wydan[yaoe]|gotow[yaoe]|zatwierdzon[oaey])\b",
+    re.I,
+)
+_NONCURRENT_STATUS = re.compile(
+    r"\b(?:nie|jeśli|jeżeli|gdyby|może|wstępnie|wcześniej|pierwotnie|miało)\b",
+    re.I,
+)
+_PENDING_STATUS = re.compile(
+    r"\b(?:nie (?:ma|mamy|uzyskano|otrzymano) (?:pokwitowania|potwierdzenia)|"
+    r"nie (?:potwierdz\w*|ustalono|uzgodniono|udzielono|udzielił[ao]?)|nikt nie wypełnił)\b",
+    re.I,
+)
+_TOPIC_WORD = re.compile(r"[^\W\d_]{5,}")
+_STATUS_REFERENCE = re.compile(r"\b[a-z][a-z0-9]*-\d+\b", re.I)
+_STATUS_FIELDS = (
+    re.compile(r"\b(?:pokwitow|potwierdz|dotar|doręcz)\w*", re.I),
+    re.compile(r"\b(?:odbior|odbiór|odebra|wydaw)\w*", re.I),
+    re.compile(r"\b(?:zgod|rozpocz|zaczą)\w*", re.I),
+    re.compile(r"\b(?:kwot|wysokoś)\w*", re.I),
 )
 _RSS_NOT_READ = "W tej turze nie odczytano nagłówków z publicznego kanału RSS."
 _SOURCE_STATUS_POLICY = (
@@ -120,6 +142,7 @@ class _NormalChatSetup:
     system_context: str
     remaining: int
     provided_information_only: bool
+    user_facts_only: bool
     omit_truncated: bool
     local_qualification: bool
     omit_assistant_links: bool
@@ -205,8 +228,8 @@ async def _normal_chat_setup(
     if use_default_language:
         system_context += f" {_NORMAL_LANGUAGE_POLICY}"
     system_context += await _note_context(request, session_id, get_vector_store)
-    system_context, provided_information_only = _provided_information_policy(
-        request, system_context
+    system_context, provided_information_only, user_facts_only = (
+        _provided_information_policy(request, system_context)
     )
     remaining = budget - len(system_context)
     omit_truncated, local_qualification, omit_assistant_links = _normal_history_options(
@@ -219,6 +242,7 @@ async def _normal_chat_setup(
         max(0, min(remaining, MAX_CHAT_HISTORY_CHARS)),
         omit_truncated=omit_truncated,
         omit_assistant_links=omit_assistant_links,
+        user_facts_only=user_facts_only,
         history=history_records,
     )
     return _NormalChatSetup(
@@ -229,6 +253,7 @@ async def _normal_chat_setup(
         system_context,
         remaining,
         provided_information_only,
+        user_facts_only,
         omit_truncated,
         local_qualification,
         omit_assistant_links,
@@ -253,15 +278,19 @@ def _normal_context_budget(request: SimpleChatRequest) -> tuple[int, int, bool]:
 
 def _provided_information_policy(
     request: SimpleChatRequest, system_context: str
-) -> tuple[str, bool]:
-    provided_only = bool(
-        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
-        and not request.use_notes
-        and not explicit_lookup_allowed(request.content)
-        and _PROVIDED_INFORMATION_ONLY.search(without_quotes(request.content))
-    )
-    if not provided_only:
-        return system_context, False
+) -> tuple[str, bool, bool]:
+    visible = without_quotes(request.content)
+    provided_only = _PROVIDED_INFORMATION_ONLY.search(visible)
+    if (
+        not provided_only
+        or not SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        or request.use_notes
+        or explicit_lookup_allowed(request.content)
+    ):
+        return system_context, False, False
+    user_facts_only = bool(provided_only["user_facts"])
+    if user_facts_only:
+        system_context += " Korzystaj tylko z informacji podanych przez użytkownika."
     system_context += (
         " Korzystaj tylko z danych z rozmowy. Jeśli aktualnej wartości nie podano, "
         "powiedz wprost «W rozmowie nie podano tej informacji». "
@@ -269,13 +298,55 @@ def _provided_information_policy(
         "Jeśli pytanie na końcu dotyczy jednej wartości, odpowiedz na nie wprost "
         "i nie streszczaj wcześniejszych porad."
     )
-    format_request = _SENTENCE_REQUEST.search(without_quotes(request.content))
+    format_request = _SENTENCE_REQUEST.search(visible)
     if format_request and format_request.group("one"):
         system_context += (
             " Napisz dokładnie jedno zdanie odpowiadające na ostatnie pytanie. "
             "Zakończ odpowiedź na tym jednym zdaniu."
         )
-    return system_context, True
+    return system_context, True, user_facts_only
+
+
+def _partial_user_status(message: str, history: list[HistoryMessage]) -> str | None:
+    """Quote adjacent explicit observations when a factual status is incomplete."""
+    visible = without_quotes(" ".join(message.split()))
+    question, separator, tail = _PROVIDED_INFORMATION_ONLY.sub("", visible).partition(
+        "?"
+    )
+    if (
+        not history
+        or not separator
+        or not question.casefold().startswith("czy ")
+        or tail.strip(" .!").casefold() not in {"", "odpowiedz"}
+        or re.search(r"\b(?:i|oraz|lub)\b", question, re.I)
+    ):
+        return None
+    evidence = " ".join(history[-1].content.split())
+    if evidence != without_quotes(evidence) or any(mark in evidence for mark in "?!"):
+        return None
+    pieces = re.split(r"(?<=\.)\s+", evidence)
+    if len(pieces) != 2 or not all(piece.endswith(".") for piece in pieces):
+        return None
+    observed, pending = pieces
+    if (
+        not _OBSERVED_STATUS.search(observed)
+        or _NONCURRENT_STATUS.search(observed)
+        or not _PENDING_STATUS.search(pending)
+        or not any(
+            field.search(question) and field.search(pending) for field in _STATUS_FIELDS
+        )
+    ):
+        return None
+    refs = set(_STATUS_REFERENCE.findall(observed.casefold()))
+    pending_refs = set(_STATUS_REFERENCE.findall(pending.casefold()))
+    question_refs = set(_STATUS_REFERENCE.findall(question.casefold()))
+    if (pending_refs and pending_refs != refs) or (
+        question_refs and question_refs != refs
+    ):
+        return None
+    question_terms = {word[:5] for word in _TOPIC_WORD.findall(question.casefold())}
+    observed_terms = {word[:5] for word in _TOPIC_WORD.findall(observed.casefold())}
+    return evidence if question_terms & observed_terms else None
 
 
 def _normal_history_options(request: SimpleChatRequest) -> tuple[bool, bool, bool]:
@@ -412,7 +483,7 @@ async def prepare_studio_normal(
     plan = plan_studio_source(
         request.content,
         setup.history,
-        setup.history_records,
+        [] if setup.user_facts_only else setup.history_records,
         local_qualification=setup.local_qualification,
         provided_information_only=setup.provided_information_only,
         use_notes=request.use_notes,
@@ -452,6 +523,7 @@ async def prepare_studio_normal(
                 min(budget, MAX_CHAT_HISTORY_CHARS),
                 omit_truncated=setup.omit_truncated,
                 omit_assistant_links=setup.omit_assistant_links,
+                user_facts_only=setup.user_facts_only,
                 history=setup.history_records,
             ),
             "max_tokens": setup.output_tokens,
@@ -460,5 +532,9 @@ async def prepare_studio_normal(
     )
     prepared._studio_public_source_evidence = evidence.to_record() if evidence else None
     prepared._studio_public_scope_reply = scope_reply
+    if setup.user_facts_only:
+        prepared._studio_user_fact_reply = _partial_user_status(
+            request.content, prepared.history
+        )
     prepared._studio_rss_headlines = headlines
     return prepared, system_context

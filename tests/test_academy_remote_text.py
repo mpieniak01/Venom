@@ -214,6 +214,40 @@ def test_partial_upload_retried_and_stop_intent_is_durable(setup, monkeypatch):
     assert sync.call_count == 2
 
 
+def test_partial_evidence_survives_restart_at_deadline(setup, monkeypatch):
+    service, spec, clock, rental, host = setup
+    _launch(service, spec)
+    service.tick("night")
+    remote = _remote("succeeded", evaluated=True)
+    remote["trials"].append({**remote["trials"][0], "run_id": "campaign-night-02"})
+    host.status.return_value = remote
+    sync = Mock(
+        side_effect=[
+            {"archive_bytes": 1},
+            TransportError("remote_text_fetch_failed", retryable=True),
+        ]
+    )
+    monkeypatch.setattr(remote_text, "sync_run", sync)
+    monkeypatch.setattr(
+        remote_text,
+        "summarize",
+        lambda _, receipts: {
+            "outcome": "PROVISIONAL" if receipts else "INCONCLUSIVE",
+            "verified_runs": len(receipts),
+        },
+    )
+
+    assert RUN in service.tick("night")["evidence"]
+    clock.return_value = 1600.0
+    restored = RemoteTextService(service.local, rental, service.host, clock=clock)
+
+    result = restored.tick("night")
+    assert result["status"] == "completed"
+    assert result["result"] == {"outcome": "PROVISIONAL", "verified_runs": 1}
+    assert sync.call_count == 2
+    rental.cleanup.assert_called_once_with(RENTAL, campaign_id="night")
+
+
 def test_local_review_profile_rejected_without_rental(setup):
     service, spec, _, rental, _ = setup
     spec.campaign.review_mode = "manual"

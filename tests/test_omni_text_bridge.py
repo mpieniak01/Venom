@@ -164,6 +164,25 @@ async def test_failed_load_and_cancel_leave_previous_selection(native, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_native_text_never_streams_tool_protocol(native, monkeypatch):
+    await bridge.switch("p13")
+    original_invoke = bridge.omni_native_dialogue._invoke
+
+    async def with_tool_protocol(*args, **kwargs):
+        output = json.loads(await original_invoke(*args, **kwargs))
+        output["text"] = "Wynik <tool_call><function=think>szkic"
+        return json.dumps(output).encode()
+
+    monkeypatch.setattr(bridge.omni_native_dialogue, "_invoke", with_tool_protocol)
+    with pytest.raises(
+        HTTPException, match="omni_native_text_generation_failed"
+    ) as error:
+        await bridge.response(SimpleChatRequest(content="Podaj wynik."))
+    assert error.value.status_code == 503
+    assert bridge.selected()
+
+
+@pytest.mark.asyncio
 async def test_changed_weights_and_stale_selection_fail_closed(native):
     root, calls = native
     await bridge.switch("p13")

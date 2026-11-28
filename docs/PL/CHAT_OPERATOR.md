@@ -148,6 +148,22 @@ zapisywać dane z innych źródeł publicznych dla zakończonych i nieuciętych
 odpowiedzi. Samodzielne Studio pod
 adresem /chat2 oferuje zwykły czat z wyłączonym selektorem natywnego tekstu.
 
+Flaga ACADEMY_GEMMA_REVIEW_RETRY_ENABLED włącza pilotaż dla krótkich
+zaproszeń na przegląd bez ustalania terminu. Domyślnie jest wyłączona. Wymaga
+włączonej kwalifikacji Academy, lokalnej Gemmy 12B Q4_K_M i trybu Studio bez
+notatek. Po ucięciu Studio dopuszcza jedno ponowienie i sprawdza jego treść
+względem polecenia. W pierwszym pełnym szkicu może też usunąć dopisaną
+informację o wysłaniu materiału, prośbę o opinie, pytanie o dostępność lub
+obietnicę ustalenia terminu lub późniejszego kontaktu. Rozpoznaje też jawnie
+zamówione uwagi i odróżnia możliwość dołączenia gotowego PDF po uzyskaniu
+zgody od jego wysłania. Ta kontrola działa w rozmowie bez wcześniejszej
+tury użytkownika. Dla jawnych, rozpoznanych korekt Studio korzysta z faktów
+użytkownika w ostatniej turze historii. Przy zadaniu z czasem pyta, czy dana
+liczba obejmuje dwie czynności łącznie, czy każdą z osobna. W rozpoznanych
+przypadkach zachowuje też drugą opcję lub metodę podziału po korekcie.
+Rozpoznana prośba i jej wycofanie są zapisywane oddzielnie od potwierdzenia
+wykonania.
+
 Weryfikowany zapis do kalendarza zwraca sukces po potwierdzeniu parametrów
 przez Google. Gdy Google zwróci identyfikator, ale parametry pozostaną
 niepotwierdzone, formularz pokaże identyfikator i użyje tego samego klucza

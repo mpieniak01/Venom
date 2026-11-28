@@ -439,6 +439,8 @@ class Settings(BaseSettings):
     # Konfiguracja THE_ACADEMY (Knowledge Distillation & Fine-tuning)
     ENABLE_ACADEMY: bool = False  # Training is an explicit opt-in extension.
     ACADEMY_QUALIFIED_CHAT_ENABLED: bool = False
+    ACADEMY_GEMMA_REVIEW_RETRY_ENABLED: bool = False
+    ACADEMY_GEMMA_STUDIO_TRUNCATION_RETRY_ENABLED: bool = False
     VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT: str = ""
     VENOM_ACADEMY_JUDGE_AUDIT_ROOT: str = (
         ""  # Empty disables qualified automatic review.

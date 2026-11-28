@@ -1,0 +1,1327 @@
+"""Answer bounded Studio comparisons from the facts supplied by the user."""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass
+from decimal import Decimal
+
+from venom_core.api.schemas.llm_simple import HistoryMessage
+from venom_core.services.chat_policy.studio_dialog_evidence import dialog_evidence
+
+_FLAGS = re.IGNORECASE
+_WORD = r"[^\W\d_]+"
+_NUMBER = r"\d{1,5}(?:[,.]\d{1,2})?"
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+_SUPPORT_PAIR = re.compile(
+    rf"(?P<rigid>{_WORD}) jest sztywn[aye] i waży (?P<rigid_mass>{_NUMBER}) g,\s*"
+    rf"a (?P<flexible>{_WORD}) (?:ugin[ae] się(?: w rękach)?|jest elastyczn[aye]) "
+    rf"i waży (?P<flexible_mass>{_NUMBER}) g\.?",
+    _FLAGS,
+)
+_LAP_WITHOUT_SUPPORT = re.compile(
+    r"(?:nie będę mieć (?:stolika|blatu)|nie mam (?:stolika|blatu)|bez (?:stolika|blatu)),"
+    r"\s*(?:maluję|rysuję|piszę) na kolanach\.?",
+    _FLAGS,
+)
+_BEST_OPTION = re.compile(r"(?:któr[ay] lepsz[ay]|któr[eąy] wybrać)\?", _FLAGS)
+_WITH_SUPPORT = re.compile(
+    r"a (?:gdy|jeśli|jeżeli) (?:będę mieć|będę mia[łl][a]?|mam|pojawi się) "
+    r"(?:blat|stół|stolik)(?: pod ręką)?\?",
+    _FLAGS,
+)
+
+
+def _size_pattern(axis: str) -> str:
+    return rf"(?P<{axis}x>{_NUMBER})\s*[×x]\s*(?P<{axis}y>{_NUMBER})\s*cm"
+
+
+_DIMENSIONS = re.compile(
+    rf"(?:[^.!?]{{0,80}}\bmam|porównuję|mam) (?P<first>{_WORD}(?: {_WORD}){{0,8}}), "
+    rf"{_size_pattern('a')},?\s*(?:i|oraz) "
+    rf"(?P<second>{_WORD}(?: {_WORD}){{0,8}}), {_size_pattern('b')}\.?",
+    _FLAGS,
+)
+_EQUAL_PRICE = re.compile(rf"(?:obie|oba) kosztują (?P<price>{_NUMBER}) zł\.?", _FLAGS)
+_FIT_SURFACE = re.compile(
+    rf"(?:kwadrat )?(?P<surface>siedziska|siedzisko|półka|podstawa|mata|blat) ma "
+    rf"{_size_pattern('s')}\.?",
+    _FLAGS,
+)
+_FIT_QUESTION = re.compile(
+    r"któr[ae] (?:w całości się zmieści|w całości zmieści się|zmieści się w całości)"
+    r"(?: na (?:siedzisku|półce|podstawie|macie|blacie))?\?",
+    _FLAGS,
+)
+_FIT_CLEANING = re.compile(
+    r"(?:mam ją zamówić, ale |(?:a|ale) )?(?P<cleaning>[^.!?]{3,35}?) "
+    r"(?:się lepiej czyści|czyści się łatwiej)\.\s*"
+    r"co wybrać, jeśli (?:widok wystających brzegów mi przeszkadza|"
+    r"nie chcę wystających brzegów|brzegi nie mogą wystawać)\?",
+    _FLAGS,
+)
+
+_MATERIALS = re.compile(
+    r"(?:w [^.!?]{2,45} jest|mamy|mam) (?P<first>[^.!?]{6,110}?) "
+    r"(?:i|oraz) (?:osobny|osobną|oddzielny|oddzielną) (?P<second>[^.!?]{6,130})\.",
+    _FLAGS,
+)
+_PRINT_SCOPE = re.compile(
+    rf"(?:oba|obie) (?:chcę|chcemy) udostępnić,\s*ale tylko (?P<label>{_WORD}) "
+    r"(?:będzie|ma być) (?P<when>jutro|dziś|pojutrze) drukowan[yae]\.",
+    _FLAGS,
+)
+_MATERIAL_LIST = re.compile(
+    r"jak (?:opisać|zapisać) te dw[ae] materiały na liście dla zespołu\?", _FLAGS
+)
+_ADD_PDF = re.compile(
+    r"dopisz przy t(?:ym|ej) (?P<ordinal>pierwszym|drugim|pierwszej|drugiej),\s*"
+    r"że można (?:go |ją |je )?pobrać jako pdf[.!]?",
+    _FLAGS,
+)
+
+_TERM = rf"{_WORD}(?: {_WORD}){{0,3}}"
+_TERMS = re.compile(
+    rf"(?:[^.!?]{{0,90}}\s)?(?:dwa pojęcia|dwa terminy):\s*"
+    rf"(?P<first>{_TERM}) i (?P<second>{_TERM})\.",
+    _FLAGS,
+)
+_EXPLAIN = re.compile(
+    r"jak (?:to prosto wyjaśnić|prosto wyjaśnić te pojęcia|prosto wyjaśnić te terminy)"
+    r"(?: ekipie| zespołowi)?\?",
+    _FLAGS,
+)
+_DEFINITION = re.compile(
+    rf"(?P<term>{_TERM}) (?P<relation>mówi,|pokazuje,?|informuje,|objaśnia|wyjaśnia|zawiera|"
+    r"określa|oznacza|to) (?P<meaning>[^.!?]{3,155})",
+    _FLAGS,
+)
+_TERM_FOLLOWUP = re.compile(
+    r"czy na (?P<goal>[^.!?]{5,65}) patrzeć pod tym pierwszym czy drugim\?",
+    _FLAGS,
+)
+_TEXT = re.compile(r"\b(?:napis\w*|tekst\w*|treść|treści)\b", _FLAGS)
+_IMPRINT = re.compile(r"\bodbitk\w*\b", _FLAGS)
+
+
+def _parts(text: str) -> list[str]:
+    return _SENTENCE.split(text)
+
+
+def _last_user(history: Sequence[HistoryMessage]) -> str:
+    for turn in reversed(history):
+        if turn.role == "user":
+            return " ".join(turn.content.split())
+    return ""
+
+
+def _decimal(value: str) -> Decimal:
+    return Decimal(value.replace(",", "."))
+
+
+def _display(value: Decimal) -> str:
+    number = format(value, "f")
+    return number.rstrip("0").rstrip(".").replace(".", ",") if "." in number else number
+
+
+def _support_pair(parts: list[str]) -> re.Match[str] | None:
+    if len(parts) not in (3, 4):
+        return None
+    options, context, question = parts[-3:]
+    if _LAP_WITHOUT_SUPPORT.fullmatch(context) and _BEST_OPTION.fullmatch(question):
+        pair = _SUPPORT_PAIR.fullmatch(options)
+        if pair and pair["rigid"].casefold() != pair["flexible"].casefold():
+            return pair
+    return None
+
+
+def _support_reply(current: str, previous: str) -> str | None:
+    if pair := _support_pair(_parts(current)):
+        return (
+            f"Na kolanach lepszy będzie sztywny wariant „{pair['rigid']}”. "
+            f"Bez blatu daje stabilniejsze podparcie niż elastyczny wariant „{pair['flexible']}”."
+        )
+    if not _WITH_SUPPORT.fullmatch(current) or not (
+        pair := _support_pair(_parts(previous))
+    ):
+        return None
+    rigid, flexible = _decimal(pair["rigid_mass"]), _decimal(pair["flexible_mass"])
+    if rigid == flexible:
+        return "Przy pełnym podparciu na blacie oba warianty mogą wystarczyć, a różnicy w wadze nie ma."
+    lighter = pair["rigid"] if rigid < flexible else pair["flexible"]
+    return (
+        f"Przy pełnym podparciu na blacie lżejszy wariant „{lighter}” może wystarczyć. "
+        "To blat zapewnia wtedy stabilność, więc sztywność samej podkładki nie musi rozstrzygać."
+    )
+
+
+@dataclass(frozen=True)
+class _Square:
+    item: str
+    side: Decimal
+
+    def description(self) -> str:
+        detail = self.item.partition(" z ")[2]
+        return f"z {detail}" if detail else f"„{self.item}”"
+
+    def size(self) -> str:
+        side = _display(self.side)
+        return f"{side} × {side} cm"
+
+
+@dataclass(frozen=True)
+class _SquareComparison:
+    options: tuple[_Square, _Square]
+    surface: Decimal
+    price: str
+
+    def fitting(self) -> tuple[int, ...]:
+        return tuple(
+            i for i, item in enumerate(self.options) if item.side <= self.surface
+        )
+
+    def choice(self) -> str:
+        fits = self.fitting()
+        price = f"Obie opcje kosztują {self.price} zł."
+        if len(fits) != 1:
+            answer = (
+                "Obie opcje mieszczą się w całości."
+                if fits
+                else "Żadna opcja nie mieści się w całości."
+            )
+            return f"{answer} Bok dostępnej powierzchni ma {_display(self.surface)} cm. {price}"
+        first_fits = fits[0] == 0
+        selected, other = self.options[fits[0]], self.options[1 - fits[0]]
+        ordinal, complement = (
+            ("pierwsza", "Druga") if first_fits else ("druga", "Pierwsza")
+        )
+        return (
+            f"W całości zmieści się {ordinal} opcja, {selected.description()} ({selected.size()}). "
+            f"{complement}, {other.description()}, ma bok {_display(other.side)} cm, "
+            f"a powierzchnia ma bok {_display(self.surface)} cm. {price}"
+        )
+
+    def with_cleaning(self, cleaning: str) -> str | None:
+        fits = self.fitting()
+        if len(fits) != 1:
+            return None
+        fitted, other = self.options[fits[0]], self.options[1 - fits[0]]
+        clue = cleaning.casefold()
+        matches = tuple(
+            i for i, square in enumerate(self.options) if clue in square.item.casefold()
+        )
+        if len(matches) != 1:
+            return None
+        pick = "pierwszą" if fits[0] == 0 else "drugą"
+        difference = (
+            "Ta opcja jest też łatwiejsza do czyszczenia."
+            if matches[0] == fits[0]
+            else f"Opcję {other.description()} łatwiej czyścić, ale jej brzegi będą wystawać."
+        )
+        return (
+            f"Wybierz {pick} opcję, {fitted.description()} ({fitted.size()}), "
+            f"bo mieści się w całości na powierzchni o boku {_display(self.surface)} cm. "
+            f"{difference}"
+        )
+
+
+def _square_pair(parts: list[str]) -> _SquareComparison | None:
+    if len(parts) != 4 or not _FIT_QUESTION.fullmatch(parts[3]):
+        return None
+    options = _DIMENSIONS.fullmatch(parts[0])
+    price = _EQUAL_PRICE.fullmatch(parts[1])
+    surface = _FIT_SURFACE.fullmatch(parts[2])
+    if not options or not price or not surface:
+        return None
+    values = [
+        (_decimal(match[f"{axis}x"]), _decimal(match[f"{axis}y"]))
+        for match, axis in ((options, "a"), (options, "b"), (surface, "s"))
+    ]
+    if any(x != y or x <= 0 for x, y in values):
+        return None
+    first, second, top = values
+    return _SquareComparison(
+        (_Square(options["first"], first[0]), _Square(options["second"], second[0])),
+        top[0],
+        price["price"],
+    )
+
+
+def _fits_reply(current: str, previous: str) -> str | None:
+    if pair := _square_pair(_parts(current)):
+        return pair.choice()
+    if (request := _FIT_CLEANING.fullmatch(current)) and (
+        pair := _square_pair(_parts(previous))
+    ):
+        return pair.with_cleaning(request["cleaning"])
+    return None
+
+
+def _materials(parts: list[str]) -> tuple[tuple[str, str], int, str] | None:
+    if len(parts) != 3 or not _MATERIAL_LIST.fullmatch(parts[2]):
+        return None
+    items, scope = _MATERIALS.fullmatch(parts[0]), _PRINT_SCOPE.fullmatch(parts[1])
+    if not items or not scope:
+        return None
+    labels = items["first"], items["second"]
+    heads = [item.split()[0].casefold() for item in labels]
+    printed = scope["label"].casefold()
+    if heads.count(printed) != 1:
+        return None
+    return labels, heads.index(printed), scope["when"]
+
+
+def _material_reply(current: str, previous: str) -> str | None:
+    items = _materials(_parts(current))
+    pdf_index = None
+    if not items:
+        addition = _ADD_PDF.fullmatch(current)
+        items = _materials(_parts(previous)) if addition else None
+        if addition:
+            pdf_index = int(addition["ordinal"].casefold().startswith("drug"))
+    if not items:
+        return None
+    labels, printed, when = items
+    lines = []
+    for index, label in enumerate(labels):
+        status = "do udostępnienia"
+        if index == printed:
+            status += f", do druku {when}"
+        if index == pdf_index:
+            status += ", do pobrania jako PDF"
+        lines.append(f"{index + 1}. {label[0].upper()}{label[1:]} — {status}.")
+    return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class _Definition:
+    name: str
+    relation: str
+    meaning: str
+
+    def statement(self) -> str:
+        return f"{self.name[0].upper()}{self.name[1:]} {self.relation} {self.meaning}."
+
+
+def _definition(label: str, other_label: str, clause: str) -> _Definition | None:
+    matched = _DEFINITION.fullmatch(clause)
+    if not matched:
+        return None
+    term = matched["term"].casefold()
+    head = label.split()[0].casefold()
+    if term == label.casefold() or (
+        term == head and head != other_label.split()[0].casefold()
+    ):
+        return _Definition(label, matched["relation"], matched["meaning"])
+    return None
+
+
+def _definitions(parts: list[str]) -> tuple[_Definition, _Definition] | None:
+    if len(parts) != 3 or not _EXPLAIN.fullmatch(parts[2]):
+        return None
+    terms = _TERMS.fullmatch(parts[0])
+    left, delimiter, right = parts[1].removesuffix(".").partition(", a ")
+    if not terms or not delimiter or ", a " in right:
+        return None
+    first = _definition(terms["first"], terms["second"], left)
+    second = _definition(terms["second"], terms["first"], right)
+    if first and second and first.name.casefold() != second.name.casefold():
+        return first, second
+    return None
+
+
+def _definition_reply(current: str, previous: str) -> str | None:
+    if pair := _definitions(_parts(current)):
+        return " ".join(term.statement() for term in pair)
+    if not (question := _TERM_FOLLOWUP.fullmatch(current)) or not (
+        pair := _definitions(_parts(previous))
+    ):
+        return None
+    patterns = [
+        pattern for pattern in (_TEXT, _IMPRINT) if pattern.search(question["goal"])
+    ]
+    if len(patterns) != 1:
+        return None
+    matches = [
+        definition for definition in pair if patterns[0].search(definition.meaning)
+    ]
+    if len(matches) != 1:
+        return None
+    result = matches[0]
+    ordinal = "pierwsze" if result is pair[0] else "drugie"
+    return f"Wybierz {ordinal} pojęcie, „{result.name}”. {result.statement()}"
+
+
+_SHARED_MATERIALS = re.compile(
+    rf"(?:do wspólnego użytku (?:jest|są)|do dyspozycji (?:jest|są)|mamy do wspólnego użytku) "
+    rf"(?P<first>{_TERM}) (?:oraz|i) (?P<second>{_TERM})[.]",
+    _FLAGS,
+)
+_COPY_SCOPE = re.compile(
+    rf"(?:oba|obie|obydwa|obydwie) (?:dostaną|mają dostać) (?:po )?kopi[ęei], "
+    rf"ale tylko (?P<label>{_TERM}) (?:ma mieć|dostanie) (?P<size>dużą|powiększoną) wersję[.]",
+    _FLAGS,
+)
+_TELL_GROUP = re.compile(
+    r"jak (?:to przekazać (?:kolegom|zespołowi|grupie)|to zapisać dla (?:kolegów|zespołu|grupy))\?",
+    _FLAGS,
+)
+_ADD_SHARED_DOWNLOAD = re.compile(
+    r"(?:dodaj informację|dopisz),? że (?:t(?:en|a|o) )?"
+    r"(?P<ordinal>pierwsz[aąy]|drug[aąi]) można (?:też |również )?pobrać "
+    r"jako (?P<format>plik tekstowy|PDF)[.!]?",
+    _FLAGS,
+)
+
+
+def _shared_references(
+    parts: list[str],
+) -> tuple[_Definition, _Definition, str, str] | None:
+    if len(parts) != 4 or not _TELL_GROUP.fullmatch(parts[3]):
+        return None
+    names = _SHARED_MATERIALS.fullmatch(parts[0])
+    copies = _COPY_SCOPE.fullmatch(parts[2])
+    if not names or not copies:
+        return None
+    first, second = names["first"], names["second"]
+    selected = copies["label"].casefold()
+    target = [
+        label
+        for label in (first, second)
+        if selected in {label.casefold(), label.split()[0].casefold()}
+    ]
+    if len(target) != 1:
+        return None
+    source = parts[1].removesuffix(".")
+    valid = []
+    for separator in re.finditer(r", (?:a )?", source, _FLAGS):
+        left = _definition(first, second, source[: separator.start()])
+        right = _definition(second, first, source[separator.end() :])
+        if left and right:
+            valid.append((left, right, target[0], copies["size"]))
+    return valid[0] if len(valid) == 1 else None
+
+
+def _shared_reference_reply(current: str, previous: str) -> str | None:
+    download = _ADD_SHARED_DOWNLOAD.fullmatch(current)
+    references = _shared_references(_parts(previous if download else current))
+    if not references:
+        return None
+    first, second, large_version, size = references
+    text = (
+        f"{first.statement()} {second.statement()} "
+        f"Dla obu przewidziano po kopii. Tylko „{large_version}” ma mieć {size} wersję."
+    )
+    if not download:
+        return text
+    selected = first if download["ordinal"].casefold().startswith("pierwsz") else second
+    return (
+        f"{text} Materiał „{selected.name}” można też pobrać jako {download['format']}."
+    )
+
+
+_SHELF_LIMIT = rf"(?:(?P<strict>poniżej|mniej niż) (?P<open_size>{_NUMBER})|do (?P<closed_size>{_NUMBER})) cm(?: (?P<inclusive>włącznie))?"
+_SHELF_START = re.compile(
+    rf"na półce mieści się (?P<item>{_WORD}) {_SHELF_LIMIT}[.]",
+    _FLAGS,
+)
+_SHELF_CHANGE = re.compile(
+    rf"(?:półkę wymieniono|wymieniliśmy półkę) na taką, która mieści "
+    rf"(?P<item>{_WORD}) {_SHELF_LIMIT}[.]",
+    _FLAGS,
+)
+_HANDLE = r"od góry|z boku"
+_SHELF_OPTIONS = re.compile(
+    rf"(?P<first>{_WORD}) ma (?P<first_size>{_NUMBER}) cm i uchwyt (?P<first_handle>{_HANDLE}), "
+    rf"(?:a )?(?P<second>{_WORD}) ma (?P<second_size>{_NUMBER}) cm i uchwyt (?P<second_handle>{_HANDLE})[.]",
+    _FLAGS,
+)
+_SHELF_PRIORITY = re.compile(
+    rf"co wybrać, jeśli najpierw ma się zmieścić, a potem liczy się uchwyt (?P<handle>{_HANDLE})\?",
+    _FLAGS,
+)
+_SHELF_REPICK = re.compile(
+    r"(?:powtórz decyzję|ponów wybór) z tymi samymi priorytetami[.!?]", _FLAGS
+)
+
+
+def _shelf_source(text: str) -> tuple[re.Match[str], re.Match[str], str] | None:
+    parts = _parts(text)
+    if len(parts) != 3:
+        return None
+    shelf = _SHELF_START.fullmatch(parts[0])
+    options = _SHELF_OPTIONS.fullmatch(parts[1])
+    priority = _SHELF_PRIORITY.fullmatch(parts[2])
+    if not shelf or not options or not priority:
+        return None
+    if options["first"].casefold() == options["second"].casefold():
+        return None
+    return shelf, options, priority["handle"].casefold()
+
+
+def _valid_shelf_limit(shelf: re.Match[str]) -> tuple[Decimal, bool] | None:
+    if bool(shelf["strict"]) == bool(shelf["inclusive"]):
+        return None
+    limit = _decimal(shelf["open_size"] or shelf["closed_size"])
+    return (limit, not bool(shelf["strict"])) if limit > 0 else None
+
+
+def _shelf_reply(current: str, previous: str) -> str | None:
+    parts = _parts(current)
+    update = (
+        _SHELF_CHANGE.fullmatch(parts[0])
+        if len(parts) == 2 and _SHELF_REPICK.fullmatch(parts[1])
+        else None
+    )
+    source = _shelf_source(previous if update else current)
+    if source is None:
+        return None
+    shelf, options, preferred_handle = source
+    item = shelf["item"].casefold()
+    if update and update["item"].casefold() not in {
+        item,
+        f"{item[:-1]}ę" if item.endswith("a") else item,
+    }:
+        return None
+    if (limit_rule := _valid_shelf_limit(update or shelf)) is None:
+        return None
+    limit, inclusive = limit_rule
+    fits = []
+    for side in ("first", "second"):
+        size = _decimal(options[f"{side}_size"])
+        if size <= 0:
+            return None
+        if size < limit or (inclusive and size == limit):
+            fits.append(side)
+    limit_text = (
+        f"do {_display(limit)} cm włącznie"
+        if inclusive
+        else f"poniżej {_display(limit)} cm"
+    )
+    if not fits:
+        return f"Żaden wariant się nie zmieści. Półka mieści tylko przedmioty {limit_text}."
+    if len(fits) == 1:
+        chosen = fits[0]
+        other = "second" if chosen == "first" else "first"
+        size = _display(_decimal(options[f"{chosen}_size"]))
+        other_size = _display(_decimal(options[f"{other}_size"]))
+        return (
+            f"Wybierz wariant „{options[chosen]}”. Ma {size} cm i spełnia warunek {limit_text}. "
+            f"Wariant „{options[other]}” ma {other_size} cm i przy tej granicy się nie zmieści."
+        )
+    preferred = [
+        side
+        for side in fits
+        if options[f"{side}_handle"].casefold() == preferred_handle
+    ]
+    fit_summary = (
+        f"Oba warianty mieszczą się na półce, która przyjmuje przedmioty {limit_text}."
+    )
+    if len(preferred) != 1:
+        return f"{fit_summary} Położenie uchwytu nie rozstrzyga wyboru."
+    return f"{fit_summary} Wybierz wariant „{options[preferred[0]]}”, bo ma uchwyt {preferred_handle}."
+
+
+_CARD_TITLE = rf"karta {_WORD}(?: {_WORD})?"
+_CARDS_START = re.compile(
+    r"(?:są|mamy) dwie karty(?: [^,.:!?]{2,45})?:\s*(?P<roles>.+)[.]", _FLAGS
+)
+_CARD_ROLE = re.compile(
+    rf"(?P<name>{_CARD_TITLE}) "
+    r"(?P<role>odszyfrowuje|wyjaśnia|objaśnia|opisuje|pokazuje|wskazuje|zawiera) "
+    r"(?P<detail>[^,.:!?]{2,85})",
+    _FLAGS,
+)
+_CARD_PLACE = rf"(?:na|przy|w|we|obok) {_WORD}(?: {_WORD}){{0,2}}"
+_CARD_AVAILABILITY = re.compile(
+    rf"obie (?:mają być dostępne|będą dostępne) (?P<shared>{_CARD_PLACE}), "
+    rf"(?:a )?tylko (?P<extra_card>{_TERM}) (?:będą|będzie|ma być) (?:także|również) "
+    rf"(?P<extra_place>{_CARD_PLACE})[.]",
+    _FLAGS,
+)
+_CARD_BRIEF = re.compile(
+    r"(?:co powiedzieć|jak przekazać te informacje) "
+    r"(?:wolontariuszom|obsłudze|zespołowi|pomocnikom) w dwóch zdaniach\?",
+    _FLAGS,
+)
+_CARD_AT_PLACE = re.compile(
+    rf"(?:co|która karta) ma (?:znaleźć się|być) (?P<place>{_CARD_PLACE})\?"
+    r"(?: (?P<scope>krótko i bez dopowiadania drugiego dokumentu|podaj tylko nazwę)[.!])?",
+    _FLAGS,
+)
+
+
+def _card_names(card: _Definition) -> set[str]:
+    full = card.name.casefold()
+    short = full.removeprefix("karta ")
+    names = {full, short}
+    if short.endswith("ów"):
+        stem = short[:-2]
+        names.add(stem + ("i" if stem.endswith(("k", "g")) else "y"))
+    return names
+
+
+def _card_source(
+    text: str,
+) -> tuple[_Definition, _Definition, str, _Definition, str] | None:
+    parts = _parts(text)
+    if len(parts) != 3 or not _CARD_BRIEF.fullmatch(parts[2]):
+        return None
+    cards = _CARDS_START.fullmatch(parts[0])
+    placement = _CARD_AVAILABILITY.fullmatch(parts[1])
+    if (
+        not cards
+        or not placement
+        or placement["shared"].casefold() == placement["extra_place"].casefold()
+    ):
+        return None
+    clauses = re.split(r",\s*(?:a )?(?=karta )|;\s*", cards["roles"], flags=_FLAGS)
+    if len(clauses) != 2:
+        return None
+    left, right = (_CARD_ROLE.fullmatch(clause) for clause in clauses)
+    if left is None or right is None:
+        return None
+    first, second = (
+        _Definition(m["name"], m["role"], m["detail"]) for m in (left, right)
+    )
+    if _card_names(first) & _card_names(second):
+        return None
+    name = placement["extra_card"].casefold()
+    extra = [card for card in (first, second) if name in _card_names(card)]
+    if len(extra) != 1:
+        return None
+    return first, second, placement["shared"], extra[0], placement["extra_place"]
+
+
+def _card_reply(current: str, previous: str) -> str | None:
+    question = _CARD_AT_PLACE.fullmatch(current)
+    data = _card_source(previous if question else current)
+    if data is None:
+        return None
+    first, second, shared, extra, place = data
+    at_place = place[0].upper() + place[1:]
+    if question:
+        if question["place"].casefold() != place.casefold():
+            return None
+        if (question["scope"] or "").casefold() == "podaj tylko nazwę":
+            return extra.name
+        return f"{at_place} ma być tylko {extra.name}."
+    return (
+        f"Obie karty mają być dostępne {shared}, przy czym {first.name} {first.relation} "
+        f"{first.meaning}, a {second.name} {second.relation} {second.meaning}. "
+        f"{at_place} ma być dodatkowo tylko {extra.name}."
+    )
+
+
+_PRODUCT_TIMES = re.compile(
+    rf"(?:na karcie|w opisie) produktu czas (?:pracy|działania) (?:to|wynosi) "
+    rf"(?P<work>{_NUMBER}) (?:minut[ayę]?|min), a czas przed pierwszym użyciem (?:to|wynosi) "
+    rf"(?P<prepare>{_NUMBER}) (?:minut[ayę]?|min)[.] "
+    r"(?:(?:klient|użytkownik) pomylił (?:te wielkości|te czasy|te liczby)[.] )?"
+    r"(?:wyjaśnij różnicę|co oznaczają te czasy)[!? .]?",
+    _FLAGS,
+)
+_PRODUCT_DEADLINE = re.compile(
+    rf"(?:mogę zacząć przygotowania|zacznę przygotowania) (?P<available>{_NUMBER}) "
+    r"(?:minut[ayę]?|min) przed (?:pokazem|prezentacją|demonstracją)[.] "
+    r"(?:co z tych dwóch liczb decyduje, czy zdążę, i z jakim wnioskiem"
+    r"|który z tych czasów rozstrzyga, czy zdążę|czy zdążę się przygotować)\?",
+    _FLAGS,
+)
+
+
+def _product_time_reply(current: str, previous: str) -> str | None:
+    deadline = _PRODUCT_DEADLINE.fullmatch(current)
+    info = _PRODUCT_TIMES.fullmatch(previous if deadline else current)
+    if info is None:
+        return None
+    work, preparation = (_decimal(info[name]) for name in ("work", "prepare"))
+    if min(work, preparation) <= 0:
+        return None
+    required = _display(preparation)
+    if deadline is None:
+        return (
+            f"Czas pracy wynosi {_display(work)} min. "
+            f"Przed pierwszym użyciem trzeba uwzględnić {required} min przygotowania."
+        )
+    available = _decimal(deadline["available"])
+    difference = preparation - available
+    if difference > 0:
+        conclusion = f"Nie zdążysz. Zabraknie {_display(difference)} min."
+    elif difference < 0:
+        conclusion = f"Zdążysz. Pozostanie {_display(-difference)} min zapasu."
+    else:
+        conclusion = "Zdążysz dokładnie na czas, bez zapasu."
+    return (
+        f"Decyduje wymagany czas przed pierwszym użyciem, czyli {required} min. "
+        f"Masz {_display(available)} min. {conclusion}"
+    )
+
+
+_CARRY_FEATURES = r"(?:długi|krótki) uchwyt i (?P<{side}>niewielki|mały|duży) worek"
+_CARRY_PAIR = re.compile(
+    rf"w ofercie (?P<first>{_WORD}) jest {_CARRY_FEATURES.format(side='first_size')}, "
+    rf"a w ofercie (?P<second>{_WORD}) (?:jest )?{_CARRY_FEATURES.format(side='second_size')}[.]",
+    _FLAGS,
+)
+_CARRY_COST = re.compile(
+    rf"(?:obydwie|obie|oba|obydwa) kosztują {_NUMBER} zł[.]",
+    _FLAGS,
+)
+_NEED_CAPACITY = re.compile(
+    r"(?:potrzebuję|muszę|chcę) zmieścić [^,.!?]{3,55} "
+    r"i nie zależy mi na długości uchwytu[.]",
+    _FLAGS,
+)
+_CARRY_CHOICE = re.compile(r"który (?:wariant|model)(?: wybrać)?\?", _FLAGS)
+_SHOULDER_CHANGE = re.compile(
+    r"(?:(?:jeśli|jeżeli|teraz) [^.!?]{1,95}, a )?(?:od )?teraz zależy mi na "
+    r"noszeniu (?:przez|na) ramię[,.]\s*"
+    r"którą cechę (?:porównać|sprawdzić)\?",
+    _FLAGS,
+)
+
+
+def _carry_pair(parts: list[str]) -> re.Match[str] | None:
+    if (
+        len(parts) == 4
+        and _CARRY_COST.fullmatch(parts[1])
+        and _NEED_CAPACITY.fullmatch(parts[2])
+        and _CARRY_CHOICE.fullmatch(parts[3])
+        and (pair := _CARRY_PAIR.fullmatch(parts[0]))
+        and pair["first"].casefold() != pair["second"].casefold()
+    ):
+        return pair
+    return None
+
+
+def _carry_reply(current: str, previous: str) -> str | None:
+    if _SHOULDER_CHANGE.fullmatch(current) and _carry_pair(_parts(previous)):
+        return (
+            "Porównaj długość uchwytów. Sprawdź, czy któryś z uchwytów "
+            "pozwala wygodnie nosić worek na ramieniu."
+        )
+    pair = _carry_pair(_parts(current))
+    if pair is None:
+        return None
+    larger = [
+        side
+        for side in ("first", "second")
+        if pair[f"{side}_size"].casefold() == "duży"
+    ]
+    if len(larger) == 1:
+        return f"Wybierz wariant {pair[larger[0]]}. Ma większy worek, a cena obu jest taka sama."
+    return None
+
+
+_MATERIAL_ROOM = re.compile(rf"w {_WORD} ", _FLAGS)
+_MATERIAL_COPIES = re.compile(
+    rf"(?P<place>{_CARD_PLACE}) (?:będzie|ma być) kopia obu (?:rzeczy|materiałów)[.]",
+    _FLAGS,
+)
+_MATERIAL_EXTRA = re.compile(
+    rf"(?:jedynie|tylko) (?P<name>{_TERM}) (?:wisi również|jest dodatkowo) "
+    rf"(?P<place>{_CARD_PLACE})[.]",
+    _FLAGS,
+)
+_MATERIAL_BRIEF = re.compile(r"co przekazać (?:ekipie|zespołowi|obsłudze)\?", _FLAGS)
+_MATERIAL_INQUIRY = re.compile(
+    rf"gość (?:jest już|znajduje się) (?P<place>{_CARD_PLACE}) i "
+    r"(?:pyta o|szuka) (?P<goal>[^.!?]{4,70})[.] "
+    r"do którego materiału go odesłać i dlaczego\?",
+    _FLAGS,
+)
+_WAY_NOUN = re.compile(r"\bdrog(?:a|ę|i|ą)\b", _FLAGS)
+
+
+def _material_purpose(text: str) -> str:
+    normalized = _WAY_NOUN.sub("droga", text.casefold())
+    return re.sub(r"\bprzejś(?:cia|cie|ć)\b", "przejście", normalized)
+
+
+def _material_available_reply(current: str, previous: str) -> str | None:
+    inquiry = _MATERIAL_INQUIRY.fullmatch(current)
+    parts = _parts(previous if inquiry else current)
+    if len(parts) != 4 or not _MATERIAL_BRIEF.fullmatch(parts[3]):
+        return None
+    lead = _MATERIAL_ROOM.match(parts[0])
+    if lead is None:
+        return None
+    declaration = parts[0][lead.end() :].removesuffix(".")
+    first_clause, separator, second_clause = declaration.partition(", a ")
+    shared = _MATERIAL_COPIES.fullmatch(parts[1])
+    additional = _MATERIAL_EXTRA.fullmatch(parts[2])
+    first = _DEFINITION.fullmatch(first_clause)
+    second = _DEFINITION.fullmatch(second_clause)
+    if not separator or not first or not second or not shared or not additional:
+        return None
+    first_term, second_term = (
+        _Definition(m["term"], m["relation"], m["meaning"]) for m in (first, second)
+    )
+    if first_term.name.casefold() == second_term.name.casefold():
+        return None
+    requested_name = additional["name"].casefold()
+    selected = [
+        term
+        for term in (first_term, second_term)
+        if requested_name in {term.name.casefold(), term.name.split()[0].casefold()}
+    ]
+    extra_place = additional["place"]
+    if len(selected) != 1 or shared["place"].casefold() == extra_place.casefold():
+        return None
+    extra = selected[0]
+    if inquiry:
+        if inquiry["place"].casefold() != extra_place.casefold() or _material_purpose(
+            inquiry["goal"]
+        ) != _material_purpose(extra.meaning):
+            return None
+        return (
+            f"Odeślij go do materiału „{extra.name}” {extra_place}. {extra.statement()}"
+        )
+    shared_place = shared["place"]
+    return (
+        f"{shared_place[0].upper()}{shared_place[1:]} będą kopie obu materiałów. "
+        f"{first_term.statement()} {second_term.statement()} "
+        f"{extra_place[0].upper()}{extra_place[1:]} będzie dodatkowo tylko materiał „{extra.name}”."
+    )
+
+
+_DOCUMENT_LABEL = rf"wersja {_TERM}"
+_DOCUMENT_PAIR = re.compile(
+    rf"w dokumentach (?P<first>{_DOCUMENT_LABEL}) (?P<first_rel>zawiera|ma) "
+    rf"(?P<first_body>[^,.!?]{{4,100}}), a (?P<second>{_DOCUMENT_LABEL}) "
+    r"(?P<second_rel>zawiera|ma) (?P<second_body>[^,.!?]{4,100})[.]",
+    _FLAGS,
+)
+_DOCUMENT_GOAL = re.compile(
+    r"którą otworzy osoba szukająca (?:uwag|komentarzy) do "
+    r"(?:ustawienia|rozstawienia) sprzętu\?",
+    _FLAGS,
+)
+_DOCUMENT_CHANGE = re.compile(
+    r"po zmianie celem jest przekazanie (?:gościom|uczestnikom|odwiedzającym) "
+    r"(?:dokładnej godziny i sali|dokładnego czasu i pomieszczenia)[.] którą wersję im dać\?",
+    _FLAGS,
+)
+_DOCUMENT_COMMENTS = re.compile(r"\b(?:uwag\w*|komentarz\w*)\b", _FLAGS)
+_DOCUMENT_TIMES = re.compile(r"\b(?:godzin\w*|termin\w*|czasy)\b", _FLAGS)
+_DOCUMENT_ROOMS = re.compile(r"\b(?:sal[aeiom]*|pomieszcze\w*)\b", _FLAGS)
+_DOCUMENT_UNCERTAIN = re.compile(r"\b(?:nie|bez|brak|może|prawdopodobnie)\b", _FLAGS)
+
+
+def _document_reply(current: str, previous: str) -> str | None:
+    changed = _DOCUMENT_CHANGE.fullmatch(current)
+    parts = _parts(previous if changed else current)
+    if len(parts) != 2 or not _DOCUMENT_GOAL.fullmatch(parts[1]):
+        return None
+    source = _DOCUMENT_PAIR.fullmatch(parts[0])
+    if source is None or source["first"].casefold() == source["second"].casefold():
+        return None
+    conditions = (
+        (_DOCUMENT_TIMES, _DOCUMENT_ROOMS) if changed else (_DOCUMENT_COMMENTS,)
+    )
+    selected = [
+        side
+        for side in ("first", "second")
+        if not _DOCUMENT_UNCERTAIN.search(source[f"{side}_body"])
+        and all(
+            requirement.search(source[f"{side}_body"]) for requirement in conditions
+        )
+    ]
+    if len(selected) != 1:
+        return None
+    side = selected[0]
+    label, relation, contents = (
+        source[side],
+        source[f"{side}_rel"],
+        source[f"{side}_body"],
+    )
+    return f"Wybierz dokument „{label}”, bo {relation} {contents}."
+
+
+_PATH_STOPS = r"przystank(?:i|ów)"
+_PATH_PAIR = re.compile(
+    rf"na (?:jednej|pierwszej) trasie (?:jest|są) (?P<first>[1-9][0-9]?) "
+    rf"(?:krótk(?:ie|ich) )?{_PATH_STOPS}, na drugiej (?:(?:tylko|aż) )?"
+    rf"(?P<second>[1-9][0-9]?)(?: {_PATH_STOPS})?, ale (?P<scope>oba|wszystkie) "
+    r"są przy stanowiskach dotykowych[.] "
+    r"jak porównać trasy pod kątem liczby przystanków i rodzaju doświadczenia\?",
+    _FLAGS,
+)
+_PATH_GOAL = re.compile(
+    r"(?:dzieci|goście|uczestnicy) chcą przede wszystkim korzystać ze stanowisk dotykowych[.] "
+    r"co polecić (?:z danych, które mamy|na podstawie tych informacji)\?",
+    _FLAGS,
+)
+
+
+def _path_reply(current: str, previous: str) -> str | None:
+    wants_touch = _PATH_GOAL.fullmatch(current)
+    evidence = _PATH_PAIR.fullmatch(previous if wants_touch else current)
+    if evidence is None:
+        return None
+    first, second = (int(evidence[k]) for k in ("first", "second"))
+    if second < 2 or (evidence["scope"].casefold() == "oba" and second != 2):
+        return None
+    # The count modifies stops, not the number of distinct touch stations.
+    confirmed = (
+        f"Na drugiej trasie liczba przystanków to {second}. "
+        "Każdy z nich jest przy stanowisku dotykowym."
+    )
+    if wants_touch:
+        return f"Wybierz drugą trasę. {confirmed}"
+    first_count = (
+        "jeden przystanek"
+        if first == 1
+        else f"{first} przystanki"
+        if first % 10 in {2, 3, 4} and first % 100 not in {12, 13, 14}
+        else f"{first} przystanków"
+    )
+    return (
+        f"Pierwsza trasa ma {first_count}. {confirmed} "
+        "Dla pierwszej trasy nie podano, przy czym znajdują się przystanki."
+    )
+
+
+_ENCLOSURE_LIMIT = re.compile(
+    rf"do (?P<container>etui|futerału|pokrowca) mieści się (?:obiekt|przedmiot|element) "
+    rf"o boku {_SHELF_LIMIT}[.]",
+    _FLAGS,
+)
+_ENCLOSURE_CHANGE = re.compile(
+    rf"(?P<container>etui|futerał|pokrowiec) wymieniono, teraz mieści {_SHELF_LIMIT}[.]",
+    _FLAGS,
+)
+_ENCLOSURES = {"etui": "etui", "futerału": "futerał", "pokrowca": "pokrowiec"}
+_FLEXIBLE = r"ugina się|jest giętk[aiy]|jest elastyczn[aye]"
+_RIGID = r"jest sztywn[aye]|nie ugina się"
+_BENDING_OPTIONS = re.compile(
+    rf"(?P<first>{_WORD}) ma (?P<first_size>{_NUMBER}) cm i (?P<first_feature>{_FLEXIBLE}|{_RIGID}), "
+    rf"(?:a )?(?P<second>{_WORD}) ma (?P<second_size>{_NUMBER}) cm i (?P<second_feature>{_FLEXIBLE}|{_RIGID})[.]",
+    _FLAGS,
+)
+_BENDING_PRIORITY = re.compile(
+    r"najpierw musi się zmieścić, potem liczy się możliwość zgięcia[.] co wybrać\?",
+    _FLAGS,
+)
+_BENDING_REPICK = re.compile(
+    r"(?:z tymi samymi priorytetami wskaż wybór|ponów wybór z tymi samymi priorytetami)[.!]",
+    _FLAGS,
+)
+
+
+def _bending_reply(current: str, previous: str) -> str | None:
+    now = _parts(current)
+    update = (
+        _ENCLOSURE_CHANGE.fullmatch(now[0])
+        if len(now) == 2 and _BENDING_REPICK.fullmatch(now[1])
+        else None
+    )
+    parts = _parts(previous) if update else now
+    if (
+        len(parts) != 4
+        or not _BENDING_PRIORITY.fullmatch(" ".join(parts[2:]))
+        or not (original := _ENCLOSURE_LIMIT.fullmatch(parts[0]))
+        or not (options := _BENDING_OPTIONS.fullmatch(parts[1]))
+        or options["first"].casefold() == options["second"].casefold()
+    ):
+        return None
+    if (
+        update
+        and update["container"].casefold()
+        != _ENCLOSURES[original["container"].casefold()]
+    ):
+        return None
+    bound = update or original
+    strict = bool(bound["strict"])
+    if strict and bound["inclusive"]:
+        return None
+    limit = _decimal(bound["open_size"] or bound["closed_size"])
+    sizes = {side: _decimal(options[f"{side}_size"]) for side in ("first", "second")}
+    if min(limit, *sizes.values()) <= 0:
+        return None
+    fits = [
+        side
+        for side, size in sizes.items()
+        if size < limit or (not strict and size == limit)
+    ]
+    limit_label = (
+        f"poniżej {_display(limit)} cm"
+        if strict
+        else f"do {_display(limit)} cm włącznie"
+    )
+    if not fits:
+        return f"Żaden wariant się nie mieści przy granicy {limit_label}."
+    if len(fits) == 1:
+        chosen = fits[0]
+        other = "second" if chosen == "first" else "first"
+        return (
+            f"Wybierz „{options[chosen]}”. Ma {_display(sizes[chosen])} cm i mieści się przy granicy {limit_label}. "
+            f"„{options[other]}” ma {_display(sizes[other])} cm i się nie mieści."
+        )
+    flexible = [
+        side
+        for side in fits
+        if re.fullmatch(_FLEXIBLE, options[f"{side}_feature"], _FLAGS)
+    ]
+    opening = f"Oba warianty mieszczą się przy granicy {limit_label}."
+    if len(flexible) != 1:
+        return f"{opening} Możliwość zgięcia nie rozstrzyga wyboru."
+    return (
+        f"{opening} Wybierz „{options[flexible[0]]}”, ze względu na możliwość zgięcia."
+    )
+
+
+_WHEELS_DIFF = re.compile(
+    r"jeden wózek ma (?P<first>duże|małe) koła, drugi ma (?P<second>małe|duże)[.] "
+    r"(?:sprzedawca|producent) nie podał (?:maksymalnych|dopuszczalnych) obciążeń[.] "
+    r"którą różnicę można potwierdzić\?",
+    _FLAGS,
+)
+_CARGO_GOAL = re.compile(
+    r"(?:mam|muszę|chcę) przewieźć (?P<cargo>ciężkie pudełko|ciężką skrzynię|ciężki ładunek)[.] "
+    r"co (?:porównać|sprawdzić) przed wyborem (?:przy tych informacjach|na podstawie tych informacji)\?",
+    _FLAGS,
+)
+
+
+def _wheel_reply(current: str, previous: str) -> str | None:
+    cargo = _CARGO_GOAL.fullmatch(current)
+    source = _WHEELS_DIFF.fullmatch(previous if cargo else current)
+    if source is None or source["first"].casefold() == source["second"].casefold():
+        return None
+    if cargo:
+        object_name = {
+            "ciężkie pudełko": "pudełka",
+            "ciężką skrzynię": "skrzyni",
+            "ciężki ładunek": "ładunku",
+        }[cargo["cargo"].casefold()]
+        return (
+            f"Porównaj masę {object_name} z dopuszczalnym obciążeniem każdego wózka. "
+            "W danych brakuje tych obciążeń, a wielkość kół nie potwierdza nośności."
+        )
+    return (
+        f"Wielkość kół jest potwierdzona: jeden wózek ma {source['first']} koła, drugi {source['second']}. "
+        "Nie podano dopuszczalnych obciążeń."
+    )
+
+
+_APP_OFFLINE_PAIR = re.compile(
+    rf"aplikacja (?P<offline>{_WORD}) działa bez (?:połączenia|internetu|sieci), "
+    rf"ale nie synchronizuje wpisów[.] aplikacja (?P<sync>{_WORD}) synchronizuje(?: wpisy)?, "
+    r"(?:ale|lecz) wymaga (?:sieci|internetu|połączenia)[.] "
+    r"która ma sens (?:w piwnicy|w pomieszczeniu) bez zasięgu\?",
+    _FLAGS,
+)
+_APP_CONNECTED = re.compile(
+    r"przenosimy stanowisko do miejsca z (?:internetem|siecią)[.] "
+    r"teraz (?:wszystkie zespoły muszą widzieć swoje wpisy|wpisy mają być wspólne)[.] "
+    r"(?:wybierz ponownie|ponów wybór)[.!]",
+    _FLAGS,
+)
+
+
+def _app_reply(current: str, previous: str) -> str | None:
+    connected = _APP_CONNECTED.fullmatch(current)
+    options = _APP_OFFLINE_PAIR.fullmatch(previous if connected else current)
+    if options is None or options["offline"].casefold() == options["sync"].casefold():
+        return None
+    if connected:
+        return (
+            f"Wybierz „{options['sync']}”. W nowym miejscu dostępna jest sieć, "
+            "więc aplikacja może synchronizować wpisy między zespołami."
+        )
+    return f"Wybierz „{options['offline']}”, bo działa bez połączenia. Wpisów nie synchronizuje."
+
+
+_PAPER_SIZE = r"A[0-9]"
+_FRAME_PAIR = re.compile(
+    rf"(?P<kind>ramka|uchwyt) (?P<single>{_WORD}) mieści jeden dokument (?P<large>{_PAPER_SIZE})"
+    rf"[,;] (?:a )?(?P=kind) (?P<pair>{_WORD}) mieści (?P<small_count>dwa|trzy) "
+    rf"(?P<small>{_PAPER_SIZE}) obok siebie, ale nie mieści (?P=large)[.] "
+    rf"(?:do pokazu|na pokaz) potrzebuję (?P<qty>dwóch|trzech) (?P=small) obok siebie[.] "
+    r"wybierz z krótką przyczyną[.!]",
+    _FLAGS,
+)
+_FRAME_REPICK = re.compile(
+    rf"okazało się, że będzie jeden dokument (?P<format>{_PAPER_SIZE})[.] "
+    r"którą teraz wybrać\?",
+    _FLAGS,
+)
+
+
+def _frame_reply(current: str, previous: str) -> str | None:
+    repick = _FRAME_REPICK.fullmatch(current)
+    source = _FRAME_PAIR.fullmatch(previous if repick else current)
+    if (
+        source is None
+        or source["single"].casefold() == source["pair"].casefold()
+        or source["large"].casefold() == source["small"].casefold()
+        or source["qty"].casefold()
+        != {"dwa": "dwóch", "trzy": "trzech"}[source["small_count"].casefold()]
+    ):
+        return None
+    if repick:
+        if repick["format"].casefold() != source["large"].casefold():
+            return None
+        return (
+            f"Wybierz „{source['single']}”, bo mieści dokument {source['large']}. "
+            f"„{source['pair']}” go nie mieści."
+        )
+    return (
+        f"Wybierz „{source['pair']}”, bo mieści {source['small_count']} "
+        f"{source['small']} obok siebie."
+    )
+
+
+_LIST_DAY = r"poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę"
+_LIST_ITEM = r"[^\W\d_]+(?:-[^\W\d_]+)?"
+_ITEMS = rf"{_LIST_ITEM}(?:, {_LIST_ITEM}){{0,5}} i {_LIST_ITEM}"
+_DAY_LISTS = re.compile(
+    rf"w(?:e)? (?P<first>{_LIST_DAY}) (?:przydadzą się|potrzebne są) (?P<left>{_ITEMS}), "
+    rf"(?:a )?w(?:e)? (?P<second>{_LIST_DAY}) (?P<right>{_ITEMS})[.!] "
+    r"(?:co wspólne|co jest wspólne)\?",
+    re.I,
+)
+_LIST_ADD = re.compile(
+    rf"w(?:e)? (?P<day>{_LIST_DAY}) (?:dokładamy|dodajemy) (?P<item>{_LIST_ITEM}), "
+    r"reszta bez zmian[.!] (?:co teraz wspólne|co jest teraz wspólne)\?",
+    re.I,
+)
+_LIST_ONLY = re.compile(
+    rf"co zostało tylko w(?:e)? (?P<day>{_LIST_DAY}) po (?:ostatniej )?zmianie\?",
+    re.I,
+)
+
+
+_LIST_LABEL = r"[A-Z]"
+_TABLE_NAME = r"(?:stolik|stół|stanowisko|blat)"
+_TABLE_LISTS = re.compile(
+    rf"na {_TABLE_NAME} (?P<first>{_LIST_LABEL}) (?:trzeba przygotować|przygotuj) "
+    rf"(?P<left>{_ITEMS}), (?:a )?na (?:{_TABLE_NAME} )?(?P<second>{_LIST_LABEL}) "
+    rf"(?P<right>{_ITEMS})[.!] "
+    r"(?:które elementy są wspólne|co jest wspólne)\?",
+    re.I,
+)
+_KIT_LISTS = re.compile(
+    rf"(?P<scope>zestaw|pakiet) (?P<first>{_LIST_LABEL}) zawiera (?P<left>{_ITEMS}), "
+    rf"(?:a )?(?P=scope) (?P<second>{_LIST_LABEL}) (?:zawiera )?(?P<right>{_ITEMS})[.!] "
+    r"(?:wskaż wspólne przedmioty|wypisz wspólne przedmioty|które przedmioty są wspólne)[.?!]?",
+    re.I,
+)
+_NAMED_LISTS = re.compile(
+    rf"lista (?P<first>{_LIST_LABEL}) (?:to|zawiera) (?P<left>{_ITEMS}), "
+    rf"(?:a )?(?:lista )?(?P<second>{_LIST_LABEL}) (?:to |zawiera )?(?P<right>{_ITEMS})[.!] "
+    r"(?:co mają wspólnego|które elementy są wspólne)\?",
+    re.I,
+)
+_LIST_DIRECT_ADD = re.compile(
+    rf"(?:dodaj|dopisz) (?P<item>{_LIST_ITEM}) do (?:listy )?(?P<label>{_LIST_LABEL})",
+    re.I,
+)
+_LIST_DIRECT_REMOVE = re.compile(
+    rf"(?:usuń|wykreśl) (?P<item>{_LIST_ITEM}) z (?:listy )?(?P<label>{_LIST_LABEL})",
+    re.I,
+)
+_LABELED_LIST_REMOVE = re.compile(
+    rf"z (?:(?P<scope>listy|zestawu|pakietu) )?(?P<label>{_LIST_LABEL}) (?:jednocześnie )?"
+    rf"(?:usuwamy|wykreślamy) (?P<item>{_LIST_ITEM})",
+    re.I,
+)
+_LABELED_LIST_ADD = re.compile(
+    rf"do (?:(?P<scope>listy|zestawu|pakietu) )?(?P<label>{_LIST_LABEL}) "
+    rf"(?:dopisujemy|dodajemy) (?P<item>{_LIST_ITEM})",
+    re.I,
+)
+_LABELED_LIST_UPDATE = re.compile(
+    r"(?P<operations>[^.!?\n]{10,140})[.!] "
+    r"(?:jakie teraz są wspólne|które elementy są teraz wspólne|co jest teraz wspólne"
+    r"|wskaż teraz część wspólną|wypisz wspólne po zmianach)[.?!]?",
+    re.I,
+)
+_TABLE_ONLY = re.compile(
+    rf"(?:które pozostają|co zostaje|co zostało) (?:tylko|wyłącznie) dla (?P<label>{_LIST_LABEL})\?",
+    re.I,
+)
+_KIT_ONLY = re.compile(
+    rf"wypisz wszystko, co jest tylko w (?P<label>{_LIST_LABEL})[.?!]?", re.I
+)
+
+
+def _item_lists(initial: re.Match[str]) -> dict[str, dict[str, str]]:
+    return {
+        initial[group].casefold(): {
+            item.casefold(): item
+            for item in re.split(", | i ", initial[scope], flags=re.I)
+        }
+        for group, scope in (("first", "left"), ("second", "right"))
+    }
+
+
+def _apply_labeled_list_update(
+    lists: dict[str, dict[str, str]], update: re.Match[str], scope: str
+) -> bool:
+    changes: set[tuple[str, str]] = set()
+    for clause in re.split(r", (?:a )?| (?:i|oraz) ", update["operations"], flags=re.I):
+        add = _LABELED_LIST_ADD.fullmatch(clause) or _LIST_DIRECT_ADD.fullmatch(clause)
+        edit = (
+            add
+            or _LABELED_LIST_REMOVE.fullmatch(clause)
+            or _LIST_DIRECT_REMOVE.fullmatch(clause)
+        )
+        if edit is None:
+            return False
+        if edit.groupdict().get("scope") and edit["scope"].casefold() not in {
+            "listy",
+            scope,
+        }:
+            return False
+        label, item = (edit[name].casefold() for name in ("label", "item"))
+        positions = lists.get(label)
+        if positions is None or (label, item) in changes:
+            return False
+        changes.add((label, item))
+        if add:
+            positions.setdefault(item, add["item"])
+        elif item in positions:
+            del positions[item]
+        else:
+            return False
+    return True
+
+
+def _named_list_comparison(current: str, users: Sequence[str]) -> str | None:
+    source = (
+        _TABLE_LISTS.fullmatch(current)
+        or _KIT_LISTS.fullmatch(current)
+        or _NAMED_LISTS.fullmatch(current)
+    )
+    exclusive = _TABLE_ONLY.fullmatch(current) or _KIT_ONLY.fullmatch(current)
+    update = _LABELED_LIST_UPDATE.fullmatch(current)
+    if source is None and update is None and exclusive is None:
+        return None
+
+    edits = [update] if update is not None else []
+    if source is None:
+        for prior in reversed(users):
+            if (
+                source := _TABLE_LISTS.fullmatch(prior)
+                or _KIT_LISTS.fullmatch(prior)
+                or _NAMED_LISTS.fullmatch(prior)
+            ):
+                break
+            if (previous := _LABELED_LIST_UPDATE.fullmatch(prior)) is None:
+                return None
+            edits.append(previous)
+    if source is None or source["first"].casefold() == source["second"].casefold():
+        return None
+    lists = _item_lists(source)
+    scope = f"{source['scope'].casefold()}u" if source.re is _KIT_LISTS else "listy"
+    if any(
+        not _apply_labeled_list_update(lists, edit, scope) for edit in reversed(edits)
+    ):
+        return None
+
+    first, second = lists.values()
+    if exclusive:
+        selected = lists.get(exclusive["label"].casefold())
+        if selected is None:
+            return None
+        other = second if selected is first else first
+        items = [value for key, value in selected.items() if key not in other]
+        prefix = f"Tylko dla {exclusive['label']}"
+    else:
+        items = [value for key, value in first.items() if key in second]
+        prefix = "Dla obu list"
+    if not items:
+        return f"{prefix}: brak pozycji."
+    if source.re is _NAMED_LISTS:
+        return f"{prefix}: {', '.join(items)}."
+    if source.re is _KIT_LISTS:
+        kit = source["scope"].casefold()
+        description = (
+            f"Tylko {kit} {exclusive['label']} zawiera"
+            if exclusive
+            else "Część wspólna obejmuje"
+        )
+        return f"{description} {', '.join(items)}."
+    return f"{prefix} przygotuj: {', '.join(items)}."
+
+
+def _list_comparison(current: str, users: Sequence[str]) -> str | None:
+    initial = _DAY_LISTS.fullmatch(current)
+    if initial:
+        addition, exclusive = None, None
+    else:
+        change = _LIST_ADD.fullmatch(current)
+        exclusive = _LIST_ONLY.fullmatch(current)
+        if change and users:
+            initial, addition = _DAY_LISTS.fullmatch(users[-1]), change
+        elif exclusive and len(users) >= 2:
+            initial, addition = (
+                _DAY_LISTS.fullmatch(users[-2]),
+                _LIST_ADD.fullmatch(users[-1]),
+            )
+            if addition is None:
+                return None
+        else:
+            return None
+    if initial is None or initial["first"].casefold() == initial["second"].casefold():
+        return None
+    lists = _item_lists(initial)
+    if addition:
+        selected = lists.get(addition["day"].casefold())
+        if selected is None:
+            return None
+        item = addition["item"]
+        selected.setdefault(item.casefold(), item)
+    first, second = lists.values()
+    if exclusive:
+        day = exclusive["day"].casefold()
+        if day not in lists:
+            return None
+        selected = lists[day]
+        other = second if selected is first else first
+        items = [label for key, label in selected.items() if key not in other]
+        preposition = "we" if day == "wtorek" else "w"
+        prefix = f"Tylko {preposition} {exclusive['day']}"
+    else:
+        items = [label for key, label in first.items() if key in second]
+        prefix = "Wspólne"
+    return f"{prefix}: {', '.join(items)}." if items else f"{prefix}: brak pozycji."
+
+
+def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | None:
+    """Prefer source evidence and a changed constraint over prior assistant guesses."""
+    current = " ".join(text.split())
+    previous = _last_user(history)
+    if len(current) > 600:
+        return None
+    users = [" ".join(turn.content.split()) for turn in history if turn.role == "user"][
+        -4:
+    ]
+    return (
+        _support_reply(current, previous)
+        or _fits_reply(current, previous)
+        or _material_reply(current, previous)
+        or _definition_reply(current, previous)
+        or _shared_reference_reply(current, previous)
+        or _shelf_reply(current, previous)
+        or _card_reply(current, previous)
+        or _product_time_reply(current, previous)
+        or _carry_reply(current, previous)
+        or _material_available_reply(current, previous)
+        or _document_reply(current, previous)
+        or _path_reply(current, previous)
+        or _bending_reply(current, previous)
+        or _wheel_reply(current, previous)
+        or _app_reply(current, previous)
+        or _frame_reply(current, previous)
+        or dialog_evidence(current, previous)
+        or _list_comparison(
+            current, [turn.content for turn in history[-4:] if turn.role == "user"]
+        )
+        or _named_list_comparison(current, [" ".join(text.split()) for text in users])
+    )

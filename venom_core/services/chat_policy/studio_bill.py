@@ -13,6 +13,8 @@ NAME = r"(?P<name>[a-ząćęłńóśźż]+(?:-[a-ząćęłńóśźż]+)?)"
 COUNT = r"(?P<count>[1-9][0-9]{0,5})"
 PRICE = r"(?P<price>(?:0|[1-9][0-9]{0,6})(?:[.,][0-9]{1,2})?) (?:zł|pln)"
 UNIT = r"(?: za sztukę)?"
+BARE_PRICE = re.compile(PRICE + UNIT, re.I)
+BARE_COUNT = re.compile(COUNT + r" sztuk(?:i)?", re.I)
 PREFIX = re.compile(r"^(?:nowy )?rachunek\s*:\s*", re.I)
 CALCULATOR = re.compile(r"^kalkulator\s*:\s*", re.I)
 COST_QUESTION = re.compile(
@@ -80,6 +82,15 @@ class Item:
     count: str | None = None
     price: str | None = None
     removed: bool = False
+    price_disputed: bool = False
+    count_disputed: bool = False
+
+    def needs_value(self, price: bool) -> bool:
+        return (
+            (self.price is None or self.price_disputed)
+            if price
+            else (self.count is None or self.count_disputed)
+        )
 
 
 def _stems(name: str) -> set[str]:
@@ -122,6 +133,12 @@ class Bill:
             r"(?:\b(?:i|oraz|plus)|[,;:]|\.{2,}|…)\s*$", text, re.I
         ):
             raise BillQuestion(GENERIC)
+        short_answer = text.strip().rstrip(".!").strip()
+        if match := BARE_PRICE.fullmatch(short_answer) or BARE_COUNT.fullmatch(
+            short_answer
+        ):
+            self._fill_missing(match)
+            return
         text = _description(text.strip().lower())
         text = re.sub(r"\s*\(po (" + PRICE + r")\)", r" po \1", text)
         text = re.sub(r",\s*każd[aye] (?:po|kosztuje) ", " po ", text)
@@ -151,10 +168,30 @@ class Bill:
             offer = None
 
     def _apply_clause(self, clause: str) -> None:
+        if _bare_value(clause):
+            raise BillQuestion(GENERIC)
         if match := ROW.fullmatch(INTRO.sub("", clause, count=1)):
             self.add(match["name"], match["count"], match["price"])
         elif not (self._revise(clause) or self._scope(clause) or clause == FILLER):
             raise BillQuestion(GENERIC)
+
+    def _fill_missing(self, match: re.Match[str]) -> None:
+        price = "price" in match.groupdict()
+        active = (
+            item
+            for name, item in self.items.items()
+            if not item.removed and self.only in (None, name)
+        )
+        missing = [item for item in active if item.needs_value(price)]
+        if len(missing) != 1:
+            raise BillQuestion(
+                "Dla której pozycji podajesz wartość? Podaj jej nazwę oraz ilość lub cenę."
+            )
+        item = missing[0]
+        if price:
+            item.price, item.price_disputed = match["price"], False
+        else:
+            item.count, item.count_disputed = match["count"], False
 
     def _active(self, name: str) -> Item:
         item = self.items[self.resolve(name)]
@@ -166,7 +203,9 @@ class Bill:
 
     def _revise(self, clause: str) -> bool:
         if match := CHANGE_COUNT.fullmatch(clause):
-            self._active(match["name"]).count = match["count"]
+            item = self._active(match["name"])
+            item.count = match["count"]
+            item.count_disputed = False
         elif match := CHANGE_FROM.fullmatch(clause):
             self._change_from(match)
         elif match := CHANGE_PRICE.fullmatch(clause):
@@ -190,17 +229,21 @@ class Bill:
         if current is None or calculate(current.replace(",", ".")) != calculate(
             match["old"].replace(",", ".")
         ):
-            raise BillQuestion(
-                "Poprzednia wartość nie zgadza się z rachunkiem. Która wartość jest aktualna?"
-            )
+            if price:
+                item.price_disputed = True
+            else:
+                item.count_disputed = True
+            return
         if price:
             item.price = new
+            item.price_disputed = False
         elif (
             new.isdigit()
             and int(new) > 0
             and not (match["old_unit"] or match["new_unit"])
         ):
             item.count = new
+            item.count_disputed = False
         else:
             raise BillQuestion(GENERIC)
 
@@ -226,10 +269,10 @@ class Bill:
             return
         item = self._active(name)
         if item.price is not None and not correction:
-            raise BillQuestion(
-                f"Czy zmieniasz cenę pozycji „{name}”? Podaj aktualną cenę jednostkową."
-            )
+            item.price_disputed = True
+            return
         item.price = price
+        item.price_disputed = False
 
     def result(self) -> str:
         terms = []
@@ -237,6 +280,12 @@ class Bill:
         for name, item in self.items.items():
             if item.removed or self.only not in (None, name):
                 continue
+            if item.price_disputed:
+                raise BillQuestion(
+                    f"Czy zmieniasz cenę pozycji „{name}”? Która cena jednostkowa jest aktualna?"
+                )
+            if item.count_disputed:
+                raise BillQuestion(f"Jaka ilość pozycji „{name}” jest aktualna?")
             if item.count is None or item.price is None:
                 missing = "ilość" if item.count is None else "cenę za sztukę w zł"
                 raise BillQuestion(f"Podaj {missing} dla pozycji „{name}”.")
@@ -253,7 +302,18 @@ def _description(text: str) -> str:
     return COST_QUESTION.sub("", body, count=1)
 
 
+def _bare_value(text: str) -> bool:
+    text = text.rstrip(".!").strip()
+    return bool(BARE_PRICE.fullmatch(text) or BARE_COUNT.fullmatch(text))
+
+
+def _follow(text: str) -> bool:
+    return bool(FOLLOW.match(text)) or _bare_value(text)
+
+
 def _starts(text: str) -> bool:
+    if _bare_value(text):
+        return False
     if PREFIX.match(text):
         return True
     if CALCULATOR.match(text) and not re.search(r"\bpo\s+[0-9]", text, re.I):
@@ -265,13 +325,13 @@ def _starts(text: str) -> bool:
     return bool(OPENING.match(text) and re.search(r"[0-9]", text) and monetary)
 
 
-def _previous_prompts(records: list[dict[str, object]]) -> list[str]:
+def _previous_prompts(records: list[dict[str, object]]) -> list[str] | None:
     prompts = []
     for index in range(len(records), max(1, len(records) - 16), -2):
         user, assistant = records[index - 2 : index]
         prompt = user.get("content")
         if assistant.get("content") == NEW_OR_CHANGE:
-            break
+            return None
         if not (
             user.get("role") == "user"
             and assistant.get("role") == "assistant"
@@ -286,8 +346,11 @@ def _previous_prompts(records: list[dict[str, object]]) -> list[str]:
         prompts.append(prompt)
         if _starts(prompt):
             return prompts[::-1]
-        if not FOLLOW.match(prompt):
+        if not _follow(prompt):
             break
+    else:
+        if prompts:
+            return None
     return []
 
 
@@ -299,9 +362,12 @@ def studio_bill_reply(message: str, history: list[dict[str, object]]) -> str | N
     if starts and not PREFIX.match(message) and _previous_prompts(history):
         return NEW_OR_CHANGE
     if not starts:
-        if not FOLLOW.match(message):
+        if not _follow(message):
             return None
-        prompts = _previous_prompts(history)
+        previous = _previous_prompts(history)
+        if previous is None:
+            return MISSING_BASE
+        prompts = previous
         if not prompts:
             if any(
                 rule.match(message.lower())

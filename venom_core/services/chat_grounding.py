@@ -82,11 +82,23 @@ _CURRENT_LOOKUP = re.compile(
     r"\b(?:aktualn\w*|bieżąc\w*|obecn\w*|dzisiejsz\w*|najnowsz\w*)\b",
     re.I,
 )
+_REPORT_PERIOD = (
+    r"(?:dzisiaj|dziś|dzisiejsz\w*|najnowsz\w*|ostatni\w*|bieżąc\w*|aktualn\w*)"
+)
+_REPORT_TOPIC = r"(?:wiadomości|newsy|wydarzenia)"
 _REPORT_LOOKUP = re.compile(
-    r"(?:^|[.!?;]\s+)\s*(?:(?:podaj|pokaż|streść|przytocz|jakie\s+są)\s+)?"
-    r"(?:(?:dzisiaj|dziś|dzisiejsz\w*|najnowsz\w*|ostatni\w*|bieżąc\w*|aktualn\w*)\s+)?"
-    r"(?:wiadomości|newsy|wydarzeni\w*)\b"
-    r"|\b(?:podaj|pokaż)\s+(?:jedną\s+)?(?:aktualn\w*|dzisiejsz\w*|najnowsz\w*)\s+wiadomość\b",
+    r"(?:^|[.!?;]\s+)\s*(?:(?:podaj|pokaż|streść|przytocz|wymień|"
+    r"sprawdź|wyszukaj|jakie\s+są)\s+"
+    rf"(?:{_REPORT_PERIOD}\s+)?{_REPORT_TOPIC}"
+    r"|(?:podaj|pokaż)\s+(?:jedną\s+)?(?:aktualn\w*|dzisiejsz\w*|najnowsz\w*)\s+wiadomość)\b",
+    re.I,
+)
+# An elliptical request can be the whole turn. A clause beginning with the
+# same noun inside a draft is source material, not a request for reporting.
+_REPORT_FRAGMENT = re.compile(
+    rf"\s*(?:{_REPORT_PERIOD}\s+)?{_REPORT_TOPIC}"
+    r"(?:\s+(?:BBC(?:\s+News)?|PAP|Reuters|z\s+(?:Polski|kraju|Europy)|ze\s+świata))?"
+    rf"(?:\s+{_REPORT_PERIOD})?\s*[.!?]?\s*",
     re.I,
 )
 _PRICE_LOOKUP = re.compile(
@@ -303,6 +315,7 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> PublicSourceRead
         or _CURRENT_OFFICE.search(visible)
         or _CURRENT_LOOKUP.search(visible)
         or _REPORT_LOOKUP.search(visible)
+        or _REPORT_FRAGMENT.fullmatch(visible)
         or (_PRICE_LOOKUP.search(visible) and not _GIVEN_RATE.search(visible))
     ):
         return PublicSourceRead.NEWS

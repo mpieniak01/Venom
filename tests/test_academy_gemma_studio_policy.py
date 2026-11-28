@@ -1337,3 +1337,338 @@ def test_studio_calculator_defers_ambiguous_or_inconsistent_corrections(
 ):
     history = [HistoryMessage(role="user", content=prompt) for prompt in source]
     assert plan_studio_calculation(current, history) is None
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        pytest.param(
+            [
+                (
+                    "Potrzebuję pięciu krótkich listewek po 19 cm oraz trzech dłuższych po 24 cm. Ile listewki "
+                    "trzeba w sumie?",
+                    "167",
+                    "cm",
+                    "5 × 19 cm + 3 × 24 cm = 167 cm.",
+                ),
+                (
+                    "Krótkie mają po 17 cm. Mam odcinek długości 1,4 m. Podaj niedobór w cm.",
+                    "17",
+                    "cm",
+                    "Brakuje 17 cm (5 × 17 cm + 3 × 24 cm − 140 cm).",
+                ),
+            ],
+            id="cut-list",
+        ),
+        pytest.param(
+            [
+                (
+                    "Wynajęto 6 statywów bez pokrowca po 11 zł oraz 5 z pokrowcem po 16 zł. Podaj koszt samych "
+                    "statywów bez pokrowca.",
+                    "66",
+                    "zł",
+                    "6 × 11 zł = 66 zł.",
+                ),
+                (
+                    "Statyw bez pokrowca kosztuje teraz po 14 zł. Policz łączną opłatę.",
+                    "164",
+                    "zł",
+                    "Razem 164 zł: (6 × 14 zł) + (5 × 16 zł).",
+                ),
+            ],
+            id="accessory-tariff",
+        ),
+        pytest.param(
+            [
+                (
+                    "Wymiary szerokości trzech desek: Nurt 360 mm, Piasek 0,355 m i Wrzos 35,8 cm. Która jest "
+                    "najwęższa?",
+                    "35.5",
+                    "cm",
+                    "Najmniejsza szerokość: Piasek, 35,5 cm. Porównanie: Nurt 36 cm, Piasek 35,5 cm, Wrzos 35,8 "
+                    "cm.",
+                ),
+                (
+                    "Wymieniono Piasek na deskę mierzącą 0,37 m. Wskaż nowy wynik porównania.",
+                    "35.8",
+                    "cm",
+                    "Najmniejsza szerokość: Wrzos, 35,8 cm. Porównanie: Nurt 36 cm, Piasek 37 cm, Wrzos 35,8 "
+                    "cm.",
+                ),
+            ],
+            id="width-replacement",
+        ),
+        pytest.param(
+            [
+                (
+                    "Zważyłem trzy woreczki, 180 g, 0,24 kg i 315 g, oraz płytkę 380 g. Pojemnik osobno waży 145 "
+                    "g. Podaj łączną masę samej zawartości w gramach.",
+                    "1115",
+                    "g",
+                    "180 g + 240 g + 315 g + 380 g = 1115 g.",
+                ),
+                (
+                    "W drugim woreczku jest teraz 0,31 kg. Podaj masę razem z pojemnikiem.",
+                    "1330",
+                    "g",
+                    "180 g + 310 g + 315 g + 380 g + 145 g = 1330 g.",
+                ),
+            ],
+            id="mixed-mass",
+        ),
+        pytest.param(
+            [
+                (
+                    "Oceny zapisane w kolejności: 3, 4, 8, 12 i 16. Wyznacz medianę.",
+                    "8",
+                    None,
+                    "Mediana: 8.",
+                ),
+                (
+                    "Usuń 16, należało do innej próby. Podaj teraz medianę.",
+                    "6",
+                    None,
+                    "Środkowe wartości: 4 i 8. Mediana: 6.",
+                ),
+            ],
+            id="median-subset",
+        ),
+        pytest.param(
+            [
+                (
+                    "Dopuszczam próbki szersze niż 31 cm i najwyżej 36 cm. Z1 310 mm, Z2 0,345 m, Z3 36 cm, Z4 "
+                    "361 mm. Wskaż, które pasują.",
+                    "2",
+                    "szt.",
+                    "Zakres spełniają: Z2, Z3 (2 szt.).",
+                ),
+                (
+                    "Teraz 31 cm także dopuszczamy, zaś 36 cm wykluczamy. Które pasują?",
+                    "2",
+                    "szt.",
+                    "Zakres spełniają: Z1, Z2 (2 szt.).",
+                ),
+            ],
+            id="bound-endpoints",
+        ),
+        pytest.param(
+            [
+                (
+                    "Mam trzy wykonane odczyty: 3, 8 i 6 ml. Następnego odczytu jeszcze nie mamy. Oblicz średnią "
+                    "do dwóch miejsc po przecinku.",
+                    "5.666666666666666666666666667",
+                    "ml",
+                    "Średnia z 3 pomiarów: 5,67 ml ((3 + 8 + 6) ÷ 3).",
+                ),
+                (
+                    "W drugim odczycie zapisuję 9 zamiast 8 ml. Podaj średnią z tą samą precyzją.",
+                    "6",
+                    "ml",
+                    "Średnia z 3 pomiarów: 6,00 ml ((3 + 9 + 6) ÷ 3).",
+                ),
+            ],
+            id="mean-precision",
+        ),
+        pytest.param(
+            [
+                (
+                    "W zasobniku mamy 3 paczki czarnych po 11 i 4 paczki granatowych po 8 sztuk. Ile granatowych "
+                    "sztuk?",
+                    "32",
+                    "szt.",
+                    "Granatowych: 32 szt.",
+                ),
+                (
+                    "Jedna granatowa paczka zawiera 6 zamiast 8. Ile teraz sztuk razem?",
+                    "63",
+                    "szt.",
+                    "Razem 63 szt. (czarnych: 33, granatowych: 30).",
+                ),
+                (
+                    "Wydano 4 czarnych. Podaj osobno pozostałe liczby obu kolorów.",
+                    "29",
+                    "szt.",
+                    "Pozostałe: czarne 29 szt., granatowe 30 szt.",
+                ),
+            ],
+            id="pack-ledger",
+        ),
+        pytest.param(
+            [
+                (
+                    "Jest 54 l. Rezerwuję 10 l dla oddzielnego odbiorcy. Z reszty daję po 11 l na trzy "
+                    "stanowiska. Ile zostaje bez rezerwy?",
+                    "11",
+                    "l",
+                    "Po odjęciu rezerwy i rozlanych porcji zostaje 11 l.",
+                ),
+                (
+                    "Jedno stanowisko wzięło 8 l, pozostałe dwa nadal po 11 l. Ile teraz zostaje?",
+                    "14",
+                    "l",
+                    "Po odjęciu rezerwy i rozlanych porcji zostaje 14 l.",
+                ),
+            ],
+            id="allocation",
+        ),
+        pytest.param(
+            [
+                (
+                    "Trzy odcinki zajęły 244, 319 i 397 sekund. Ile to razem w minutach?",
+                    "16",
+                    "min",
+                    "Suma: 960 sekund, czyli 16 min.",
+                ),
+                (
+                    "Drugi odcinek: 259 sekund zamiast 319. Podaj zaktualizowaną sumę w minutach.",
+                    "15",
+                    "min",
+                    "Suma: 900 sekund, czyli 15 min.",
+                ),
+            ],
+            id="time-series",
+        ),
+    ],
+)
+def test_structural_studio_calculation_uses_current_operands(
+    studio_chat, monkeypatch, steps
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    history = []
+    for prompt, amount, unit, text in steps:
+        plan = plan_studio_calculation(
+            prompt, [HistoryMessage(**entry) for entry in history]
+        )
+        assert plan is not None
+        answer = plan.publish()
+        assert answer["response_source"] == "calculator"
+        assert answer["tool_result"]["value"] == amount
+        assert answer["tool_result"]["unit"] == unit
+        assert answer["tool_result"]["status"] == "succeeded"
+        assert chat(prompt, history, verify_history=True) == text
+        history.extend(
+            (
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": "Wcześniejsza odpowiedź podała 999."},
+            )
+        )
+    assert not sent and not replies
+
+
+def test_scoped_session_reclassification_preserves_sum_and_other_session(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    source = "Po pierwszej sesji zanotowano 8 poprawnych i 4 do sprawdzenia, po drugiej 9 poprawnych i 7 do sprawdzenia. Ile poprawnych z obu?"
+    correction = "Trzy wpisy z poprawnych po pierwszej sesji przenoszę do „do sprawdzenia”. Podaj oba liczniki tej sesji."
+    repeat = "Ile teraz poprawnych w obu sesjach?"
+    history = []
+    for prompt, answer in (
+        (source, "Z obu sesji: 8 + 9 = 17 poprawnych."),
+        (correction, "5 poprawnych i 7 do sprawdzenia. Łącznie 12."),
+        (repeat, "Z obu sesji: 5 + 9 = 14 poprawnych."),
+    ):
+        assert chat(prompt, history, verify_history=True) == answer
+        history.extend(
+            (
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": "Wynik to 99."},
+            )
+        )
+    assert not sent and not replies
+
+
+@pytest.mark.parametrize(
+    ("sources", "current"),
+    [
+        (
+            (),
+            "Porównaj szerokość trzech płytek: „Ryś 0,5 m, Socha 530 mm, Łan 49 cm”. Która jest najwęższa?",
+        ),
+        (
+            (),
+            "Porównaj szerokość czterech płytek: Ryś 0,5 m, Socha 530 mm, Łan 49 cm. Która jest najwęższa?",
+        ),
+        (
+            (),
+            "Porównaj szerokość trzech płytek: Ryś około 0,5 m, Socha 530 mm, Łan 49 cm. Która jest najwęższa?",
+        ),
+        (
+            (),
+            "Wynajęto 6 statywów bez pokrowca po 11 zł oraz 5 z pilotem po 16 zł. Podaj koszt samych statywów bez pokrowca.",
+        ),
+        (
+            (
+                "Wynajęto 6 statywów bez pokrowca po 11 zł oraz 5 z pokrowcem po 16 zł. Podaj koszt samych statywów bez pokrowca.",
+            ),
+            "Statyw bez pokrowca kosztuje teraz 14 zł lub 15 zł. Policz łączną opłatę.",
+        ),
+        (
+            (),
+            "Zważyłem trzy woreczki, 180 g, 0,24 kg i 315 g, oraz płytkę 380 g. Pojemnik osobno waży 145 g. Podaj łączną masę samych woreczków w gramach.",
+        ),
+        (
+            ("Oceny zapisane w kolejności: 3, 4, 8, 12 i 16. Wyznacz medianę.",),
+            "Usuń 13, należało do innej próby. Podaj teraz medianę.",
+        ),
+        (
+            (
+                "Mam trzy wykonane odczyty: 3, 8 i 6 ml. Następnego odczytu jeszcze nie mamy. Oblicz średnią do dwóch miejsc po przecinku.",
+            ),
+            "W drugim odczycie zapisuję 9 zamiast 6 ml. Podaj średnią z tą samą precyzją.",
+        ),
+        (
+            (
+                "Mam trzy wykonane odczyty: 3, 8 i 6 ml. Następnego odczytu jeszcze nie mamy. Oblicz średnią do dwóch miejsc po przecinku.",
+            ),
+            "W drugim odczycie zapisuję 9 zamiast 8 g. Podaj średnią z tą samą precyzją.",
+        ),
+        (
+            (
+                "Dopuszczam próbki szersze niż 31 cm i najwyżej 36 cm. Z1 310 mm, Z2 0,345 m, Z3 36 cm, Z4 361 mm. Wskaż, które pasują.",
+            ),
+            "Teraz 32 cm także dopuszczamy, zaś 36 cm wykluczamy. Które pasują?",
+        ),
+        (
+            (
+                "W zasobniku mamy 3 paczki czarnych po 11 i 4 paczki granatowych po 8 sztuk. Ile granatowych sztuk?",
+            ),
+            "Jedna granatowa paczka zawiera 6 zamiast 9. Ile teraz sztuk razem?",
+        ),
+        (
+            (),
+            "Jest 54 l. Rezerwuję 10 l dla oddzielnego odbiorcy. Z reszty daję po 11 l na trzy stanowiska. Ile zostaje dla oddzielnego odbiorcy?",
+        ),
+        (
+            (
+                "Jest 54 l. Rezerwuję 10 l dla oddzielnego odbiorcy. Z reszty daję po 11 l na trzy stanowiska. Ile zostaje bez rezerwy?",
+            ),
+            "Jedno stanowisko wzięło 8 l, pozostałe trzy nadal po 11 l. Ile teraz zostaje?",
+        ),
+        (
+            ("Trzy odcinki zajęły 244, 319 i 397 sekund. Ile to razem w minutach?",),
+            "Drugi odcinek: 259 sekund zamiast 397. Podaj zaktualizowaną sumę w minutach.",
+        ),
+        (
+            (
+                "Po pierwszej sesji zanotowano 3 poprawnych i 4 do sprawdzenia, po drugiej 9 poprawnych i 7 do sprawdzenia. Ile poprawnych z obu?",
+            ),
+            "Cztery wpisy z poprawnych po pierwszej sesji przenoszę do „do sprawdzenia”. Podaj oba liczniki tej sesji.",
+        ),
+        (
+            (
+                "Po pierwszej sesji zanotowano 8 poprawnych i 4 do sprawdzenia, po drugiej 9 poprawnych i 7 do sprawdzenia. Ile poprawnych z obu?",
+            ),
+            "Trzy wpisy z poprawnych po pierwszej sesji przenoszę do „usunąć”. Podaj oba liczniki tej sesji.",
+        ),
+    ],
+)
+def test_structural_studio_calculation_defers_unbound_revisions(sources, current):
+    history = [HistoryMessage(role="user", content=message) for message in sources]
+    assert plan_studio_calculation(current, history) is None

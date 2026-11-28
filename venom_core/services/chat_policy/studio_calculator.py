@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
-from venom_core.services.chat_policy.direct_calculator import (
-    CalculatorRequest,
-    execute_calculator,
-)
 from venom_core.services.chat_policy.qualified_chat_quote import (
     is_text_transformation,
     without_quotes,
+)
+from venom_core.services.chat_policy.studio_calculation_plan import StudioCalculation
+from venom_core.services.chat_policy.studio_quantity_series import (
+    plan_numeric_series,
+    plan_session_counts,
 )
 from venom_core.services.grounded_calculator import calculate
 
@@ -52,7 +52,7 @@ _LENGTH_GROUP = re.compile(
 )
 _LENGTH_TOTAL = re.compile(
     r"\b(?:ile\s+(?:dokładnie\s+)?(?:cm|centymetr\w*|łącznie|razem)"
-    r"|(?:policz|oblicz|podaj)\s+(?:łączną\s+długość|sumę\s+długości))\b",
+    r"|ile\s+(?:taśm|listew|listw|rur|odcink|przewod|linek|link|drut|tkanin|materiał)\w*\s+(?:trzeba\s+)?w\s+sumie|(?:policz|oblicz|podaj)\s+(?:łączną\s+długość|sumę\s+długości))\b",
     re.I,
 )
 _OTHER_LENGTH_UNIT = re.compile(
@@ -62,7 +62,7 @@ _OTHER_LENGTH_UNIT = re.compile(
 )
 _LENGTH_GAP = re.compile(
     r"\b(?:ile\s+(?:dokładnie\s+|jeszcze\s+)?(?:(?:cm|centymetr\w*)\s+)?brakuje"
-    r"|jaki jest niedobór)\b",
+    r"|jaki jest niedobór|podaj (?:niedobór|brak) w (?:cm|centymetrach))\b",
     re.I,
 )
 _LENGTH_CHANGE = re.compile(
@@ -78,7 +78,7 @@ _LENGTH_MEASURE_CHANGE = re.compile(
 )
 _AVAILABLE = re.compile(
     rf"(?:\b(?:odciął[ae]m|odcięt[eo]|odmierzy[łl][ae]m)"
-    rf"|(?:^|[.!]\s+)(?:mam[y]?|odłożono)\s+już)\s+{_LENGTH}",
+    rf"|(?:^|[.!]\s+)(?:mam[y]?|odłożono)\s+(?:już|{_WORD}\s+długości))\s+{_LENGTH}",
     re.I,
 )
 
@@ -226,7 +226,7 @@ _ORDINAL_STEMS = ("pierwsz", "drug", "trzec", "czwart", "piąt", "szóst", "sió
 
 _WIDTHS = re.compile(
     r"(?:\b(?:odczyt(?:y)?\s+)?szerokości(?:\s+desek|\s+listew|\s+płyt)?"
-    rf"|^na liście (?:są|wymieniono) (?P<count>{_COUNT}) {_WORD})\s*:\s*",
+    rf"|^na liście (?:są|wymieniono) (?P<count>{_COUNT}) {_WORD}|^(?:porównaj szerokość|wymiary szerokości)(?: (?P<measure_count>{_COUNT}))?(?: {_WORD}){{1,5}})\s*:\s*",
     re.I,
 )
 _WIDTH = re.compile(
@@ -253,6 +253,14 @@ _WIDTH_REMEASUREMENT = re.compile(
     rf"(?P<label>{_WORD}(?:\s+{_WORD}){{0,2}}?) (?:to|wynosi) {_LENGTH}[.!]",
     re.I,
 )
+_WIDTH_OBJECT_REPLACED = re.compile(
+    rf"^(?:wymieniono|zastąpiono) (?P<label>{_WORD}(?:\s+{_WORD}){{0,2}}?) "
+    rf"na {_WORD} (?:o szerokości|mierzącą|mierzący) {_LENGTH}[.!]",
+    re.I,
+)
+_WIDTH_REPEAT = re.compile(
+    r"\b(?:ponów porównanie i wybór|wskaż nowy wynik porównania)\b", re.I
+)
 _WIDTH_QUERY = re.compile(
     r"\b(?P<widest>najszer\w*|największ[ąa]\s+szerokość)\b|\b(?:najwęż\w*|najmniejsz[ąa]\s+szerokość)\b",
     re.I,
@@ -273,6 +281,19 @@ _INTERVAL_STRICT_LOWER = re.compile(
     rf"(?:dopuszczam|dopuszczamy|warunek to:) powyżej (?P<lower>{_NUMBER}) "
     rf"(?P<lower_unit>mm|cm|m) (?:oraz|i) do (?P<upper>{_NUMBER}) "
     rf"(?P<upper_unit>mm|cm|m) (?P<upper_edge>{_INTERVAL_EDGE})[.!] {_INTERVAL_SAMPLES}",
+    re.I,
+)
+_INTERVAL_EXPLICIT = re.compile(
+    rf"(?:jako pasujące przyjmij elementy dłuższe od|dopuszczam próbki szersze niż) "
+    rf"(?P<lower>{_NUMBER}) (?P<lower_unit>mm|cm|m) i (?:nie dłuższe od|najwyżej) "
+    rf"(?P<upper>{_NUMBER}) (?P<upper_unit>mm|cm|m)[.!] (?P<items>[^.!?]+)"
+    r"[.!] (?:które pasują|wskaż, które pasują)[.!?]?",
+    re.I,
+)
+_INTERVAL_VALUE_UPDATE = re.compile(
+    rf"teraz (?P<lower>{_NUMBER}) (?P<lower_unit>mm|cm|m) (?:także|też) "
+    rf"(?:może wejść|dopuszczamy), (?:ale|zaś|a) (?P<upper>{_NUMBER}) "
+    r"(?P<upper_unit>mm|cm|m) wykluczamy[.!] (?:podaj listę ponownie|które pasują)[.!?]?",
     re.I,
 )
 _INTERVAL_ITEM = re.compile(
@@ -427,9 +448,9 @@ _COUNT_KINDS = {
 }
 
 _PACK_COUNTS = re.compile(
-    rf"(?:są|mam[y]?|w {_WORD} jest) (?P<a_count>{_COUNT}) (?:wielopak\w*|opakowa\w+) "
+    rf"(?:są|mam[y]?|w {_WORD} jest|{_WORD} ma|w {_WORD} mamy) (?P<a_count>{_COUNT}) (?:wielopak\w*|opakowa\w+|paczk\w*|paczek) "
     rf"(?P<a>{_WORD}) po (?P<a_size>{_COUNT})(?: sztuk)? "
-    rf"i (?P<b_count>{_COUNT}) (?:wielopak\w*|opakowa\w+) "
+    rf"i (?P<b_count>{_COUNT}) (?:wielopak\w*|opakowa\w+|paczk\w*|paczek) "
     rf"(?P<b>{_WORD}) po (?P<b_size>{_COUNT})(?: sztuk)?[.!] "
     rf"ile (?P<pick>{_WORD})(?: sztuk)?\?",
     re.I,
@@ -453,11 +474,17 @@ _PACK_NAMED_EXCEPTION = re.compile(
     r"ile (?:jest )?sztuk (?:(?:obu kolorów )?razem|wszystkich kolorów łącznie)\?",
     re.I,
 )
+_PACK_REPLACEMENT = re.compile(
+    rf"jedna (?P<item>{_WORD}) paczka (?:ma|zawiera) "
+    rf"(?P<count>{_COUNT}) zamiast (?P<old>{_COUNT})[.!] "
+    r"ile (?:teraz )?sztuk (?:obu kolorów|razem|łącznie)[.!?]?",
+    re.I,
+)
 _PACK_TAKE = re.compile(
-    rf"(?:oddaliśm[yi]|zużyliśm[yi]) (?P<count>{_COUNT}) (?P<kind>{_WORD})(?: sztuki| sztuk)?[.!] "
+    rf"(?:oddaliśm[yi]|zużyliśm[yi]|wydano) (?P<count>{_COUNT}) (?P<kind>{_WORD})(?: sztuki| sztuk| osobno)?[.!] "
     rf"(?:podaj pozostałe (?P<a>{_WORD}) i (?P<b>{_WORD}) oddzielnie"
     r"|podaj osobno(?:,)? ile zostało obu kolorów"
-    r"|podaj pozostałe sztuki osobno dla każdego koloru)[.!?]?",
+    r"|podaj (?:osobno pozostałe liczby obu kolorów|liczby obu kolorów, które pozostały)|podaj pozostałe sztuki osobno dla każdego koloru)[.!?]?",
     re.I,
 )
 
@@ -508,19 +535,6 @@ class _Term:
 
     def readable(self, unit: str) -> str:
         return f"{self.count} × {_polish(self.value)} {unit}"
-
-
-@dataclass(frozen=True)
-class StudioCalculation:
-    expression: str
-    unit: str | None
-    render: Callable[[str], str]
-
-    def publish(self) -> dict[str, Any]:
-        reply = execute_calculator(CalculatorRequest(self.expression, self.unit))
-        if reply["tool_result"]["status"] == "succeeded":
-            reply["text"] = self.render(reply["text"])
-        return reply
 
 
 def _read_total_lengths(message: str) -> dict[str, _Term]:
@@ -696,13 +710,109 @@ def _relative_rate_calculation(turns: Sequence[str]) -> StudioCalculation | None
     )
 
 
+_FEE_SCOPE = re.compile(r"\b(?P<modifier>z|bez)\s+(?P<accessory>[^\W\d_]+)\b", re.I)
+_FEE_RATE = re.compile(rf"\bpo\s+(?P<rate>{_NUMBER})\s*zł\b", re.I)
+_FEE_UPDATE_RATE = re.compile(rf"\b(?P<rate>{_NUMBER})\s*zł\b", re.I)
+_FEE_COUNT = re.compile(rf"\b{_COUNT}\b", re.I)
+_FEE_CUE = re.compile(r"\b(?:koszt\w*|opłat\w*|wynajem|wynajęt\w*|stawk\w*)\b", re.I)
+_FEE_SELECT = re.compile(r"\b(?:sam(?:ego|ych|ej)|wyłącznie|tylko)\b", re.I)
+_FEE_TOTAL = re.compile(r"\b(?:cał[ąaąyę][a-z]*|łączn[ąaye]|razem|wszystkie)\b", re.I)
+_FEE_TERM_SPLIT = re.compile(r",\s+|\s+(?:oraz|i)\s+", re.I)
+_FEE_HYPOTHETICAL = re.compile(r"\b(?:jeśli|jeżeli|gdyby|może|propon\w*)\b", re.I)
+
+
+def _clause_parts(text: str) -> list[str]:
+    return [part.strip() for part in re.split(r"[.!?](?:\s+|$)", text) if part.strip()]
+
+
+def _fee_scope(text: str) -> tuple[str, bool] | None:
+    scopes = list(_FEE_SCOPE.finditer(text))
+    if len(scopes) != 1:
+        return None
+    match = scopes[0]
+    with_accessory = match["modifier"].casefold() == "z"
+    label = match["accessory"].casefold()
+    # Bind both sides of a with/without pair to the same accessory after
+    # its instrumental/genitive ending. Preserve indeclinable labels.
+    if with_accessory:
+        label = label.removesuffix("em")
+    else:
+        label = label.removesuffix("u").removesuffix("a")
+    return (label, with_accessory) if len(label) >= 3 else None
+
+
+def _fee_terms(text: str) -> tuple[str, dict[bool, _Term]] | None:
+    parts = _FEE_TERM_SPLIT.split(text)
+    terms = {}
+    accessory = None
+    if len(parts) != 2 or not _FEE_CUE.search(text) or _FEE_HYPOTHETICAL.search(text):
+        return None
+    for part in parts:
+        classified = _fee_scope(part)
+        amounts = list(_FEE_RATE.finditer(part))
+        remainder = _FEE_RATE.sub("", part)
+        counts = list(_FEE_COUNT.finditer(remainder))
+        if classified is None or len(amounts) != 1 or len(counts) != 1:
+            return None
+        label, included = classified
+        if (accessory is not None and label != accessory) or included in terms:
+            return None
+        if re.search(r"\d", _FEE_COUNT.sub("", remainder)):
+            return None
+        accessory = label
+        terms[included] = _Term(_count(counts[0][0]), _decimal(amounts[0]["rate"]))
+    return (accessory, terms) if accessory is not None else None
+
+
+def _accessory_fee_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    initial = turns[-1]
+    correction = []
+    if len(turns) > 1 and _FEE_TOTAL.search(turns[-1]):
+        initial, correction = turns[-2], _clause_parts(turns[-1])
+    *facts, query = _clause_parts(initial) or [""]
+    if not facts or not _FEE_CUE.search(query) or not _FEE_SELECT.search(query):
+        return None
+    source = _fee_terms(" ".join(facts))
+    selected = _fee_scope(query)
+    if source is None or selected is None or selected[0] != source[0]:
+        return None
+    accessory, terms = source
+    if not correction:
+        term = terms[selected[1]]
+        return StudioCalculation(
+            term.expression, "zł", lambda result: f"{term.readable('zł')} = {result}."
+        )
+    if len(correction) != 2 or _FEE_HYPOTHETICAL.search(" ".join(correction)):
+        return None
+    change, total_query = correction
+    changed_group = _fee_scope(change)
+    amounts = list(_FEE_UPDATE_RATE.finditer(change))
+    if changed_group is None or changed_group[0] != accessory or len(amounts) != 1:
+        return None
+    if not _FEE_CUE.search(change) or not _FEE_CUE.search(total_query):
+        return None
+    if re.search(r"\d", _FEE_UPDATE_RATE.sub("", change) + total_query):
+        return None
+    index = changed_group[1]
+    terms[index] = replace(terms[index], value=_decimal(amounts[0]["rate"]))
+    expression = "+".join(term.expression for term in terms.values())
+    parts = " + ".join(f"({term.readable('zł')})" for term in terms.values())
+    return StudioCalculation(
+        expression, "zł", lambda result: f"Razem {result}: {parts}."
+    )
+
+
 def _width_key(label: str) -> str:
     return label.casefold().rstrip("aąęy")
 
 
 def _width_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     widths: dict[str, tuple[str, Decimal]] = {}
+    last_question = None
     for message in turns:
+        queried = list(_WIDTH_QUERY.finditer(message))
+        if len(queried) > 1:
+            return None
         if header := _WIDTHS.search(message):
             fields = message[header.end() :].split(". ", 1)[0].rstrip(".?!")
             matches = list(_WIDTH.finditer(fields))
@@ -714,6 +824,8 @@ def _width_calculation(turns: Sequence[str]) -> StudioCalculation | None:
                     _count(header["count"]) != len(matches)
                     or not re.search(r"\bo szerokości\b", fields, re.I)
                 )
+                or header["measure_count"]
+                and _count(header["measure_count"]) != len(matches)
             ):
                 return None
             widths = {
@@ -721,20 +833,27 @@ def _width_calculation(turns: Sequence[str]) -> StudioCalculation | None:
             }
             if len(widths) != len(matches):
                 return None
+            last_question = None
         elif widths and (
             update := _WIDTH_CHANGE.search(message)
             or _WIDTH_REPLACEMENT.search(message)
             or _WIDTH_NAMED_REPLACEMENT.search(message)
             or _WIDTH_REMEASUREMENT.match(message)
+            or _WIDTH_OBJECT_REPLACED.match(message)
         ):
             key = _width_key(update["label"])
             if key not in widths or len(_LENGTH_VALUE.findall(message)) != 1:
                 return None
             widths[key] = (widths[key][0], _length_in_cm(update))
-        elif not _WIDTH_QUERY.search(message) or _LENGTH_VALUE.search(message):
+        elif not queried or _LENGTH_VALUE.search(message):
             widths = {}
+            last_question = None
+        if queried:
+            last_question = queried[0]
     question = _WIDTH_QUERY.search(turns[-1])
-    if not widths or question is None or len(_WIDTH_QUERY.findall(turns[-1])) != 1:
+    if question is None and _WIDTH_REPEAT.search(turns[-1]):
+        question = last_question
+    if not widths or question is None:
         return None
     label, amount = (max if question["widest"] else min)(
         widths.values(), key=lambda item: item[1]
@@ -765,12 +884,18 @@ def _interval_choices(items: str) -> list[tuple[str, Decimal]]:
 
 
 def _interval_calculation(turns: Sequence[str]) -> StudioCalculation | None:
-    match = _measurement_source(turns, _INTERVAL_SOURCE, _INTERVAL_STRICT_LOWER)
+    match = _measurement_source(
+        turns, _INTERVAL_SOURCE, _INTERVAL_STRICT_LOWER, _INTERVAL_EXPLICIT
+    )
     if match is None:
         return None
     source, followups = match
     # Endpoints must be stated. "Do" alone does not say if the end belongs.
-    if bool(source.groupdict().get("less")) == bool(source["upper_edge"]):
+    source_edges = source.groupdict()
+    explicit = "upper_edge" not in source_edges
+    if not explicit and bool(source_edges.get("less")) == bool(
+        source_edges["upper_edge"]
+    ):
         return None
     lower = _decimal(source["lower"]).scaleb(_SCALES[source["lower_unit"].casefold()])
     upper = _decimal(source["upper"]).scaleb(_SCALES[source["upper_unit"].casefold()])
@@ -781,12 +906,25 @@ def _interval_calculation(turns: Sequence[str]) -> StudioCalculation | None:
         or len({label.casefold() for label, _ in choices}) != len(choices)
     ):
         return None
-    edges = (source.groupdict().get("lower_edge") or "", source["upper_edge"] or "")
+    edges = (
+        source_edges.get("lower_edge") or "",
+        "włącznie" if explicit else source_edges["upper_edge"] or "",
+    )
     for followup in followups:
-        update = _INTERVAL_UPDATE.fullmatch(followup)
-        if update is None:
+        if update := _INTERVAL_UPDATE.fullmatch(followup):
+            edges = (update["lower_edge"], update["upper_edge"])
+        elif bounded_update := _INTERVAL_VALUE_UPDATE.fullmatch(followup):
+            updated_limits = tuple(
+                _decimal(bounded_update[key]).scaleb(
+                    _SCALES[bounded_update[f"{key}_unit"].casefold()]
+                )
+                for key in ("lower", "upper")
+            )
+            if updated_limits != (lower, upper):
+                return None
+            edges = ("włącznie", "wyłącznie")
+        else:
             return None
-        edges = (update["lower_edge"], update["upper_edge"])
     low_closed, high_closed = (edge.casefold() == "włącznie" for edge in edges)
     selected = [
         label
@@ -909,6 +1047,91 @@ def _mass_list_calculation(turns: Sequence[str]) -> StudioCalculation | None:
         weights.append(_grams(source))
     expression = "+".join(_number(value) for value in weights)
     formula = " + ".join(f"{_polish(value)} g" for value in weights)
+    return StudioCalculation(expression, "g", lambda result: f"{formula} = {result}.")
+
+
+_MIXED_ITEMS = {
+    "szpule": ("szpula", "szpuli"),
+    "szpuli": ("szpula", "szpuli"),
+    "woreczki": ("woreczek", "woreczku"),
+    "worki": ("worek", "worku"),
+    "paczki": ("paczka", "paczce"),
+}
+_MIXED_CONTAINERS = {**_MASS_CONTAINERS, "pudełko": "pudełkiem"}
+_MIXED_GROUP = re.compile(
+    rf"(?:zważył[ae]m|ważył[ae]m) (?P<count>{_COUNT}) (?P<items>{_WORD}), "
+    rf"(?P<weights>{_MASS_TERMS})(?:,\s*)? (?:i|oraz) (?P<extra_item>{_WORD}) (?P<extra>{_MASS_TERM})",
+    re.I,
+)
+_MIXED_CONTAINER = re.compile(
+    rf"(?P<container>{_WORD}) osobno (?:ma|waży) {_MASS}", re.I
+)
+_MIXED_SCOPE = re.compile(r"\b(?:sam(?:e|ej|ych|ego)|bez)\b", re.I)
+_MIXED_QUERY = re.compile(r"\b(?:ile|podaj|policz|oblicz)\b", re.I)
+_MIXED_UPDATE = re.compile(
+    rf"(?:w )?(?P<ordinal>pierwsz\w*|drug\w*|trzec\w*|czwart\w*|piąt\w*|szóst\w*) "
+    rf"(?P<item>{_WORD}) (?:ma|jest|waży) (?:jednak |teraz )?{_MASS}",
+    re.I,
+)
+_MIXED_AMENDED_SCOPE = re.compile(
+    rf"(?:(?:podaj|oblicz|policz) masę)(?: całej zawartości)?(?: wraz| razem)? z (?P<container>{_WORD})",
+    re.I,
+)
+
+
+def _compound_mass_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    initial, correction = turns[-1], []
+    if len(turns) > 1 and not _MIXED_GROUP.match(initial):
+        initial, correction = turns[-2], _clause_parts(turns[-1])
+    pieces = _clause_parts(initial)
+    if len(pieces) != 3:
+        return None
+    facts, packaging, query = pieces
+    weights = _MIXED_GROUP.fullmatch(facts)
+    container = _MIXED_CONTAINER.fullmatch(packaging)
+    if (
+        weights is None
+        or container is None
+        or not _MIXED_SCOPE.search(query)
+        or not _MIXED_QUERY.search(query)
+        or not re.search(r"\bw gramach\b", query, re.I)
+        or re.search(r"\d", query)
+    ):
+        return None
+    item = _MIXED_ITEMS.get(weights["items"].casefold())
+    box = _MIXED_CONTAINERS.get(container["container"].casefold())
+    items = [_grams(m) for m in _MASS_VALUE.finditer(weights["weights"])]
+    if item is None or box is None or len(items) != _count(weights["count"]):
+        return None
+    query_words = re.findall(_WORD, query.casefold())
+    grouped_item = weights["items"].casefold()
+    named_item = weights["extra_item"].casefold().rstrip("aę")
+    has_both = grouped_item in query_words and any(
+        word.rstrip("aę") == named_item for word in query_words
+    )
+    if not has_both and not re.search(r"\bsamej zawartości\b", query, re.I):
+        return None
+    extra = [_grams(match) for match in _MASS_VALUE.finditer(weights["extra"])]
+    if correction:
+        if len(correction) != 2:
+            return None
+        edit = _MIXED_UPDATE.fullmatch(correction[0])
+        new_scope = _MIXED_AMENDED_SCOPE.fullmatch(correction[1])
+        if (
+            not edit
+            or not new_scope
+            or edit["item"].casefold() not in item
+            or new_scope["container"].casefold() != box
+        ):
+            return None
+        index = _ordinal_index(edit["ordinal"])
+        if index >= len(items):
+            return None
+        items[index] = _grams(edit)
+        extra.append(_grams(container))
+    values = items + extra
+    expression = "+".join(_number(value) for value in values)
+    formula = " + ".join(f"{_polish(value)} g" for value in values)
     return StudioCalculation(expression, "g", lambda result: f"{formula} = {result}.")
 
 
@@ -1207,15 +1430,24 @@ def _pack_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     exception = _PACK_EXCEPTION.fullmatch(updates[0])
     if exception:
         label = exception["item"].casefold()
-    elif exception := _PACK_NAMED_EXCEPTION.fullmatch(updates[0]):
-        label = scopes.get(exception["item"].casefold(), "")
+    elif exception := _PACK_NAMED_EXCEPTION.fullmatch(
+        updates[0]
+    ) or _PACK_REPLACEMENT.fullmatch(updates[0]):
+        item = exception["item"].casefold()
+        feminine = {key[:-3] + "a": key for key in labels}
+        label = scopes.get(item, feminine.get(item, ""))
     else:
         return None
     if label not in terms:
         return None
     changed = terms[label]
     count = _count(exception["count"])
-    if count >= changed.value:
+    stated_old = exception.groupdict().get("old")
+    if (
+        count >= changed.value
+        or stated_old is not None
+        and _count(stated_old) != changed.value
+    ):
         return None
     adjusted = {name: int(term.count * term.value) for name, term in terms.items()}
     adjusted[label] += count - int(changed.value)
@@ -1251,8 +1483,20 @@ def plan_studio_calculation(
 ) -> StudioCalculation | None:
     """Rebuild a supported calculation from the recent user turns only."""
     users = [turn.content for turn in history if turn.role == "user"][-5:]
-    turns = [without_quotes(text) for text in (*users, content)]
-    if is_text_transformation(content) or _NO_CALCULATION.search(turns[-1]):
+    raw_turns = (*users, content)
+    turns = [without_quotes(text) for text in raw_turns]
+    if _NO_CALCULATION.search(turns[-1]):
+        return None
+    if is_text_transformation(content):
+        current = turns[-1]
+        if (
+            current == content.strip()
+            and len(current) <= 512
+            and not _UNCERTAIN.search(current)
+            and _WIDTHS.match(current)
+            and _WIDTH_QUERY.search(current)
+        ):
+            return _width_calculation([current])
         return None
     latest_uncertain = max(
         (
@@ -1271,14 +1515,18 @@ def plan_studio_calculation(
         _length_calculation(active)
         or _rate_calculation(active)
         or _relative_rate_calculation(active)
+        or _accessory_fee_calculation(active)
         or _width_calculation(active)
         or _interval_calculation(active)
         or _mass_calculation(active)
         or _mass_list_calculation(active)
+        or _compound_mass_calculation(active)
         or _distribution_calculation(active)
         or _mean_calculation(active)
         or _measured_mean_calculation(active)
         or _median_calculation(active)
         or _day_calculation(active)
         or _pack_calculation(active)
+        or plan_numeric_series(active)
+        or plan_session_counts(raw_turns[latest_uncertain + 1 :])
     )

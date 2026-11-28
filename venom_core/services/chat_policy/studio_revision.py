@@ -729,6 +729,90 @@ def _pickup_reply(current: str, history: Sequence[HistoryMessage]) -> str | None
     return None
 
 
+_ROOM_LABEL = r"[a-ząćęłńóśźż][a-ząćęłńóśźż0-9-]{0,7}"
+_ROOM_NOTICE_COMMAND = re.compile(
+    r"(?:podaj|przygotuj|napisz|ułóż|zapisz) (?:zwięzł\w* |krótk\w* )?"
+    r"(?:komunikat|ogłoszenie|informację)[.!]",
+    re.I,
+)
+_ROOM_NOTICE_POINTS = re.compile(r"(?:podaj )?dwa (?:osobne )?punkty[.!]?", re.I)
+_ROOM_NOTICE_SCOPES = re.compile(
+    rf"w sali (?P<first>{_ROOM_LABEL}) (?P<first_text>[^.,;!?]{{3,100}})[,;] "
+    rf"(?:a )?w sali (?P<second>{_ROOM_LABEL}) (?P<second_text>[^.,;!?]{{3,100}})\.",
+    re.I,
+)
+_ROOM_NOTICE_EDIT = re.compile(
+    rf"dla (?:sali )?(?P<room>{_ROOM_LABEL}) zamiast informacji o "
+    r"(?P<topic>siedzeniu|plecakach|szatni|poczekalni) ma być "
+    r"(?P<replacement>[^.!?,;]{3,100})\. "
+    r"dwa (?:osobne )?punkty, reszta bez zmian[.!]?",
+    re.I,
+)
+_ROOM_NOTICE_TOPICS = {
+    "siedzeniu": re.compile(r"(?:siadamy|miejsca)\b", re.I),
+    "plecakach": re.compile(r"plecaki\b", re.I),
+    "szatni": re.compile(r"szatnia\b", re.I),
+    "poczekalni": re.compile(r"poczekalnia\b", re.I),
+}
+
+
+def _room_notice_source(text: str) -> tuple[str, dict[str, str]] | None:
+    clauses = _RULE_BOUNDARY.split(text)
+    if (
+        len(clauses) != 4
+        or not _ROOM_NOTICE_COMMAND.fullmatch(clauses[0])
+        or re.fullmatch(r"[^.!?]{3,160}\.", clauses[1]) is None
+        or not _ROOM_NOTICE_POINTS.fullmatch(clauses[3])
+        or not (scopes := _ROOM_NOTICE_SCOPES.fullmatch(clauses[2]))
+    ):
+        return None
+    rooms = {
+        scopes[side].upper(): scopes[f"{side}_text"] for side in ("first", "second")
+    }
+    return (clauses[1], rooms) if len(rooms) == 2 else None
+
+
+def _render_room_notice(shared: str, rooms: dict[str, str]) -> str:
+    return "\n".join(
+        f"- Sala {room}: {action[0].upper()}{action[1:]}. {shared}"
+        for room, action in rooms.items()
+    )
+
+
+def _apply_room_notice_edits(
+    shared: str, rooms: dict[str, str], updates: list[re.Match[str]]
+) -> str | None:
+    for edit in reversed(updates):
+        room = edit["room"].upper()
+        replacement = edit["replacement"]
+        if (
+            room not in rooms
+            or not _ROOM_NOTICE_TOPICS[edit["topic"].casefold()].match(rooms[room])
+            or _PICKUP_UNCERTAIN.search(replacement)
+        ):
+            return None
+        rooms[room] = replacement
+    return _render_room_notice(shared, rooms)
+
+
+def _room_notice_reply(current: str, history: Sequence[HistoryMessage]) -> str | None:
+    if original := _room_notice_source(current):
+        return _render_room_notice(*original)
+    if not (update := _ROOM_NOTICE_EDIT.fullmatch(current)):
+        return None
+    updates = [update]
+    for turn in reversed(history[-12:]):
+        if turn.role != "user":
+            continue
+        text = " ".join(turn.content.split())
+        if original := _room_notice_source(text):
+            return _apply_room_notice_edits(*original, updates)
+        if not (previous := _ROOM_NOTICE_EDIT.fullmatch(text)):
+            return None
+        updates.append(previous)
+    return None
+
+
 def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve only recognized edits, using adjacent user turns as evidence."""
     current = " ".join(text.split())
@@ -737,6 +821,7 @@ def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     return (
         _quoted_rules_reply(current, history)
         or _pickup_reply(current, history)
+        or _room_notice_reply(current, history)
         or _access_rules_reply(current, prior, origin)
         or _replacement_after_removal(current, prior)
         or _courier_reply(current, prior)

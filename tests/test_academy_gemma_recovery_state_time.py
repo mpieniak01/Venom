@@ -1032,3 +1032,136 @@ def test_reordered_review_requires_evidence_for_the_same_field_and_reviewer():
         studio_followup(corrected.replace("Inspektor", "Kontroler"), _history(rejected))
         is None
     )
+
+
+def test_clause_evidence_preserves_source_time_and_unchecked_scope():
+    source = (
+        "Pole daty wykonania pozostaje puste. W wykazie zapisano polecenie "
+        "„przejrzeć rejestr przepustek”. Co potwierdza wykaz?"
+    )
+    note = (
+        "Czy wpis jest spójny, Jacek nie sprawdził. "
+        "Według Jacka przejrzano rejestr przepustek o 13:42. Zapisz oba stany."
+    )
+    history = _history(source, assistant="Sprawdził to Olek przed dwunastą.")
+    # The same task and reporter must support both facts from the user's message.
+    # Preserve exact source, and delegate ambiguous declension to ordinary Studio.
+    simple = (
+        note.replace("Jacka", "Oli")
+        .replace("Jacek", "Ola")
+        .replace("sprawdził", "sprawdziła")
+    )
+    reply = studio_followup(simple, history)
+    assert reply is not None and "Według Oli" in reply and "13:42" in reply
+    assert "Ola nie sprawdziła" in reply and "Olek" not in reply
+    assert studio_followup(simple.replace("Według Oli", "Według Ewy"), history) is None
+    assert (
+        studio_followup(simple.replace("rejestr przepustek", "spis kluczy"), history)
+        is None
+    )
+    assert studio_followup(simple, []) is None
+
+
+def test_clause_evidence_rejects_unrelated_publication_gate_updates():
+    anchor = (
+        "Nowy cennik można opublikować dopiero po weryfikacji podatku. "
+        "Złożono go w systemie, protokołu weryfikacji jeszcze brak. Jak opisać stan?"
+    )
+    update = (
+        "Na portalu nadal wersja stara. Iza z księgowości potwierdziła "
+        "weryfikację o 10:23. Co jest wykonane, co widoczne?"
+    )
+    reply = studio_followup(update, _history(anchor))
+    assert reply is not None and "Iza z księgowości" in reply and "10:23" in reply
+    assert "poprzednia wersja" in reply
+    assert studio_followup(update, []) is None
+    assert (
+        studio_followup(
+            update.replace("weryfikację", "zmianę grafiku"), _history(anchor)
+        )
+        is None
+    )
+    assert (
+        studio_followup(
+            update.replace("Co jest", "Potwierdzono publikację. Co jest"),
+            _history(anchor),
+        )
+        is None
+    )
+
+
+def test_clause_fields_and_review_require_the_same_artifact_and_open_field():
+    fields = (
+        "Wersja robocza wiadomości obejmuje tylko datę i godzinę. "
+        "Zatwierdzono trzy pola komunikatu: nazwę Cis, datę 6 maja oraz godzinę 11:45. "
+        "Oddziel zatwierdzone pola od szkicu."
+    )
+    missing = "Nadana wiadomość zawiera tylko datę i godzinę. Co zapisać o nazwie?"
+    assert studio_followup(missing, _history(fields)) == (
+        "Zatwierdzono nazwę Cis, ale nie ma jej w nadanej wiadomości."
+    )
+    assert studio_followup(missing.replace("nazwie", "dacie"), _history(fields)) == (
+        "Zatwierdzono datę 6 maja i to pole znajduje się w nadanej wiadomości."
+    )
+    assert studio_followup(missing, []) is None
+    returned = (
+        "Do odbioru upoważnia dopiero poprawka i powtórny podpis. "
+        "Kontroler zwrócił formularz z powodu błędnego kodu taśmy. Jak opisać stan?"
+    )
+    fixed = "Powtórnego podpisu wciąż brak. W formularzu poprawiono kod taśmy. Czy zamykamy odbiór?"
+    assert studio_followup(fixed, _history(returned)) == (
+        "W formularzu poprawiono kod taśmy. Wciąż brakuje ponownego podpisu, więc odbiór pozostaje otwarty."
+    )
+    assert studio_followup(fixed.replace("taśmy", "stołu"), _history(returned)) is None
+    assert (
+        studio_followup(fixed.replace("formularzu", "deklaracji"), _history(returned))
+        is None
+    )
+
+
+def test_clause_opening_and_partial_batch_use_only_matching_evidence():
+    before = (
+        "Po potwierdzeniu ustawienia bramy przejdziemy na otwarcie o 12:30. "
+        "Potwierdzenia ustawienia bramy jeszcze nie ma. Dotychczasowe otwarcie to 11:45. "
+        "Która pora obowiązuje?"
+    )
+    after = (
+        "W rozkładzie papierowym wciąż widnieje 11:45. "
+        "Kierownik potwierdził ustawienie bramy. Zapisz godziny z ich źródłami."
+    )
+    reply = studio_followup(after, _history(before))
+    assert reply is not None and "Obowiązuje godzina 12:30" in reply
+    assert "W rozkładzie papierowym nadal podano 11:45" in reply
+    assert studio_followup(after.replace("bramy", "furtki"), _history(before)) is None
+    batch = "Przyjęto 12 paczek. Otworzono 5 paczek, a 7 jeszcze nie przejrzano. Podaj zakres."
+    assert studio_followup(batch, []) == (
+        "Przyjęto 12 paczek. Otworzono 5 z 12 paczek, a 7 nadal nie sprawdzono."
+    )
+    assert studio_followup(batch.replace("7 jeszcze", "6 jeszcze"), []) is None
+    assert studio_followup(batch.replace("5 paczek", "5 kompletów"), []) is None
+
+
+def test_clause_shift_requires_the_same_person_and_explicit_registration():
+    first = (
+        "Grafik nie zawiera wpisu dla Joanny. Joanna zgłosiła chęć na wtorkowy dyżur. "
+        "Jaki stan ma Joanna?"
+    )
+    second = (
+        "Joanna nie zaakceptowała przydziału. Koordynator wpisał Joannę do grafiku we wtorek "
+        "na 16:10. Zapisz dzień, godzinę i stan."
+    )
+    status = studio_followup(second, _history(first))
+    assert status is not None and "Joannę do grafiku we wtorek o 16:10" in status
+    assert "czeka na potwierdzenie" in status
+    assert (
+        studio_followup(second.replace("wpisał Joannę", "wpisał Lenę"), _history(first))
+        is None
+    )
+    assert (
+        studio_followup(second.replace("Joanna nie", "Lena nie"), _history(first))
+        is None
+    )
+    assert (
+        studio_followup(second.replace("wpisał", "planuje wpisać"), _history(first))
+        is None
+    )

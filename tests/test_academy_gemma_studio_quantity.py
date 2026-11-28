@@ -581,3 +581,49 @@ def test_two_scoped_lists_apply_removal_and_addition_before_selecting():
         )
         is None
     )
+
+
+def test_named_kits_replay_ordered_updates_bound_to_each_label():
+    original = (
+        "Pakiet D zawiera nożyczki, ołówek i kalkę, a pakiet J kalkę, klips i ołówek. "
+        "Wypisz wspólne przedmioty?"
+    )
+    first = (
+        "Do pakietu D dodajemy klips, z pakietu J jednocześnie wykreślamy kalkę. "
+        "Wskaż teraz część wspólną."
+    )
+    second = (
+        "Z pakietu D usuwamy klips, do pakietu J dodajemy nożyczki. "
+        "Co jest teraz wspólne?"
+    )
+    history = _history(original, "Pomyliłem etykiety.")
+    assert studio_comparison(original, []) == "Część wspólna obejmuje ołówek, kalkę."
+    assert studio_comparison(first, history) == "Część wspólna obejmuje ołówek, klips."
+    assert studio_comparison(first.replace("pakietu J", "zestawu J"), history) is None
+    history += _history(first, "W obu nadal jest kalka.")
+    assert (
+        studio_comparison(second, history) == "Część wspólna obejmuje nożyczki, ołówek."
+    )
+    history += _history(second, "Nie zmieniono żadnego pakietu.")
+    assert (
+        studio_comparison("Wypisz wszystko, co jest tylko w J.", history)
+        == "Tylko pakiet J zawiera klips."
+    )
+    assert (
+        studio_comparison(
+            second.replace(
+                "do pakietu J dodajemy nożyczki", "z pakietu J usuwamy kalkę"
+            ),
+            history[:-2],
+        )
+        is None
+    )
+    assert (
+        studio_comparison(
+            second.replace(
+                "do pakietu J dodajemy nożyczki", "do pakietu D dodajemy klips"
+            ),
+            history[:-2],
+        )
+        is None
+    )

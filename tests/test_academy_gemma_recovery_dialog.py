@@ -1,5 +1,6 @@
 """Targeted tests for the Academy Studio dialogue controls."""
 
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -7,7 +8,7 @@ import pytest
 from tests.test_academy_qualified_chat import native, streamed
 from tests.test_academy_qualified_chat import studio_chat as qualified_studio_chat
 from venom_core.api.schemas.llm_simple import HistoryMessage
-from venom_core.services import llm_simple_service
+from venom_core.services import chat_grounding, llm_simple_service
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.chat_policy.studio_dialog import studio_dialog
 from venom_core.services.chat_policy.studio_dialog_compare import studio_comparison
@@ -910,3 +911,75 @@ def test_grounded_labels_are_per_group_when_tables_move():
         is None
     )
     assert studio_dialog(_LABELS_SOURCE.replace("i przyroda", "i pejzaż"), []) is None
+
+
+_ROOM_NOTICE = (
+    "Podaj zwięzły komunikat. Wydarzenie ruszy po sygnale. W sali L siadamy przy oknach, "
+    "w sali K plecaki trafiają pod ławkę. Dwa osobne punkty."
+)
+_ROOM_NOTICE_EDIT = "Dla L zamiast informacji o siedzeniu ma być szatnia przy wejściu. Dwa punkty, reszta bez zmian."
+
+
+def test_studio_edits_local_room_notice_without_public_read(studio_chat, monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    read = AsyncMock()
+    monkeypatch.setattr(chat_grounding, "_execute_public_source_read", read)
+    chat, sent, _ = studio_chat
+    session = str(uuid4())
+
+    assert chat(_ROOM_NOTICE, session=session, verify_history=True, stream=False) == (
+        "- Sala L: Siadamy przy oknach. Wydarzenie ruszy po sygnale.\n"
+        "- Sala K: Plecaki trafiają pod ławkę. Wydarzenie ruszy po sygnale."
+    )
+    assert chat(
+        _ROOM_NOTICE_EDIT, session=session, verify_history=True, stream=False
+    ) == (
+        "- Sala L: Szatnia przy wejściu. Wydarzenie ruszy po sygnale.\n"
+        "- Sala K: Plecaki trafiają pod ławkę. Wydarzenie ruszy po sygnale."
+    )
+    read.assert_not_awaited()
+    assert not sent
+
+
+def test_room_notice_revision_replays_prior_changes_from_user_turns():
+    later = (
+        "Dla sali K zamiast informacji o plecakach ma być poczekalnia przy schodach. "
+        "Dwa punkty, reszta bez zmian."
+    )
+    history = _history(_ROOM_NOTICE, "Sala L oznacza plecaki.") + _history(
+        _ROOM_NOTICE_EDIT, "Sala L siada przy schodach."
+    )
+    assert studio_revision(later, history) == (
+        "- Sala L: Szatnia przy wejściu. Wydarzenie ruszy po sygnale.\n"
+        "- Sala K: Poczekalnia przy schodach. Wydarzenie ruszy po sygnale."
+    )
+
+
+@pytest.mark.parametrize(
+    "correction",
+    [
+        _ROOM_NOTICE_EDIT.replace("Dla L", "Dla P"),
+        _ROOM_NOTICE_EDIT.replace("Dla L", "Dla K"),
+        _ROOM_NOTICE_EDIT.replace("przy wejściu", "przy wejściu albo przy schodach"),
+    ],
+)
+def test_room_notice_revision_defers_unbound_or_uncertain_replacement(correction):
+    assert (
+        studio_revision(correction, _history(_ROOM_NOTICE, "Zapisano komunikat."))
+        is None
+    )
+
+
+def test_room_notice_revision_requires_distinct_rooms_and_contiguous_source():
+    assert studio_revision(_ROOM_NOTICE.replace("sali K", "sali L"), []) is None
+    assert studio_revision(_ROOM_NOTICE_EDIT, []) is None
+    assert (
+        studio_revision(
+            _ROOM_NOTICE_EDIT,
+            _history(_ROOM_NOTICE, "Zapisano komunikat.")
+            + _history("To teraz inny obiekt.", "Rozumiem."),
+        )
+        is None
+    )

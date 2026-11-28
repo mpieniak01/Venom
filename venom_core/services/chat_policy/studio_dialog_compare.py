@@ -744,22 +744,34 @@ _TABLE_LISTS = re.compile(
     r"(?:które elementy są wspólne|co jest wspólne)\?",
     re.I,
 )
-_TABLE_REMOVE = re.compile(
-    rf"z listy (?P<label>{_LIST_LABEL}) (?:usuwamy|wykreślamy) (?P<item>{_LIST_ITEM})",
+_KIT_LISTS = re.compile(
+    rf"(?P<scope>zestaw|pakiet) (?P<first>{_LIST_LABEL}) zawiera (?P<left>{_ITEMS}), "
+    rf"(?:a )?(?P=scope) (?P<second>{_LIST_LABEL}) (?:zawiera )?(?P<right>{_ITEMS})[.!] "
+    r"(?:wskaż wspólne przedmioty|wypisz wspólne przedmioty|które przedmioty są wspólne)[.?!]?",
     re.I,
 )
-_TABLE_ADD = re.compile(
-    rf"do (?:listy )?(?P<label>{_LIST_LABEL}) (?:dopisujemy|dodajemy) (?P<item>{_LIST_ITEM})",
+_LABELED_LIST_REMOVE = re.compile(
+    rf"z (?:(?P<scope>listy|zestawu|pakietu) )?(?P<label>{_LIST_LABEL}) (?:jednocześnie )?"
+    rf"(?:usuwamy|wykreślamy) (?P<item>{_LIST_ITEM})",
     re.I,
 )
-_TABLE_UPDATE = re.compile(
+_LABELED_LIST_ADD = re.compile(
+    rf"do (?:(?P<scope>listy|zestawu|pakietu) )?(?P<label>{_LIST_LABEL}) "
+    rf"(?:dopisujemy|dodajemy) (?P<item>{_LIST_ITEM})",
+    re.I,
+)
+_LABELED_LIST_UPDATE = re.compile(
     r"(?P<operations>[^.!?\n]{10,140})[.!] "
-    r"(?:jakie teraz są wspólne|które elementy są teraz wspólne|co jest teraz wspólne)\?",
+    r"(?:jakie teraz są wspólne|które elementy są teraz wspólne|co jest teraz wspólne"
+    r"|wskaż teraz część wspólną)[.?!]?",
     re.I,
 )
 _TABLE_ONLY = re.compile(
     rf"(?:które pozostają|co zostaje) (?:tylko|wyłącznie) dla (?P<label>{_LIST_LABEL})\?",
     re.I,
+)
+_KIT_ONLY = re.compile(
+    rf"wypisz wszystko, co jest tylko w (?P<label>{_LIST_LABEL})[.?!]?", re.I
 )
 
 
@@ -773,41 +785,55 @@ def _item_lists(initial: re.Match[str]) -> dict[str, dict[str, str]]:
     }
 
 
-def _apply_table_update(
-    lists: dict[str, dict[str, str]], update: re.Match[str]
+def _apply_labeled_list_update(
+    lists: dict[str, dict[str, str]], update: re.Match[str], scope: str
 ) -> bool:
-    clauses = update["operations"].split(", ", 1)
-    if len(clauses) != 2:
-        return False
-    remove = _TABLE_REMOVE.fullmatch(clauses[0])
-    add = _TABLE_ADD.fullmatch(clauses[1].removeprefix("a "))
-    if remove is None or add is None:
-        return False
-    source, target = (lists.get(edit["label"].casefold()) for edit in (remove, add))
-    removed = remove["item"].casefold()
-    if source is None or target is None or removed not in source:
-        return False
-    del source[removed]
-    target.setdefault(add["item"].casefold(), add["item"])
+    changes: set[tuple[str, str]] = set()
+    for clause in re.split(r", (?:a )?", update["operations"], flags=re.I):
+        add = _LABELED_LIST_ADD.fullmatch(clause)
+        edit = add or _LABELED_LIST_REMOVE.fullmatch(clause)
+        if edit is None:
+            return False
+        if edit["scope"] and edit["scope"].casefold() not in {"listy", scope}:
+            return False
+        label, item = (edit[name].casefold() for name in ("label", "item"))
+        positions = lists.get(label)
+        if positions is None or (label, item) in changes:
+            return False
+        changes.add((label, item))
+        if add:
+            positions.setdefault(item, add["item"])
+        elif item in positions:
+            del positions[item]
+        else:
+            return False
     return True
 
 
-def _table_comparison(current: str, users: Sequence[str]) -> str | None:
-    source = _TABLE_LISTS.fullmatch(current)
-    exclusive = _TABLE_ONLY.fullmatch(current)
-    update = _TABLE_UPDATE.fullmatch(current)
-    if update and users:
-        source = _TABLE_LISTS.fullmatch(users[-1])
-    elif exclusive and len(users) >= 2:
-        source = _TABLE_LISTS.fullmatch(users[-2])
-        update = _TABLE_UPDATE.fullmatch(users[-1])
-        if update is None:
-            return None
+def _named_list_comparison(current: str, users: Sequence[str]) -> str | None:
+    source = _TABLE_LISTS.fullmatch(current) or _KIT_LISTS.fullmatch(current)
+    exclusive = _TABLE_ONLY.fullmatch(current) or _KIT_ONLY.fullmatch(current)
+    update = _LABELED_LIST_UPDATE.fullmatch(current)
+    if source is None and update is None and exclusive is None:
+        return None
+
+    edits = [update] if update is not None else []
+    if source is None:
+        for prior in reversed(users):
+            if source := _TABLE_LISTS.fullmatch(prior) or _KIT_LISTS.fullmatch(prior):
+                break
+            if (previous := _LABELED_LIST_UPDATE.fullmatch(prior)) is None:
+                return None
+            edits.append(previous)
     if source is None or source["first"].casefold() == source["second"].casefold():
         return None
     lists = _item_lists(source)
-    if update and not _apply_table_update(lists, update):
+    scope = f"{source['scope'].casefold()}u" if source.re is _KIT_LISTS else "listy"
+    if any(
+        not _apply_labeled_list_update(lists, edit, scope) for edit in reversed(edits)
+    ):
         return None
+
     first, second = lists.values()
     if exclusive:
         selected = lists.get(exclusive["label"].casefold())
@@ -819,11 +845,17 @@ def _table_comparison(current: str, users: Sequence[str]) -> str | None:
     else:
         items = [value for key, value in first.items() if key in second]
         prefix = "Dla obu list"
-    return (
-        f"{prefix} przygotuj: {', '.join(items)}."
-        if items
-        else f"{prefix}: brak pozycji."
-    )
+    if not items:
+        return f"{prefix}: brak pozycji."
+    if source.re is _KIT_LISTS:
+        kit = source["scope"].casefold()
+        description = (
+            f"Tylko {kit} {exclusive['label']} zawiera"
+            if exclusive
+            else "Część wspólna obejmuje"
+        )
+        return f"{description} {', '.join(items)}."
+    return f"{prefix} przygotuj: {', '.join(items)}."
 
 
 def _list_comparison(current: str, users: Sequence[str]) -> str | None:
@@ -875,7 +907,9 @@ def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | Non
     previous = _last_user(history)
     if len(current) > 600:
         return None
-    users = [turn.content for turn in history[-4:] if turn.role == "user"]
+    users = [" ".join(turn.content.split()) for turn in history if turn.role == "user"][
+        -4:
+    ]
     return (
         _support_reply(current, previous)
         or _fits_reply(current, previous)
@@ -886,6 +920,8 @@ def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | Non
         or _card_reply(current, previous)
         or _product_time_reply(current, previous)
         or _carry_reply(current, previous)
-        or _list_comparison(current, users)
-        or _table_comparison(current, users)
+        or _list_comparison(
+            current, [turn.content for turn in history[-4:] if turn.role == "user"]
+        )
+        or _named_list_comparison(current, [" ".join(text.split()) for text in users])
     )

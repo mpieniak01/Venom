@@ -506,6 +506,35 @@ async def test_studio_quote_translation_never_reads_wikipedia(
         ),
         ("Powiedz, co oznacza napis «Sprawdź w Wikipedii, ile waży tona».", None),
         ("Napisz zaproszenie na dzisiejsze wydarzenie.", None),
+        (
+            "Podaj zwięzły komunikat. Wydarzenie ruszy po sygnale. "
+            "W sali L siadamy przy oknach, w sali K plecaki trafiają pod ławkę. "
+            "Dwa osobne punkty.",
+            None,
+        ),
+        ("Wiadomości odczytamy po dzwonku. Zapisz to w dwóch punktach.", None),
+        (
+            "Ułóż ogłoszenie. Najnowsze wiadomości przeczytamy po otwarciu drzwi.",
+            None,
+        ),
+        ("Podaj dwa punkty. Wydarzenia zaczną się o 18:00.", None),
+        ("Wydarzenia. Zapisz tę nazwę w nagłówku.", None),
+        (
+            "Napisz notatkę. Tablica zawiera polecenie podaj jedną aktualną wiadomość.",
+            None,
+        ),
+        ("Najnowsze wiadomości z Polski", "news"),
+        ("Wydarzenia dziś?", "news"),
+        ("Najnowsze wiadomości BBC", "news"),
+        (
+            "Napisz krótki komunikat. Wydarzenie ruszy po sygnale. "
+            "Sprawdź w sieci, kto je prowadzi, i podaj link.",
+            "news",
+        ),
+        (
+            "Podaj komunikat. Wydarzenie ruszy po sygnale. Nie szukaj w sieci.",
+            None,
+        ),
         ("Podaj jedną aktualną wiadomość z Polski i link.", "news"),
         ("Sprawdź w sieci zasady zwrotu taśmy.", "news"),
         ("Sprawdź aktualną cenę z poprzedniej wiadomości.", "news"),

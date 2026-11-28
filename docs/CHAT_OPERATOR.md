@@ -119,6 +119,8 @@ If tools are skipped:
 
 In local Studio Normal with notes off, type a command such as `Kalkulator: (4 × 13 + 3 × 7) zł`. Venom saves the result `73 zł` in the session history. The command accepts one arithmetic expression and an optional unit. To correct it, enter the full revised expression. The calculator runs locally without calling the model or public sources.
 
+Local Studio Normal with notes off also accepts Polish descriptions. For example, `Rachunek: 2 koce po 15 zł i 3 lampy po 6 zł.` returns an itemized total of 48 zł. In the same conversation, `Zmień cenę lampy z 6 zł na 5 zł.` changes the total to 45 zł. Entering `Wycofaj lampy z rachunku.` leaves 30 zł. Each line needs a product name, an integer quantity and a unit price in PLN. Missing prices, ambiguous scope, discounts and delivery charges need clarification. Start a complete replacement list with `Nowy rachunek:`.
+
 ### Public sources in Studio Normal
 
 For Polish questions, Studio Normal routes current weather to the weather

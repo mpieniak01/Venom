@@ -26,6 +26,7 @@ from venom_core.services.chat_grounding import (
     current_chat_context,
     is_current_news_request,
 )
+from venom_core.services.chat_material_payload import plain_text_request
 from venom_core.services.chat_policy.history import recent_turns
 from venom_core.services.chat_policy.qualified_chat_explanations import changes_example
 from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
@@ -34,15 +35,18 @@ from venom_core.services.chat_policy.qualified_chat_revisions import (
     public_lookup_query,
     source_revision_hint,
 )
+from venom_core.services.chat_policy.studio_bill import studio_bill_reply
 from venom_core.services.chat_policy.studio_sources import (
     StudioSourcePlan,
     plan_studio_source,
 )
+from venom_core.services.ollama_audio import is_host_ollama
 from venom_core.services.public_source_evidence import (
     PublicSourceContext,
     PublicSourceEvidence,
 )
 from venom_core.services.session_store import SessionStore
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 _NORMAL_HISTORY_POLICY = (
     "Use the conversation history to answer follow-up questions. "
@@ -395,6 +399,16 @@ async def prepare_studio_normal(
 ) -> tuple[SimpleChatRequest, str]:
     """Build a single prompt with history and retrieve notes only when requested."""
     setup = await _normal_chat_setup(request, store, get_vector_store)
+    bill = None
+    if not request.use_notes and plain_text_request(request):
+        bill = studio_bill_reply(request.content, setup.history_records)
+    if bill is not None and is_host_ollama(get_active_llm_runtime()):
+        prepared = request.model_copy(
+            update={"history": setup.history, "max_tokens": setup.output_tokens}
+        )
+        prepared._studio_bill_reply = bill
+        return prepared, setup.system_context
+
     plan = plan_studio_source(
         request.content,
         setup.history,

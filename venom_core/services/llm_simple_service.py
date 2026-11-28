@@ -25,6 +25,9 @@ from venom_core.services.chat_grounding import (
     PUBLIC_SOURCE_BLOCK,
     is_current_news_request,
 )
+from venom_core.services.chat_material_payload import (
+    plain_text_request as _plain_text_request,
+)
 from venom_core.services.chat_policy.direct_calculator import (
     execute_calculator,
     plan_calculator,
@@ -1403,20 +1406,6 @@ def _prepare_local_direct_prompt(
     )
 
 
-def _plain_text_request(request: SimpleChatRequest) -> bool:
-    from venom_core.services.chat_material_payload import has_materials
-
-    return (
-        not has_materials(request)
-        and request.tools is None
-        and request.tool_choice is None
-        and request.format is None
-        and request.response_format is None
-        and not request.logprobs
-        and request.top_logprobs is None
-    )
-
-
 def _qualified_request(request: SimpleChatRequest, runtime: LLMRuntimeInfo) -> bool:
     return (
         SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
@@ -1703,6 +1692,17 @@ def _direct_calculator_response(
     system_context: str,
 ) -> StreamingResponse | None:
     if request.studio_normal and not request.use_notes and _plain_text_request(request):
+        if request._studio_bill_reply is not None and is_host_ollama(runtime):
+            return _local_direct_stream(
+                request,
+                runtime,
+                model_name,
+                request_id,
+                lambda: {
+                    "text": request._studio_bill_reply,
+                    "response_source": "studio_bill",
+                },
+            )
         plan = plan_studio_calculator_command(request.content)
     elif _allows_local_direct_reply(request, system_context):
         history = [

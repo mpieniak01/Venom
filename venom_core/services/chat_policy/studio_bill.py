@@ -129,13 +129,7 @@ class Bill:
         self.items[name] = Item(count, price)
 
     def apply(self, text: str) -> None:
-        text = text.strip().lower()
-        if not text or len(text) > 1600 or text.endswith((",", ";", ":", "..", "…")):
-            raise BillQuestion(GENERIC)
-        if any(ch.isdecimal() and not ch.isascii() for ch in text):
-            raise BillQuestion(GENERIC)
-        if text.rsplit(maxsplit=1)[-1] in {"i", "oraz", "plus"}:
-            raise BillQuestion(GENERIC)
+        text = _checked_text(text)
         short_answer = text.rstrip(".!").rstrip()
         if match := BARE_PRICE.fullmatch(short_answer) or BARE_COUNT.fullmatch(
             short_answer
@@ -295,6 +289,17 @@ class Bill:
         return "\n".join([*lines, f"Razem: {total} zł"])
 
 
+def _checked_text(text: str) -> str:
+    text = text.strip().lower()
+    if not text or len(text) > 1600 or text.endswith((",", ";", ":", "..", "…")):
+        raise BillQuestion(GENERIC)
+    if any(ch.isdecimal() and not ch.isascii() for ch in text):
+        raise BillQuestion(GENERIC)
+    if text.rsplit(maxsplit=1)[-1] in {"i", "oraz", "plus"}:
+        raise BillQuestion(GENERIC)
+    return text
+
+
 def _clauses(text: str) -> list[str]:
     text = _description(text)
     text = re.sub(r"\(po (" + PRICE + r")\)", r" po \1", text)
@@ -363,34 +368,54 @@ def _previous_prompts(records: list[dict[str, object]]) -> list[str] | None:
     return []
 
 
+def _bill_turns(message: str, history: list[dict[str, object]]) -> list[str] | None:
+    if _starts(message):
+        if not PREFIX.match(message) and _previous_prompts(history):
+            raise BillQuestion(NEW_OR_CHANGE)
+        return [message]
+    if not _follow(message):
+        return None
+    previous = _previous_prompts(history)
+    if previous:
+        return [*previous, message]
+    named_change = any(
+        rule.match(message.lower())
+        for rule in (CHANGE_COUNT, CHANGE_PRICE, CHANGE_FROM)
+    )
+    if previous is None or named_change or _interrupted_bill(history):
+        raise BillQuestion(MISSING_BASE)
+    return None
+
+
+def _interrupted_bill(history: list[dict[str, object]]) -> bool:
+    # A cancelled/failed last bill cannot establish a usable previous subtotal.
+    if len(history) < 2:
+        return False
+    user, assistant = history[-2:]
+    text = user.get("content")
+    return (
+        assistant.get("mode") == "studio_normal"
+        and assistant.get("status") != "COMPLETED"
+        and isinstance(text, str)
+        and (_starts(text.strip()) or _follow(text.strip()))
+    )
+
+
 def studio_bill_reply(message: str, history: list[dict[str, object]]) -> str | None:
     """Build amounts exclusively from complete user clauses in this bill."""
     message = message.strip()
-    prompts: list[str] = []
-    starts = _starts(message)
-    if starts and not PREFIX.match(message) and _previous_prompts(history):
-        return NEW_OR_CHANGE
-    if not starts:
-        if not _follow(message):
-            return None
-        previous = _previous_prompts(history)
-        if previous is None:
-            return MISSING_BASE
-        prompts = previous
-        if not prompts:
-            if any(
-                rule.match(message.lower())
-                for rule in (CHANGE_COUNT, CHANGE_PRICE, CHANGE_FROM)
-            ):
-                return MISSING_BASE
-            return None
-    if re.search(
-        r"\b(?:nie wybraliśmy|nie wybrano) (?:jeszcze )?wariantu\b", message, re.I
-    ):
-        return "Który wariant i cenę jednostkową mam przyjąć do rachunku?"
     bill = Bill()
     try:
-        for text in [*prompts, message]:
+        turns = _bill_turns(message, history)
+        if turns is None:
+            return None
+        if re.search(
+            r"\b(?:nie wybraliśmy|nie wybrano) (?:jeszcze )?wariantu\b", message, re.I
+        ):
+            raise BillQuestion(
+                "Który wariant i cenę jednostkową mam przyjąć do rachunku?"
+            )
+        for text in turns:
             bill.apply(text)
         return bill.result()
     except BillQuestion as exc:

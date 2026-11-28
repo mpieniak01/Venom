@@ -266,6 +266,8 @@ def test_studio_bill_uses_contiguous_completed_turns():
         )
     assert studio_bill_reply("Napisz o słowie „rachunek”.", prior) is None
     assert studio_bill_reply("Ile lat ma Kraków?", prior) is None
+    failed = pair("Rachunek: 2 lampy po 3 zł.", "", status="FAILED")
+    assert "pełną listę" in studio_bill_reply("Ile razem?", failed)
 
 
 @pytest.mark.parametrize(

@@ -62,12 +62,12 @@ _OTHER_LENGTH_UNIT = re.compile(
 )
 _LENGTH_GAP = re.compile(
     r"\b(?:ile\s+(?:dokładnie\s+|jeszcze\s+)?(?:(?:cm|centymetr\w*)\s+)?brakuje"
-    r"|jaki jest niedobór|podaj (?:niedobór|brak) w (?:cm|centymetrach))\b",
+    r"|jaki jest niedobór|podaj (?:niedobór|brak)(?: po zmianie| po korekcie)? w (?:cm|centymetrach))\b",
     re.I,
 )
 _LENGTH_CHANGE = re.compile(
     rf"\b(?P<each>każd[ay]\s+)?(?P<label>krót(?:k|sz)\w*|dłu(?:g|ż)\w*)\s+"
-    rf"(?(each)(?:ma(?:\s+mieć)?|zmieniam\s+na)|mają\s+(?:jednak\s+|teraz\s+)?po)\s+{_LENGTH}",
+    rf"(?:(?(each)(?:ma(?:\s+mieć)?|zmieniam\s+na)|mają\s+(?:jednak\s+|teraz\s+)?po)|(?:za)?mieniam\s+na)\s+{_LENGTH}",
     re.I,
 )
 _LENGTH_MEASURE_CHANGE = re.compile(
@@ -78,11 +78,11 @@ _LENGTH_MEASURE_CHANGE = re.compile(
 )
 _AVAILABLE = re.compile(
     rf"(?:\b(?:odciął[ae]m|odcięt[eo]|odmierzy[łl][ae]m)"
-    rf"|(?:^|[.!]\s+)(?:mam[y]?|odłożono)\s+(?:już|{_WORD}\s+długości))\s+{_LENGTH}",
+    rf"|(?:^|[.!]\s+)(?:mam[y]?|odłożono)\s+(?:już(?:\s+odłożone)?|odłożone|{_WORD}\s+długości))\s+{_LENGTH}",
     re.I,
 )
 
-_RATE_NAME = r"krajow\w*|zagraniczn\w*|normaln\w*|zwykł\w*|ulgow\w*"
+_RATE_NAME = r"krajow\w*|zagraniczn\w*|normaln\w*|zwykł\w*|ulgow\w*|[^\W\d_]{2,30}(?:ych|ich|ymi|imi|owe|ane|ywne)"
 _RATE = re.compile(
     rf"\b(?P<count>[1-9][0-9]{{0,3}})\s+(?:{_WORD}\s+)?(?P<label>{_RATE_NAME})"
     rf"\s+(?:(?:kosztuje|kosztują)\s+)?po\s+(?P<value>{_NUMBER})\s*zł\b",
@@ -93,14 +93,20 @@ _RATE_CHANGE = re.compile(
     rf"(?:po|kosztują)\s+(?P<value>{_NUMBER})\s*zł\b",
     re.I,
 )
+_RATE_AMENDMENT = re.compile(
+    rf"\bstawk\w* (?P<label>{_RATE_NAME}) (?:zmienia się|spada|rośnie) z "
+    rf"(?P<old>{_NUMBER})(?: zł)? (?:na|do) (?P<value>{_NUMBER}) zł\b",
+    re.I,
+)
 _MONEY_VALUE = re.compile(rf"\b{_NUMBER}\s*zł\b", re.I)
 _RATE_ONLY = re.compile(
-    rf"\b(?:tylko\s+(?:za\s+)?|sam(?:ych|e|ymi)\s+)(?P<label>{_RATE_NAME})\b", re.I
+    rf"\b(?:tylko\s+(?:za\s+)?|sam(?:ych|e|ymi)\s+)(?:{_WORD}\s+)?(?P<label>{_RATE_NAME})\b",
+    re.I,
 )
 _RATE_TOTAL = re.compile(
     r"(?:\b(?:kwot[ayę]|koszt|ile|sum[ayę])\b[^.!?\n]{0,42}"
     r"\b(?:wszystk\w*|całoś\w*|łącznie|razem)\b)"
-    r"|\bile\s+łącznie\s+za\s+obie\s+grupy\b",
+    r"|\bile\s+łącznie\s+za\s+obie\s+grupy\b|\b(?:podaj|policz|oblicz) (?:teraz )?całość\b",
     re.I,
 )
 
@@ -166,7 +172,20 @@ _MASS_WITH_CASE = re.compile(
 _MASS_WITHOUT_CASE = re.compile(
     r"\bile ważą same (?:obciążniki|odważniki) w gramach\b", re.I
 )
-_MASS_CASE = re.compile(r"\b(?:pokrowiec|etui|opakowanie)$", re.I)
+_MASS_CASE = re.compile(r"\b(?:pokrowiec|etui|opakowanie|pudełko)$", re.I)
+_PART_ORDINAL = r"pierwsza|druga|trzecia|czwarta|piąta|szósta"
+_PART = re.compile(rf"(?P<label>{_PART_ORDINAL})(?: część)? (?:waży )?{_MASS}", re.I)
+_PARTS = re.compile(
+    r"bez (?P<container>pudełka|opakowania): (?P<parts>[^.!?]+)[.!] "
+    rf"(?P<label>pudełko|opakowanie) (?:ma|waży) {_MASS}[.!] "
+    r"(?:podaj|oblicz) masę samych części w gramach[.!?]?",
+    re.I,
+)
+_PART_CHANGE = re.compile(
+    rf"(?P<label>{_PART_ORDINAL}) część (?:zmienia się na|waży teraz|waży jednak) {_MASS}[.!] "
+    r"(?:teraz )?(?:uwzględnij|dolicz) (?:także |również )?(?P<container>pudełko|opakowanie)[.!?]?",
+    re.I,
+)
 
 _MASS_ITEMS = {
     "worki": ("worek", "worków", "worku"),
@@ -240,7 +259,7 @@ _WIDTH_CHANGE = re.compile(
     re.I,
 )
 _WIDTH_REPLACEMENT = re.compile(
-    rf"\b(?:deskę|listwę|płytę)\s+(?P<label>{_WORD})\s+wymieniliśm[yi]\s+na\s+{_LENGTH}",
+    rf"\b(?:deskę|listwę|płytę)\s+(?P<label>{_WORD})\s+(?:wymieniliśm[yi]\s+na|wymieniono[.!]\s+(?:aktualnie|teraz) ma)\s+{_LENGTH}",
     re.I,
 )
 _WIDTH_NAMED_REPLACEMENT = re.compile(
@@ -265,13 +284,15 @@ _WIDTH_QUERY = re.compile(
     r"\b(?P<widest>najszer\w*|największ[ąa]\s+szerokość)\b|\b(?:najwęż\w*|najmniejsz[ąa]\s+szerokość)\b",
     re.I,
 )
-_INTERVAL_EDGE = r"włącznie|wyłącznie|bez punktu granicznego"
+_INTERVAL_EDGE = (
+    r"włącznie|włączona|wyłącznie|wyłączona|bez (?:punktu granicznego|granicy)"
+)
 _INTERVAL_SAMPLES = (
-    r"(?:próbka |próbki:\s*)(?P<items>[^?!\n]{3,260}?)[.!] "
-    r"(?:wypisz|wskaż) (?:spełniające zakres|pasujące próbki)[.!?]?"
+    r"(?:próbka |próbki:?\s*)(?P<items>[^?!\n]{3,260}?)[.!] "
+    r"(?:wypisz|wskaż) (?:spełniające zakres|pasujące próbki|dopuszczone(?: próbki)?)[.!?]?"
 )
 _INTERVAL_SOURCE = re.compile(
-    rf"(?:obowiązuje )?zakres od (?P<lower>{_NUMBER}) (?P<lower_unit>mm|cm|m) "
+    rf"(?:(?:obowiązuje )?zakres|dopuszczam(?:y)? długość) od (?P<lower>{_NUMBER}) (?P<lower_unit>mm|cm|m) "
     rf"(?P<lower_edge>{_INTERVAL_EDGE}) do (?P<less>mniej niż )?"
     rf"(?P<upper>{_NUMBER}) (?P<upper_unit>mm|cm|m)(?: (?P<upper_edge>{_INTERVAL_EDGE}))?[.!] "
     rf"{_INTERVAL_SAMPLES}",
@@ -302,9 +323,9 @@ _INTERVAL_ITEM = re.compile(
 )
 _INTERVAL_UPDATE = re.compile(
     r"(?:zamień zasady dotyczące krańców:\s*)?"
-    rf"(?:dolna granica|dolny(?: kraniec)?) (?:od teraz )?(?P<lower_edge>{_INTERVAL_EDGE}), "
-    rf"górn[ay](?: (?:granica|kraniec))? (?P<upper_edge>{_INTERVAL_EDGE})[.!] "
-    r"(?:(?:wypisz|wskaż) ponownie|podaj listę jeszcze raz)[.!?]?",
+    rf"(?:teraz )?(?:dolna granica|dolny(?: kraniec)?) (?:od teraz |jest )?(?P<lower_edge>{_INTERVAL_EDGE}), "
+    rf"górn[ay](?: (?:granica|kraniec))? (?:jest )?(?P<upper_edge>{_INTERVAL_EDGE})[.!] "
+    r"(?:(?:wypisz|wskaż) (?:ponownie|aktualny zestaw)|podaj listę jeszcze raz)[.!?]?",
     re.I,
 )
 
@@ -448,11 +469,11 @@ _COUNT_KINDS = {
 }
 
 _PACK_COUNTS = re.compile(
-    rf"(?:są|mam[y]?|w {_WORD} jest|{_WORD} ma|w {_WORD} mamy) (?P<a_count>{_COUNT}) (?:wielopak\w*|opakowa\w+|paczk\w*|paczek) "
+    rf"(?:są|mam[y]?|w {_WORD} jest|{_WORD} ma|w {_WORD} mamy|do {_WORD} kupiono) (?P<a_count>{_COUNT}) (?:wielopak\w*|opakowa\w+|paczk\w*|paczek) "
     rf"(?P<a>{_WORD}) po (?P<a_size>{_COUNT})(?: sztuk)? "
     rf"i (?P<b_count>{_COUNT}) (?:wielopak\w*|opakowa\w+|paczk\w*|paczek) "
     rf"(?P<b>{_WORD}) po (?P<b_size>{_COUNT})(?: sztuk)?[.!] "
-    rf"ile (?P<pick>{_WORD})(?: sztuk)?\?",
+    rf"ile (?:jest )?(?P<pick>{_WORD})(?: sztuk)?\?",
     re.I,
 )
 _PACK_COLOR_COUNTS = re.compile(
@@ -476,15 +497,15 @@ _PACK_NAMED_EXCEPTION = re.compile(
 )
 _PACK_REPLACEMENT = re.compile(
     rf"jedna (?P<item>{_WORD}) paczka (?:ma|zawiera) "
-    rf"(?P<count>{_COUNT}) zamiast (?P<old>{_COUNT})[.!] "
-    r"ile (?:teraz )?sztuk (?:obu kolorów|razem|łącznie)[.!?]?",
+    rf"(?P<count>{_COUNT})(?: sztuki| sztuk)? zamiast (?P<old>{_COUNT})[.!] "
+    r"ile (?:teraz )?(?:sztuk (?:obu kolorów|razem|łącznie)|po korekcie obu kolorów razem)[.!?]?",
     re.I,
 )
 _PACK_TAKE = re.compile(
-    rf"(?:oddaliśm[yi]|zużyliśm[yi]|wydano) (?P<count>{_COUNT}) (?P<kind>{_WORD})(?: sztuki| sztuk| osobno)?[.!] "
+    rf"(?:oddaliśm[yi]|zużyliśm[yi]|wydano) (?P<count>{_COUNT}) (?P<kind>{_WORD})(?: (?:sztuki|sztuk|elementów|osobno))?[.!] "
     rf"(?:podaj pozostałe (?P<a>{_WORD}) i (?P<b>{_WORD}) oddzielnie"
     r"|podaj osobno(?:,)? ile zostało obu kolorów"
-    r"|podaj (?:osobno pozostałe liczby obu kolorów|liczby obu kolorów, które pozostały)|podaj pozostałe sztuki osobno dla każdego koloru)[.!?]?",
+    r"|podaj (?:osobno pozostałe liczby obu kolorów|liczby obu kolorów, które pozostały)|podaj pozostałe sztuki osobno dla każdego koloru|wypisz ile zostało osobno)[.!?]?",
     re.I,
 )
 
@@ -509,11 +530,10 @@ def _rate_key(text: str) -> str:
     text = text.casefold()
     if text.startswith("zwykł"):
         return "normaln"
-    return next(
-        key
-        for key in ("krajow", "zagraniczn", "normaln", "ulgow")
-        if text.startswith(key)
-    )
+    for key in ("krajow", "zagraniczn", "normaln", "ulgow"):
+        if text.startswith(key):
+            return key
+    return re.sub(r"(?:ych|ymi|e)$", "", text)
 
 
 def _length_key(text: str) -> str:
@@ -617,13 +637,27 @@ def _rate_calculation(turns: Sequence[str]) -> StudioCalculation | None:
         entries = list(_RATE.finditer(message))
         changes = list(_RATE_CHANGE.finditer(message))
         amount_count = len(_MONEY_VALUE.findall(message))
-        if len(entries) >= 2 and amount_count == len(entries):
+        if (
+            len(entries) >= 2
+            and amount_count == len(entries)
+            and not re.search(r"\d", _RATE.sub("", message))
+        ):
             rates = {
                 _rate_key(m["label"]): _Term(int(m["count"]), _decimal(m["value"]))
                 for m in entries
             }
             if len(entries) != len(rates):
                 rates = {}
+        elif amendment := _RATE_AMENDMENT.search(message):
+            key = _rate_key(amendment["label"])
+            if (
+                key not in rates
+                or _decimal(amendment["old"]) != rates[key].value
+                or re.search(r"\d", _RATE_AMENDMENT.sub("", message, count=1))
+            ):
+                rates = {}
+            else:
+                rates[key] = replace(rates[key], value=_decimal(amendment["value"]))
         elif (
             len(changes) == amount_count == 1
             and not re.search(r"\d", _RATE_CHANGE.sub("", message))
@@ -653,6 +687,213 @@ def _rate_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     formula = " + ".join(f"{part} zł" for part in parts)
     expression = "+".join(term.expression for term in rates.values())
     return StudioCalculation(expression, "zł", lambda result: f"{formula} = {result}.")
+
+
+_GROUP_SPLIT = re.compile(
+    r"(?<=[.!?;])\s+|\s+(?:oraz|i|natomiast)\s+|,\s+(?:a )?", re.I
+)
+_RATE_QUESTION = re.compile(
+    r"\b(?:ile|jaki|jaka|jaki jest|oblicz|policz|podaj|wylicz|zsumuj)\b", re.I
+)
+_UNIT_PRICE = re.compile(
+    r"\b(?:po|stawk[aię]|cen[ayę]|kosztuje|za sztukę|za paczkę|za jedną|za jedno|za jednego|każd\w*)\b",
+    re.I,
+)
+_EXCLUDED_RATE = re.compile(
+    r"\b(?:nie|brak\w*|bez|połow\w*|częś\w*|pomij\w*|oprócz|raba[tc]\w*|zniżk\w*|dodatk\w*|dopłat\w*|zamiast|podat\w*|gratis\w*|darmow\w*|promoc\w*|poprzedni\w*|alternatyw\w*)\b",
+    re.I,
+)
+_RATE_VALUE = re.compile(rf"(?<![\w.,-])(?P<amount>{_NUMBER})\s*zł\b", re.I)
+_GROUP_TOTAL = re.compile(
+    r"\b(?:łącznie|łączn\w* koszt|razem|ob(?:ie|ydw\w*|ydwóch|u|a)|wszystk\w*|cał\w*|w sumie|sumę obu|sumę po korekcie)\b",
+    re.I,
+)
+_PRICE_ADJUST = re.compile(
+    r"\b(?:teraz|odtąd|now\w*|korekt\w*|korekc\w*|skoryg\w*|popraw\w*|zmien\w*|zmian\w*|podnos\w*|obniż\w*|wynosi|jednak)\b",
+    re.I,
+)
+# Nouns common to the rows ("kartony", "bilety" etc.) fall out of the set
+# difference. Grammatical glue must not become an identifier by position.
+_RATE_STOP = set(
+    "w na od po do dla za a i to sztuka sztuk sztuki pojemnik każda każdej każdą "
+    "każdy każde jest są cena stawka kosztuje kosztują zł netto brutto ma mamy "
+    "kupiono zamówiono pakiet pakiety pakietów paczka paczkę paczki paczek "
+    "opakowania opakowań pudełka pudełek razy koszty koszt kwota wynosi liczba".split()
+)
+
+
+def _rate_words(text: str) -> set[str]:
+    return {
+        re.sub(r"(?:ych|ich|ymi|imi|ego|ą|ie|e|a)$", "", token)
+        for token in re.findall(_WORD, text.casefold())
+        if token not in _RATE_STOP and token not in _WORD_COUNTS
+    }
+
+
+@dataclass(frozen=True)
+class _NamedRate:
+    labels: frozenset[str]
+    term: _Term
+
+
+def _rate_rows(facts: str) -> list[_NamedRate]:
+    rows = []
+    if _EXCLUDED_RATE.search(facts) or len(_RATE_VALUE.findall(facts)) != 2:
+        return rows
+    # Within a row a comma may introduce its price or its counted quantity.
+    facts = re.sub(
+        r",\s+(?=(?:po\s+\d|(?:liczba|liczebność|ilość)\s*:?\s*\d))",
+        " ",
+        facts,
+        flags=re.I,
+    )
+    clauses = _GROUP_SPLIT.split(facts)
+    for clause in clauses:
+        price = _RATE_VALUE.search(clause)
+        if price is None:
+            if re.search(r"\d", clause):
+                return []
+            continue
+        rest = clause[: price.start()] + clause[price.end() :]
+        counts = list(re.finditer(rf"\b{_COUNT}\b", rest, re.I))
+        if len(counts) != 1 or not _UNIT_PRICE.search(clause):
+            return []
+        count = counts[0]
+        terms = rest[: count.start()] + rest[count.end() :]
+        if re.search(r"\d", terms):
+            return []
+        rows.append(
+            _NamedRate(
+                frozenset(_rate_words(terms)),
+                _Term(_count(count[0]), _decimal(price["amount"])),
+            )
+        )
+    return rows if len(rows) == 2 else []
+
+
+def _matched_rows(words: str, rows: list[_NamedRate]) -> list[int]:
+    mentioned = _rate_words(words)
+    return [
+        i for i, row in enumerate(rows) if mentioned & (row.labels - rows[1 - i].labels)
+    ]
+
+
+def _bound_rate_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    """Bind a unit price and count locally, then resolve scope from the question."""
+    rows = []
+    query = ""
+    for turn in turns:
+        intent = _RATE_QUESTION.search(turn)
+        if intent is None:
+            rows = []
+            continue
+        facts, query = turn[: intent.start()], turn[intent.start() :]
+        if re.search(rf"\b{_COUNT}\b|\d", query, re.I) or _EXCLUDED_RATE.search(query):
+            rows = []
+            continue
+        source = _rate_rows(facts)
+        if source:
+            rows = source
+        elif rows and facts.strip(" .,:;"):
+            price = _RATE_VALUE.search(facts)
+            selected = _matched_rows(facts, rows)
+            if (
+                not price
+                or len(selected) != 1
+                or _EXCLUDED_RATE.search(facts)
+                or re.search(r"\d", facts[: price.start()] + facts[price.end() :])
+                or not _UNIT_PRICE.search(facts)
+                or not _PRICE_ADJUST.search(facts)
+            ):
+                rows = []
+                continue
+            i = selected[0]
+            rows[i] = replace(
+                rows[i], term=replace(rows[i].term, value=_decimal(price["amount"]))
+            )
+    if not rows:
+        return None
+    selected = _matched_rows(query, rows)
+    if len(selected) == 1:
+        terms = [rows[selected[0]].term]
+    elif _GROUP_TOTAL.search(query):
+        terms = [row.term for row in rows]
+    else:
+        return None
+    if not re.search(
+        r"\b(?:koszt\w*|kwot\w*|zapłac\w*|cen\w*|sum\w*|należ\w*|łącznie|razem|całość)\b",
+        query,
+        re.I,
+    ):
+        return None
+    formula = " + ".join(t.readable("zł") for t in terms)
+    return StudioCalculation(
+        "+".join(t.expression for t in terms),
+        "zł",
+        lambda result: f"{formula} = {result}.",
+    )
+
+
+_EQUAL_GROUPS = re.compile(
+    rf"\b(?P<groups>{_COUNT}) (?:rodzaje|typy|warianty) (?P<kind>{_WORD}) po "
+    rf"(?P<count>{_COUNT}) (?P<unit>{_WORD})\b",
+    re.I,
+)
+_INDIVIDUAL_COST = re.compile(rf"(?P<value>{_NUMBER}) zł za (?P<unit>{_WORD})", re.I)
+_MISSING_SECOND = re.compile(
+    r"(?:cen[ayę] (?:drug\w+|drug\w+ \w+) brak|brak ceny drug\w+|cen[ayę] drug\w+ (?:nie podano|nie znamy))",
+    re.I,
+)
+_SECOND_UNIT_COST = re.compile(
+    rf"(?:drugi (?:rodzaj|typ|wariant)|druga (?:grupa|pozycja)) "
+    rf"(?:koszt(?:uje|ował[ao]?)|ma cenę) (?:teraz |jednak )?(?:po )?(?P<value>{_NUMBER}) zł",
+    re.I,
+)
+
+
+def _completed_unit_cost(turns: Sequence[str]) -> StudioCalculation | None:
+    """A missing second unit price may be supplied by a later user turn."""
+    if len(turns) < 2:
+        return None
+    previous, current = turns[-2:]
+    request = _RATE_QUESTION.search(current)
+    if (
+        request is None
+        or not _GROUP_TOTAL.search(current[request.start() :])
+        or _EXCLUDED_RATE.search(current)
+    ):
+        return None
+    change = _SECOND_UNIT_COST.fullmatch(current[: request.start()].strip(" .,:;"))
+    source = _EQUAL_GROUPS.search(previous)
+    known = _INDIVIDUAL_COST.search(previous)
+    if not change or not source or not known or not _MISSING_SECOND.search(previous):
+        return None
+    if (
+        _count(source["groups"]) != 2
+        or len(_MONEY_VALUE.findall(previous)) != 1
+        or re.search(
+            r"\b(?:nie koszt\w*|darmow\w*|promoc\w*|raba[tc]\w*|zniżk\w*)\b",
+            previous,
+            re.I,
+        )
+    ):
+        return None
+    if re.search(r"\d", _INDIVIDUAL_COST.sub("", _EQUAL_GROUPS.sub("", previous))):
+        return None
+    if known["unit"].casefold().rstrip("ieęay") != source["unit"].casefold().rstrip(
+        "ieęay"
+    ) or not re.search(
+        r"\b(?:jedn\w*|pierwsz\w*)\b", previous[source.end() : known.start()], re.I
+    ):
+        return None
+    count = _count(source["count"])
+    terms = [_Term(count, _decimal(m["value"])) for m in (known, change)]
+    formula = " + ".join(t.readable("zł") for t in terms)
+    return StudioCalculation(
+        "+".join(t.expression for t in terms),
+        "zł",
+        lambda result: f"{formula} = {result}.",
+    )
 
 
 def _rate_group(text: str) -> str:
@@ -925,7 +1166,9 @@ def _interval_calculation(turns: Sequence[str]) -> StudioCalculation | None:
             edges = ("włącznie", "wyłącznie")
         else:
             return None
-    low_closed, high_closed = (edge.casefold() == "włącznie" for edge in edges)
+    low_closed, high_closed = (
+        edge.casefold() in {"włącznie", "włączona"} for edge in edges
+    )
     selected = [
         label
         for label, value in choices
@@ -945,6 +1188,18 @@ def _grams(match: re.Match[str]) -> Decimal:
 
 
 def _mass_start(text: str) -> tuple[dict[str, Decimal], str] | None:
+    if source := _PARTS.fullmatch(text):
+        weights = {}
+        for phrase in re.split(r",\s+| (?:i|oraz) ", source["parts"]):
+            item = _PART.fullmatch(phrase)
+            if item is None or item["label"].casefold() in weights:
+                return None
+            weights[item["label"].casefold()] = _grams(item)
+        container = source["label"].casefold()
+        if len(weights) < 2 or container[:-1] != source["container"].casefold()[:-1]:
+            return None
+        weights[container] = _grams(source)
+        return weights, container
     *lead, rest = text.split(". ", 1)
     if not lead or not _MASS_SCOPE.search(lead[0]):
         return None
@@ -961,7 +1216,13 @@ def _mass_start(text: str) -> tuple[dict[str, Decimal], str] | None:
 
 def _mass_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     current = turns[-1]
-    if not (_MASS_WITHOUT_CASE.search(current) or _MASS_WITH_CASE.search(current)):
+    amendment = _PART_CHANGE.fullmatch(current)
+    include_container = bool(_MASS_WITH_CASE.search(current) or amendment)
+    if not (
+        include_container
+        or _MASS_WITHOUT_CASE.search(current)
+        or _PARTS.fullmatch(current)
+    ):
         return None
     initial = _mass_start(current)
     start = initial or (_mass_start(turns[-2]) if len(turns) > 1 else None)
@@ -969,14 +1230,19 @@ def _mass_calculation(turns: Sequence[str]) -> StudioCalculation | None:
         return None
     weights, container = start
     if initial is None:
-        update = _MASS_UPDATE.match(current)
+        update = amendment or _MASS_UPDATE.match(current)
         if update is None or len(_MASS_VALUE.findall(current)) != 1:
             return None
         label = update["label"].casefold()
-        if label not in weights or label == container:
+        if (
+            label not in weights
+            or label == container
+            or amendment
+            and amendment["container"].casefold() != container
+        ):
             return None
         weights[label] = _grams(update)
-    if not _MASS_WITH_CASE.search(current):
+    if not include_container:
         del weights[container]
     expression = "+".join(_number(value) for value in weights.values())
     formula = " + ".join(f"{_polish(value)} g" for value in weights.values())
@@ -1444,7 +1710,7 @@ def _pack_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     count = _count(exception["count"])
     stated_old = exception.groupdict().get("old")
     if (
-        count >= changed.value
+        (stated_old is None and count >= changed.value)
         or stated_old is not None
         and _count(stated_old) != changed.value
     ):
@@ -1527,6 +1793,8 @@ def plan_studio_calculation(
         or _median_calculation(active)
         or _day_calculation(active)
         or _pack_calculation(active)
+        or _bound_rate_calculation(active)
+        or _completed_unit_cost(active)
         or plan_numeric_series(active)
         or plan_session_counts(raw_turns[latest_uncertain + 1 :])
     )

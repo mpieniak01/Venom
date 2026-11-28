@@ -21,7 +21,8 @@ _NUMBER = re.compile(rf"(?<![\w-]){_NUM}(?![\w-]|[,.][0-9])")
 _CLAUSE = re.compile(r"[.!?](?:\s+|$)")
 _MEASUREMENT = re.compile(rf"(?P<value>{_NUM})\s*(?P<unit>{_UNITS})\b", re.I)
 _SOURCE = re.compile(
-    r"\b(?:odczyt\w*|pomiar\w*|odcink\w*|ocen\w*|wynik\w*|dane|zanotowano)\b", re.I
+    r"\b(?:odczyt\w*|pomiar\w*|odcink\w*|ocen\w*|wynik\w*|list[ay]|obserwacj\w*|dane|zanotowano)\b",
+    re.I,
 )
 _SPECULATIVE = re.compile(
     r"\b(?:jeśli|jeżeli|gdyby|może|prawdopodobnie|przypuśćmy|załóżmy)\b", re.I
@@ -49,15 +50,15 @@ _COUNTS = {
 }
 _CARDINAL = rf"(?:[2-8]|{'|'.join(_COUNTS)})"
 _DECLARE_COUNT = re.compile(
-    rf"\b(?P<count>{_CARDINAL}) (?:wykonan\w+ )?(?:pomiar\w*|odczyt\w*|odcink\w*|ocen\w*|wynik\w*)\b",
+    rf"\b(?P<count>{_CARDINAL}) (?:wykonan\w+ )?(?:pomiar\w*|odczyt\w*|odcink\w*|ocen\w*|wynik\w*|obserwacj\w*)\b",
     re.I,
 )
 _MEDIAN = re.compile(r"\bmedian[ęay]\b", re.I)
 _MEAN = re.compile(r"\bśredni[ąaeę]\b", re.I)
-_MINUTES = re.compile(r"\bw minutach\b", re.I)
-_TOTAL = re.compile(r"\b(?:sum\w+|łącznie|razem)\b", re.I)
+_MINUTES = re.compile(r"\b(?:w minutach|ile minut|na minuty)\b", re.I)
+_TOTAL = re.compile(r"\b(?:z?sum\w+|łączn\w*|razem|całoś\w*)\b", re.I)
 _PRECISION = re.compile(
-    r"\bdo (jednego miejsca|dwóch miejsc|trzech miejsc|[123] miejsc) po przecinku\b",
+    r"\bdo (jednego miejsca|dwóch miejsc|trzech miejsc|[123] miejsc)(?: po przecinku)?\b",
     re.I,
 )
 _PLACES = {"jednego miejsca": 1, "dwóch miejsc": 2, "trzech miejsc": 3}
@@ -66,11 +67,26 @@ _REMOVE = re.compile(
 )
 _REPLACE = re.compile(
     rf"(?:z\s+(?P<old>{_NUM})(?:\s+(?P<old_unit>{_UNITS})\b)?\s+na\s+(?P<new>{_NUM})|"
-    rf"(?P<replacement>{_NUM})(?:\s+(?P<new_unit>{_UNITS})\b)?\s+zamiast\s+(?P<before>{_NUM}))"
+    rf"(?P<replacement>{_NUM})(?:\s+(?P<new_unit>{_UNITS})\b)?(?:\s+zamiast\s+|,\s*nie\s+)(?P<before>{_NUM}))"
     rf"(?:\s+(?P<unit>{_UNITS})\b)?",
     re.I,
 )
-_REVISE = re.compile(r"\b(?:zmien\w*|zapis\w*|korekta|był[oa]?|jest|odcinek)\b", re.I)
+_POSITION_WORD = rf"(?:{'|'.join(_ORDINALS)})\w*"
+_SET_POSITION = re.compile(
+    rf"(?P<ordinal>{_POSITION_WORD}) "
+    r"(?:odczyt|wpis|pomiar|próbk\w*|czas|odcinek) "
+    rf"(?:koryguję do|poprawiam na|zmieniam na|(?:teraz |jednak )?wynosi) "
+    rf"(?P<value>{_NUM}) (?P<unit>{_UNITS})",
+    re.I,
+)
+_WRITE_INSTEAD = re.compile(
+    rf"\bzamiast\s+(?P<old>{_NUM})(?:\s+(?P<old_unit>{_UNITS})\b)?[, ]+"
+    rf"(?:wpisz|wstaw|przyjmij|zapisz|powinno być)\s+(?P<new>{_NUM})(?:\s+(?P<new_unit>{_UNITS})\b)?",
+    re.I,
+)
+_REVISE = re.compile(
+    r"\b(?:zmien\w*|zapis\w*|korek[tc]\w*|był[oa]?|jest|trwał\w*|odcinek)\b", re.I
+)
 _DIMENSIONS = {
     "s": ("time", Decimal(1)),
     "min": ("time", Decimal(60)),
@@ -79,12 +95,26 @@ _DIMENSIONS = {
     "g": ("mass", Decimal(1)),
     "kg": ("mass", Decimal(1000)),
 }
-_REMAINING = re.compile(r"\bile\b[^.!?]{0,36}\bzost(?:anie|aje)\b", re.I)
+_REMAINING = re.compile(
+    r"\bile\b[^.!?]{0,36}(?:\bzost(?:anie|aje)\b(?: poza rezerwą)?|"
+    r"\bdo wykorzystania poza rezerwą\b)",
+    re.I,
+)
 _VOLUME = rf"(?P<value>{_NUM})\s*l\b"
-_VOLUME_TOTAL = re.compile(rf"^(?:mamy|jest|dostępn\w+ jest)\s+{_VOLUME}", re.I)
+_VOLUME_TOTAL = re.compile(rf"^(?:z|mamy|jest|dostępn\w+ jest)\s+{_VOLUME}", re.I)
 _VOLUME_RESERVE = re.compile(
     rf"\b(?:(?:z czego )?{_VOLUME}\s+ma\s+osobn\w+\s+odbiorc\w+|"
     rf"rezerw\w+\s+{_VOLUME.replace('value', 'reserved')}\s+dla\s+(?:oddzieln\w+|osobn\w+)\s+odbiorc\w+)",
+    re.I,
+)
+_HELD_RESERVE = re.compile(rf"(?:zostawiono|odłożono) {_VOLUME} na rezerwę", re.I)
+_GROUP_PORTIONS = re.compile(
+    rf"\b(?P<count>{_CARDINAL}) (?:zespoł\w*|grup\w*) (?:pobrał\w*|zużył\w*) po {_VOLUME}",
+    re.I,
+)
+_TWO_GROUP_CHANGE = re.compile(
+    rf"pierwsz[ya] (?:zespół|grupa) (?:zużył[oa]?|pobrał[oa]?) (?:jednak |teraz )?{_VOLUME}, "
+    rf"drug[ia] (?:nadal |wciąż )(?P<unchanged>{_NUM})(?: l)?",
     re.I,
 )
 _VOLUME_PORTIONS = re.compile(
@@ -157,6 +187,57 @@ class _Series:
     values: tuple[Decimal, ...]
     unit: str
     places: int | None
+    uniform_unit: bool = True
+
+
+_CONNECTOR = re.compile(r"\s*(?:,|;|,?\s+(?:i|oraz|potem|następnie)\s+)\s*", re.I)
+_DURATION_CONTEXT = re.compile(
+    r"\b(?:czas\w*|odcink\w*|etap\w*|trwa\w*|przebieg\w*|serii|odczyt\w*|pomiar\w*|długości)\b",
+    re.I,
+)
+_TIME_TARGET = re.compile(
+    r"\b(?:zsum\w*|sum\w*|łączn\w*|razem|wszystk\w*|całoś\w*)\b", re.I
+)
+_EXCLUDED_TIME = re.compile(
+    r"\b(?:oprócz|poza|bez|zamiast|przerwa\w*|limit\w*|tylko|samych|minus|nie licząc)\b",
+    re.I,
+)
+
+
+def _individual_durations(source: str, query: str) -> _Series | None:
+    """Read a complete list of independently unit-tagged durations."""
+    if not _DURATION_CONTEXT.search(source) or _EXCLUDED_TIME.search(
+        source + " " + query
+    ):
+        return None
+    rows = list(_MEASUREMENT.finditer(source))
+    if not 2 <= len(rows) <= 8:
+        return None
+    if _NUMBER.search(_MEASUREMENT.sub("", source)):
+        return None
+    if any(_unit(m["unit"]) not in {"min", "s"} for m in rows):
+        return None
+    # Each boundary must denote a list operation, never an estimate or subtraction.
+    if any(
+        not _CONNECTOR.fullmatch(source[a.end() : b.start()])
+        for a, b in zip(rows, rows[1:])
+    ):
+        return None
+    if source[rows[-1].end() :].strip(" .,:;") or _MEASUREMENT.search(query):
+        return None
+    count = _DECLARE_COUNT.search(source[: rows[0].start()])
+    if count and _count(count["count"]) != len(rows):
+        return None
+    units = {_unit(row["unit"]) for row in rows}
+    unit = next(iter(units)) if len(units) == 1 else "s"
+    scale = _DIMENSIONS[unit][1]
+    values = tuple(
+        _decimal(row["value"]) * _DIMENSIONS[_unit(row["unit"])][1] / scale
+        for row in rows
+    )
+    if min(values) < 0:
+        return None
+    return _Series(_Operation.MINUTE_TOTAL, values, unit, None, len(units) == 1)
 
 
 def _series_source(turn: str) -> _Series | None:
@@ -164,12 +245,23 @@ def _series_source(turn: str) -> _Series | None:
     operation = _operation(query)
     if (
         operation is None
+        and _MINUTES.search(query)
+        and facts
+        and re.match(r"(?:dodaj|zsumuj|podlicz)\b", facts[0], re.I)
+    ):
+        operation = _Operation.MINUTE_TOTAL
+    if (
+        operation is None
         or not facts
-        or not _SOURCE.search(" ".join(facts))
+        or not (_SOURCE.search(" ".join(facts)) or operation is _Operation.MINUTE_TOTAL)
         or _NUMBER.search(_PRECISION.sub("", query))
     ):
         return None
     source = " ".join(facts)
+    if operation is _Operation.MINUTE_TOTAL:
+        individual = _individual_durations(source, query)
+        if individual is not None:
+            return individual
     matches = list(_LIST.finditer(source))
     if len(matches) != 1:
         return None
@@ -178,11 +270,26 @@ def _series_source(turn: str) -> _Series | None:
     unit = _unit(match["unit"] or "")
     values = tuple(_decimal(m[0]) for m in _NUMBER.finditer(match["values"]))
     if len(values) < 2 or (
-        suffix not in {"", "jednostek"} and not _PENDING.search(suffix)
+        suffix not in {"", "jednostek"}
+        and not _PENDING.search(suffix)
+        and not re.fullmatch(
+            r"w (?:dwóch|trzech|czterech|pięciu|[2-8]) odcinkach", suffix, re.I
+        )
     ):
+        return None
+    duration_count = re.fullmatch(r"w (\w+) odcinkach", suffix, re.I)
+    if duration_count and _count(duration_count[1]) != len(values):
         return None
     declared = _DECLARE_COUNT.search(prefix)
     rest = _DECLARE_COUNT.sub("", prefix, count=1)
+    requested = re.search(
+        rf"\b(?:z|dla) (?:wszystkich )?(?P<count>{_CARDINAL}) "
+        r"(?:obserwacj\w*|pomiar\w*|wynik\w*|odczyt\w*)",
+        query,
+        re.I,
+    )
+    if requested and _count(requested["count"]) != len(values):
+        return None
     if _NUMBER.search(rest) or _NUMBER.search(suffix):
         return None
     if declared is not None and _count(declared["count"]) != len(values):
@@ -232,15 +339,34 @@ def _revised_values(state: _Series, change: str) -> tuple[Decimal, ...] | None:
             return None
         values.remove(value)
         return tuple(values)
-    edit = _REPLACE.search(change)
+    position_edit = _SET_POSITION.fullmatch(change)
+    if position_edit and state.unit:
+        ordinal = position_edit["ordinal"].casefold()
+        position = next(
+            i for i, stem in enumerate(_ORDINALS) if ordinal.startswith(stem)
+        )
+        dimension, scale = _DIMENSIONS[state.unit]
+        new_dimension, new_scale = _DIMENSIONS[_unit(position_edit["unit"])]
+        value = _decimal(position_edit["value"]) * new_scale / scale
+        if position >= len(values) or dimension != new_dimension or value < 0:
+            return None
+        values[position] = value
+        return tuple(values)
+    instruction = _WRITE_INSTEAD.search(change)
+    edit = instruction or _REPLACE.search(change)
     if edit is None or not (
-        _REVISE.search(change[: edit.start()])
+        instruction
+        or _REVISE.search(change[: edit.start()])
         or change[: edit.start()].rstrip().endswith(":")
     ):
         return None
     if _NUMBER.search(change[: edit.start()]) or _NUMBER.search(change[edit.end() :]):
         return None
-    tail_unit = edit["unit"]
+    tail_unit = edit.groupdict().get("unit")
+    if instruction and not (tail_unit or edit["old_unit"] or edit["new_unit"]):
+        if not state.uniform_unit:
+            return None
+        tail_unit = state.unit
     old_unit = edit["old_unit"] or tail_unit or edit["new_unit"]
     new_unit = edit["new_unit"] or tail_unit or edit["old_unit"]
     if not state.unit or not old_unit or not new_unit:
@@ -263,7 +389,13 @@ def _series_update(state: _Series, turn: str) -> _Series | None:
     parts = _clauses(turn)
     if (
         len(parts) != 2
-        or _operation(parts[-1]) is not state.operation
+        or not (
+            _operation(parts[-1]) is state.operation
+            or state.operation is _Operation.MINUTE_TOTAL
+            and _TIME_TARGET.search(parts[-1])
+            and not _EXCLUDED_TIME.search(parts[-1])
+            and not _MEASUREMENT.search(parts[-1])
+        )
         or _NUMBER.search(_PRECISION.sub("", parts[-1]))
     ):
         return None
@@ -327,8 +459,8 @@ class _Allocation:
 
 def _allocation_source(turn: str) -> _Allocation | None:
     total = _VOLUME_TOTAL.search(turn)
-    reserve = _VOLUME_RESERVE.search(turn)
-    portions = _VOLUME_PORTIONS.search(turn)
+    reserve = _VOLUME_RESERVE.search(turn) or _HELD_RESERVE.search(turn)
+    portions = _VOLUME_PORTIONS.search(turn) or _GROUP_PORTIONS.search(turn)
     *_, query = _clauses(turn) or [""]
     if not total or not reserve or not portions or not _REMAINING.search(query):
         return None
@@ -357,16 +489,20 @@ def _allocation_plan(turns: Sequence[str]) -> StudioCalculation | None:
     if not _REMAINING.search(turns[-1]):
         return None
     source = _allocation_source(turns[-1])
+    source_text = turns[-1]
     if source is not None:
         used = f"{source.count}*{_number(source.quantity)}"
     elif len(turns) > 1 and (source := _allocation_source(turns[-2])) is not None:
+        source_text = turns[-2]
         *facts, query = _clauses(turns[-1]) or [""]
         if len(facts) != 1 or not _REMAINING.fullmatch(query):
             return None
-        change = _VOLUME_CHANGE.fullmatch(facts[0])
+        change = _VOLUME_CHANGE.fullmatch(facts[0]) or _TWO_GROUP_CHANGE.fullmatch(
+            facts[0]
+        )
         if (
             change is None
-            or _count(change["count"]) != source.count - 1
+            or _count(change.groupdict().get("count") or "1") != source.count - 1
             or _decimal(change["unchanged"]) != source.quantity
         ):
             return None
@@ -380,11 +516,16 @@ def _allocation_plan(turns: Sequence[str]) -> StudioCalculation | None:
         used = f"{_number(amended)}+{source.count - 1}*{_number(source.quantity)}"
     else:
         return None
+    consumption = (
+        "pobranych porcji"
+        if _GROUP_PORTIONS.search(source_text)
+        else "rozlanych porcji"
+    )
     calculation = f"{_number(source.total)}-{_number(source.reserve)}-({used})"
     return StudioCalculation(
         calculation,
         "l",
-        lambda result: f"Po odjęciu rezerwy i rozlanych porcji zostaje {result}.",
+        lambda result: f"Po odjęciu rezerwy i {consumption} zostaje {result}.",
     )
 
 
@@ -416,6 +557,21 @@ _SESSION_MOVE = re.compile(
     r"(?:„(?P<quoted>do sprawdzenia|poprawnych)”|(?P<plain>do sprawdzenia|poprawnych))",
     re.I,
 )
+_STATION_ROW = re.compile(
+    r"(?:na )?(?:stanowisku )?(?P<label>[a-z]) (?:wpisano )?"
+    r"(?P<passed>[0-9]{1,6})(?: sztuk)? dobrych i (?P<pending>[0-9]{1,6}) do przeglądu",
+    re.I,
+)
+_STATION_MOVE = re.compile(
+    rf"na (?P<label>[a-z]) (?P<count>{_CARDINAL}|jedną|1) dobre (?:przenoszę|przenieś) do przeglądu",
+    re.I,
+)
+_STATION_REPORT = re.compile(
+    r"podaj (?:aktualne )?obie liczby na (?P<label>[a-z])", re.I
+)
+_STATION_TOTAL = re.compile(
+    r"ile dobrych (?:łącznie|w obu stanowiskach(?: po zmianie)?)", re.I
+)
 _SESSION_TOTAL = re.compile(r"ile(?: teraz)? poprawnych (?:z|w) obu(?: sesjach)?", re.I)
 _SESSION_REPORT = re.compile(r"podaj oba liczniki tej sesji", re.I)
 
@@ -434,6 +590,16 @@ class _SessionCounts:
 
 def _session_rows(turn: str) -> dict[str, _SessionCounts] | None:
     parts = _clauses(turn)
+    if len(parts) == 3 and _STATION_TOTAL.fullmatch(parts[-1]):
+        rows = {}
+        for phrase in parts[:-1]:
+            item = _STATION_ROW.fullmatch(phrase)
+            if item is None or item["label"].casefold() in rows:
+                return None
+            rows[item["label"].casefold()] = _SessionCounts(
+                int(item["passed"]), int(item["pending"])
+            )
+        return rows
     if len(parts) != 2 or not _SESSION_TOTAL.fullmatch(parts[1]):
         return None
     source = parts[0].split(", ")
@@ -462,7 +628,22 @@ def plan_session_counts(turns: Sequence[str]) -> StudioCalculation | None:
         if rows is None:
             continue
         parts = _clauses(turn)
-        if len(parts) == 1 and _SESSION_TOTAL.fullmatch(parts[0]):
+        if len(parts) == 1 and (
+            _SESSION_TOTAL.fullmatch(parts[0]) or _STATION_TOTAL.fullmatch(parts[0])
+        ):
+            continue
+        if len(parts) == 2 and (amendment := _STATION_MOVE.fullmatch(parts[0])):
+            label = amendment["label"].casefold()
+            asked = _STATION_REPORT.fullmatch(parts[1])
+            if not asked or asked["label"].casefold() != label or label not in rows:
+                return None
+            count = amendment["count"].casefold()
+            report = rows[label].transfer(
+                True, 1 if count == "jedną" else _count(count)
+            )
+            if report is None:
+                return None
+            rows[label] = report
             continue
         move = _SESSION_MOVE.fullmatch(parts[0]) if len(parts) == 2 else None
         if move is None or not _SESSION_REPORT.fullmatch(parts[-1]):
@@ -471,7 +652,7 @@ def plan_session_counts(turns: Sequence[str]) -> StudioCalculation | None:
         source = move["from"].casefold()
         destination = (move["quoted"] or move["plain"]).casefold()
         ordinal = move["ordinal"].casefold()
-        if source == destination:
+        if source == destination or move["ordinal"].casefold() not in rows:
             return None
         report = rows[ordinal].transfer(source == "poprawnych", _count(move["count"]))
         if report is None:
@@ -480,14 +661,18 @@ def plan_session_counts(turns: Sequence[str]) -> StudioCalculation | None:
     if rows is None:
         return None
     if report is not None:
+        pending_label = "do sprawdzenia" if "pierwszej" in rows else "do przeglądu"
+        passed_label = "poprawnych" if "pierwszej" in rows else "dobrych"
         return StudioCalculation(
             f"{report.passed}+{report.pending}",
             None,
-            lambda result: f"{report.passed} poprawnych i {report.pending} do sprawdzenia. Łącznie {result}.",
+            lambda result: f"{report.passed} {passed_label} i {report.pending} {pending_label}. Łącznie {result}.",
         )
-    before, after = (rows[key].passed for key in ("pierwszej", "drugiej"))
+    before, after = (row.passed for row in rows.values())
+    scope = "obu sesji" if "pierwszej" in rows else "obu stanowisk"
+    label = "poprawnych" if "pierwszej" in rows else "dobrych"
     return StudioCalculation(
         f"{before}+{after}",
         None,
-        lambda result: f"Z obu sesji: {before} + {after} = {result} poprawnych.",
+        lambda result: f"Z {scope}: {before} + {after} = {result} {label}.",
     )

@@ -88,6 +88,7 @@ from venom_core.services.chat_policy.studio_publication import (
     publication_heading,
 )
 from venom_core.services.chat_policy.studio_quantity import studio_quantity
+from venom_core.services.chat_policy.studio_record_summary import evidence_hint
 from venom_core.services.chat_policy.studio_revision import studio_revision
 from venom_core.services.chat_policy.studio_visibility import studio_visibility
 from venom_core.services.llm_simple_payload_service import (
@@ -1633,7 +1634,15 @@ def _prepare_qualified_reply(
                 request.content, request.history
             ):
                 return replace(original, claim_check=claim_check)
-        hint = studio_concise_hint(request.content, original.count is not None)
+        hint = " ".join(
+            filter(
+                None,
+                (
+                    studio_concise_hint(request.content, original.count is not None),
+                    evidence_hint(request.content),
+                ),
+            )
+        )
         if hint:
             original = replace(
                 original, hint=" ".join(filter(None, (original.hint, hint)))

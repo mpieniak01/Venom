@@ -12,6 +12,7 @@ from venom_core.services import chat_grounding, llm_simple_service
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.chat_policy.studio_dialog import studio_dialog
 from venom_core.services.chat_policy.studio_dialog_compare import studio_comparison
+from venom_core.services.chat_policy.studio_dialog_evidence import dialog_evidence
 from venom_core.services.chat_policy.studio_revision import studio_revision
 from venom_core.services.chat_policy.studio_revision_facts import studio_revision_facts
 from venom_core.services.ollama_text_adapter import QUALIFIED_BOLT_MODEL
@@ -1100,3 +1101,217 @@ def test_studio_replays_source_preserving_edits_locally(
         )
     read.assert_not_awaited()
     assert not sent
+
+
+@pytest.mark.parametrize(
+    ("limit", "answer"),
+    [("21", "Żaden"), ("25", "„Iris”"), ("27", "Oba warianty")],
+)
+def test_width_choice_binds_options_across_reordered_sentences(limit, answer):
+    source = (
+        "Preferuję matową powierzchnię. Iris mierzy 24 cm i jest gładka. "
+        "Perła: 27 cm, matowa. Wszystko musi się zmieścić. "
+        f"Szerokość to maksymalnie {limit} cm. Co polecisz?"
+    )
+    result = dialog_evidence(source, "")
+    assert result and answer in result
+    if limit == "27":
+        assert "„Perła”" in result
+
+
+@pytest.mark.parametrize(
+    ("available", "answer"),
+    [("6", "zabraknie 2"), ("8", "dokładnie"), ("11", "3 min zapasu")],
+)
+def test_deadline_uses_preparation_not_active_life(available, answer):
+    source = (
+        "Gotowość po ustawieniu osiąga po 8 minutach. "
+        "Czas pracy: 45 min. Co oznaczają te czasy?"
+    )
+    current = f"Zacznę {available} minut wcześniej. Czy zdążę?"
+    assert answer in (dialog_evidence(current, source) or "")
+
+
+def test_comparison_declines_uncertainty_and_unrelated_conversation():
+    for source in (
+        "Jak opisałbyś poranek po deszczu?",
+        "Wolę gładką powierzchnię. Czy zależy od koloru?",
+        "Czas pracy 3 min lub 4 min. Do gotowości 2 min. Wyjaśnij różnicę.",
+        "Kran działa 3 min i pompa działa 4 min. Objaśnij czasy.",
+        "Samochód pracuje około 6 minut i od ustawienia do gotowości mija 5 minut. Wyjaśnij czasy.",
+    ):
+        assert dialog_evidence(source, "") is None
+
+
+def test_numbered_replacement_preserves_visible_punctuation():
+    text = "Drugi punkt ma brzmieć „Wejście A”. Zachowaj pierwszy dokładnie."
+    history = [HistoryMessage(role="assistant", content="1. Wiek: 18+!\n2. Drzwi B.")]
+    assert studio_revision(text, history) == "1. Wiek: 18+!\n2. Wejście A"
+    assert "czy zachować" in (
+        studio_revision(text.replace("pierwszy", "drugi"), history) or ""
+    )
+    assert studio_revision(text, []) is None
+
+
+def test_cessation_keeps_cause_and_relocates_one_confirmed_subject():
+    source = "Oddaj prostsze jedno zdanie. „Po zdjęciu ramy w sieni ustał dźwięk dzwonka, ale radio obok drzwi nadal grało”."
+    first = studio_revision(source, [])
+    assert (
+        first
+        == "Po zdjęciu ramy w sieni ucichł dźwięk dzwonka, ale radio obok drzwi nadal grało."
+    )
+    history = [HistoryMessage(role="user", content=source)]
+    edit = "Radio było pod oknem zamiast obok drzwi. Popraw to w jednym zdaniu i zachowaj resztę."
+    assert studio_revision(edit, history) == first.replace("obok drzwi", "pod oknem")
+    assert studio_revision(edit.replace("Radio", "Dzwonek"), history) is None
+    assert studio_revision(edit.replace("obok drzwi", "przy kasie"), history) is None
+
+
+def test_new_preference_overrides_prior_texture_and_conflicting_withdrawal_abstains():
+    source = (
+        "Iris mierzy 24 cm i jest gładka. Perła mierzy 27 cm i jest matowa. "
+        "Wszystko musi się zmieścić. Preferuję matową powierzchnię. Maksymalnie 24 cm. Co polecisz?"
+    )
+    update = "Limit to maksymalnie 28 cm. Teraz wolę gładką powierzchnię. Który wybrać?"
+    assert "„Iris”" in (dialog_evidence(update, source) or "")
+    history = [
+        HistoryMessage(
+            role="assistant", content="1. Wiek od 18 lat.\n2. Wejście z opaską."
+        )
+    ]
+    update = "Wycofuję wymóg wieku. Drugi punkt ma brzmieć „Wejście A”. Zachowaj pierwszy dokładnie."
+    assert "wycofać wymóg wieku" in (studio_revision(update, history) or "")
+
+
+def test_directions_are_limited_to_document_scope():
+    text = (
+        "Przy kasie jest indeks i plan. Indeks daje daty, plan wskazuje, jak dojść na każde piętro. "
+        "Przy wejściu stoi dodatkowy egzemplarz planu. Jak przekazać to obsłudze?"
+    )
+    query = "Ktoś przy oknie szuka drogi na drugie piętro. Który materiał mu pomoże i jaka informacja zdecyduje?"
+    assert "plan" in (dialog_evidence(query, text) or "")
+    assert "brakuje wskazówek dojścia na dworzec" in (
+        dialog_evidence(query.replace("na drugie piętro", "na dworzec"), text) or ""
+    )
+
+
+def test_counted_feature_stays_attached_to_matching_route_label():
+    source = (
+        "Wariant P ma cztery postoje, wariant L sześć. W P przy trzech postojach "
+        "przewidziano pokaz, dla L nie podano charakteru postojów. Porównaj liczbę postojów."
+    )
+    ask = "Gdy grupa szuka pokazu, którą trasę wybrać?"
+    assert "trzech" in (dialog_evidence(source, "") or "")
+    assert "wariant P" in (dialog_evidence(ask, source) or "")
+    assert dialog_evidence(ask.replace("pokazu", "wykładu"), source) is None
+    assert dialog_evidence(ask, source.replace("dla L", "dla P")) is None
+
+
+def test_grounded_spatial_diagram_preserves_both_sides_of_anchor():
+    source = (
+        "Krótki tor ma trzy stanowiska w rzędzie. Dłuższy ma dwa stanowiska za stołem i jedno przed nim. "
+        "Opisz różnicę w dwóch zdaniach."
+    )
+    answer = dialog_evidence(source, "")
+    assert answer and answer.count(".") == 2
+    request = "Podaj jednym sposobem, jak zaznaczyć stacje dłuższej trasy bez narzucania kierunku."
+    follow = dialog_evidence(request, source)
+    assert (
+        follow
+        and "bez strzałek" in follow
+        and "dwa stanowiska za stołem i jedno przed nim" in follow
+    )
+
+
+def test_optics_checks_both_unmeasured_surfaces():
+    source = (
+        "W wariancie J podano zatrzask, w wariancie M wskazano szybkę. Brak danych o przepuszczaniu "
+        "światła przez spód. Jaką różnicę widać w opisie?"
+    )
+    ask = (
+        "Chcę odczytać kolor pod opakowaniem bez podnoszenia. Co ustalić przed wyborem?"
+    )
+    assert "Brak danych" in (dialog_evidence(source, "") or "")
+    assert "obu wariantach (J i M)" in (dialog_evidence(ask, source) or "")
+    assert dialog_evidence(ask, source.replace("przez spód", "przez bok")) is None
+
+
+def test_station_signs_distinguish_positions_and_queue_on_permitted_surface():
+    source = (
+        "Cztery stanowiska pomiarowe stoją przy dwóch blatach. Podaj jeden sposób, żeby dało się "
+        "odróżnić miejsca stanowisk od początku kolejki do blatu."
+    )
+    first = dialog_evidence(source, "")
+    assert (
+        first
+        and "Na blacie" in first
+        and "każde stanowisko" in first
+        and "Początek kolejki" in first
+    )
+    edit = "Zostają same oznaczenia na blacie, podłogi nie można oklejać. Podaj jeden konkretny wariant."
+    assert dialog_evidence(edit, source) == first
+    assert dialog_evidence(edit.replace("na blacie", "na ławie"), source) is None
+
+
+def test_network_change_preserves_offline_cost():
+    source = (
+        "Notes List pozwala zapisywać bez prądu, ale trzeba potem połączyć wpisy. Ekran Port udostępnia "
+        "je grupie przy dostępie do sieci. Plac jest bez zasilania i bez sieci. Co przyda się do zapisu?"
+    )
+    ask = "Przenieśliśmy pracę do punktu z zasilaniem i siecią. Teraz uczestnicy mają widzieć zmiany innych na bieżąco. Co wybrać?"
+    first = dialog_evidence(source, "")
+    assert first and "Notes List" in first and "połączyć wpisy" in first
+    assert "Ekran Port" in (dialog_evidence(ask, source) or "")
+    assert dialog_evidence(ask, source.replace("Ekran Port", "Notes List")) is None
+
+
+@pytest.mark.parametrize(
+    ("width", "needs"), [(13, "Żaden"), (14, "„Trefl”"), (16, "„Pik”")]
+)
+def test_feature_only_matters_after_width_limit(width, needs):
+    source = (
+        "Wolę zatrzask. Trefl mierzy 14 cm bez zatrzasku, Pik ma 16 cm i zatrzask. "
+        "Segregator musi się zmieścić. Miejsce na segregator ma 14 cm szerokości. Który i dlaczego?"
+    )
+    current = f"Kaseta ma po zmianie dokładnie {width} cm. Czy poprzedni wybór wygrywa, jeśli zatrzask to atut?"
+    assert needs in (dialog_evidence(current, source) or "")
+    assert "„Trefl”" in (dialog_evidence(source, "") or "")
+
+
+def test_duration_answers_format_and_offset_from_start():
+    source = (
+        "Urządzenie pracuje przez 52 minuty, a od ustawienia do gotowości czeka się 14 minut. "
+        "Wyjaśnij znaczenie obu czasów w jednym zdaniu."
+    )
+    first = dialog_evidence(source, "")
+    assert first and first.count(".") == 1 and "52 min" in first and "14 min" in first
+    assert "6 min po rozpoczęciu" in (
+        dialog_evidence(
+            "Rozstawiam 8 minut przed pokazem. O ile minę się z początkiem?", source
+        )
+        or ""
+    )
+    assert (
+        dialog_evidence("Chcę opisać zamek w poetyckim stylu. Jak zacząć?", source)
+        is None
+    )
+
+
+def test_conflict_on_preserved_rule_asks_before_publishing_other_point():
+    history = [
+        HistoryMessage(
+            role="assistant",
+            content="1. Na schodach wymagany kask.\n2. Na tarasie wymagane obuwie.",
+        )
+    ]
+    request = "Wycofuję kask. Drugi punkt ma brzmieć „Taras otwarty”. Zachowaj pierwszy dokładnie."
+    answer = studio_revision(request, history)
+    assert (
+        answer
+        and answer.endswith("?")
+        and "kask" in answer
+        and "pierwszy punkt" in answer
+    )
+    assert (
+        studio_revision("Czy kask w powieści może wyznaczać nastrój?", history) is None
+    )

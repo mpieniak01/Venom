@@ -127,6 +127,45 @@ def _sound_reply(text: str, users: Sequence[str]) -> str | None:
     return None
 
 
+_CESSATION_COMMAND = re.compile(
+    r"(?:oddaj|napisz|podaj) (?:prostsze jedno zdanie|jedno prostsze zdanie)[.!:]?",
+    re.I,
+)
+_CESSATION = re.compile(
+    rf"(?P<when>po [^.,!?]{{2,90}}) (?P<verb>ustał[ao]?) (?P<sound>{_WORD}(?: {_WORD}){{0,2}}), "
+    rf"(?P<link>a|ale|lecz) (?P<subject>{_WORD}) (?P<place>{_LOCATION}) "
+    rf"(?P<ongoing>(?:nadal|wciąż) {_WORD})[.]?",
+    re.I,
+)
+_RELOCATE = re.compile(
+    rf"(?P<subject>{_WORD}) (?:był[ao]?|stał[ao]?) (?P<place>{_LOCATION}) zamiast "
+    rf"(?P<old>{_LOCATION})[.] (?:zmień|popraw) to w jednym zdaniu i zachowaj resztę[.!]?",
+    re.I,
+)
+
+
+def _cessation_reply(text: str, users: Sequence[str]) -> str | None:
+    edit = _RELOCATE.fullmatch(text)
+    request = users[-1] if edit and users else text
+    source = _source(request, _CESSATION_COMMAND)
+    match = _CESSATION.fullmatch(source) if source else None
+    if match is None:
+        return None
+    location = match["place"]
+    if edit:
+        if (edit["subject"].casefold(), edit["old"].casefold()) != (
+            match["subject"].casefold(),
+            location.casefold(),
+        ) or _UNCERTAIN.search(edit["place"]):
+            return None
+        location = edit["place"]
+    quiet = "ucichł" + match["verb"].casefold().removeprefix("ustał")
+    return (
+        f"{match['when']} {quiet} {match['sound']}, {match['link']} "
+        f"{match['subject']} {location} {match['ongoing']}."
+    )
+
+
 def _messages(
     text: str,
 ) -> tuple[list[str], int, re.Match[str]] | None:
@@ -182,6 +221,8 @@ def studio_revision_facts(text: str, history: Sequence[HistoryMessage]) -> str |
     users = [" ".join(turn.content.split()) for turn in history if turn.role == "user"][
         -4:
     ]
-    return _sound_reply(current, users) or _message_reply(
-        current, users[-1] if users else ""
+    return (
+        _sound_reply(current, users)
+        or _cessation_reply(current, users)
+        or _message_reply(current, users[-1] if users else "")
     )

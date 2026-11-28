@@ -552,6 +552,55 @@ def _access_rules_reply(current: str, prior: str, origin: str) -> str | None:
     return f"1. {source['age'].capitalize()}.\n2. {loan}."
 
 
+_NUMBERED_SOURCE = re.compile(
+    r"dwa punkty(?: z rozdzielonym zakresem)?[.] (?P<first>[^.!?]{3,110}[.]) "
+    r"(?P<second>[^.!?]{3,110}[.]) (?:ułóż|podaj|zapisz) dwa punkty[.!]?",
+    re.I,
+)
+_LITERAL_SLOT = re.compile(
+    r"(?:wycofuję (?P<withdrawn>[^.!?]{2,45})[.] )?(?P<slot>pierwszy|drugi) punkt ma brzmieć\s*[.]? "
+    r"zachowaj (?P<keep>pierwszy|drugi) dokładnie[.!]?",
+    re.I,
+)
+
+
+def _numbered_edit(text: str, history: Sequence[HistoryMessage]) -> str | None:
+    if source := _NUMBERED_SOURCE.fullmatch(text):
+        return f"1. {source['first']}\n2. {source['second']}"
+    visible = " ".join(without_quotes(text).split())
+    update = _LITERAL_SLOT.fullmatch(visible)
+    if not update:
+        return None
+    value = single_quoted_operand(text)
+    if not value or "\n" in value or not history or history[-1].role != "assistant":
+        return None
+    # The unchanged line must match what the user actually saw, including punctuation.
+    lines = history[-1].content.splitlines()
+    if len(lines) != 2 or not all(
+        line.startswith(f"{i}. ") for i, line in enumerate(lines, 1)
+    ):
+        return None
+    index = int(update["slot"].casefold() == "drugi")
+    kept = update["keep"].casefold()
+    if kept == update["slot"].casefold():
+        return f"Czy mam zmienić {kept} punkt zgodnie z cytatem, czy zachować go dokładnie?"
+    if withdrawn := update["withdrawn"]:
+        # Accept withdrawal only if its referent occurs uniquely in the edited rule.
+        noun = re.sub(r"^(?:wymóg|obowiązek|warunek)\s+", "", withdrawn, flags=re.I)
+        stem = noun.casefold().rstrip("ąęiaeyu")
+        if len(stem) < 3 or not re.fullmatch(_WORD, stem):
+            return None
+        mention = re.compile(rf"\b{re.escape(stem)}(?:[ąęiaeyu]|em)?\b", re.I)
+        if mention.search(lines[1 - index]):
+            return f"Czy mam wycofać {withdrawn} i zmienić {kept} punkt, czy zachować ten punkt dokładnie?"
+        if mention.search(value):
+            return f"Czy mam wycofać {withdrawn}, czy zachować podane brzmienie zastępcze, które nadal o tym mówi?"
+        if not mention.search(lines[index]):
+            return None
+    lines[index] = f"{index + 1}. {value}"
+    return "\n".join(lines)
+
+
 def _quoted_rules_reply(current: str, history: Sequence[HistoryMessage]) -> str | None:
     """Replace only the explicitly addressed rule and preserve its untouched clauses."""
     users = [turn.content for turn in history if turn.role == "user"][-4:]
@@ -599,10 +648,12 @@ _COMPANY = re.compile(
     rf"(?P<company>{_WORD}(?:[- ]{_WORD}){{0,2}}), resztę zachowaj[.!]?",
     re.I,
 )
-_NOTICE_OPEN = re.compile(r"(?:napisz|przygotuj) zapowiedź bez ocen", re.I)
+_NOTICE_OPEN = re.compile(
+    r"(?:napisz|przygotuj) zapowiedź (?:bez ocen|w trzech zdaniach)", re.I
+)
 _NOTICE_TIME = re.compile(
     rf"(?P<event>{_WORD}(?: {_WORD}){{0,2}}?) "
-    r"(?:jest|odbędzie się) (?P<period>popołudniu|po południu|rano|wieczorem) "
+    r"(?:jest|odbędzie się|będzie) (?P<period>popołudniu|po południu|rano|wieczorem),? "
     r"(?:i potrwa )?(?:do|najwyżej|maksymalnie|nie dłużej niż) "
     r"(?P<minutes>[1-9][0-9]{0,2}) minut(?:y|ę)?",
     re.I,
@@ -625,12 +676,13 @@ _COMMUNICATE_NOTICE = re.compile(
 )
 _NOTICE_SEPARATE_CONDITION = re.compile(_NOTICE_CONDITIONAL, re.I)
 _NOTICE_SEPARATE_QUESTIONS = re.compile(
-    rf"pytania po (?P<after>{_WORD}(?: {_WORD}){{0,2}}?) {_NOTICE_QUESTION_PLACE}",
+    rf"(?:zadawanie )?pyta[nń](?:ia)? po (?P<after>{_WORD}(?: {_WORD}){{0,2}}?) {_NOTICE_QUESTION_PLACE}",
     re.I,
 )
 _NOTICE_PARAGRAPH = re.compile(
     r"(?:(?:oddaj|podaj|napisz) tę samą treść (?:jako jeden akapit|w jednym akapicie), "
     r"bez zapowiadania dodatkowego spotkania"
+    r"|jednym akapitem, zachowując trzy zdania i wszystkie warunki"
     r"|wersja w jednym akapicie, bez nowego spotkania[.!] zachowaj wszystkie fakty"
     r"|zrób z tego jeden akapit[.!] bez nowego spotkania i bez zmiany faktów)[.!]?",
     re.I,
@@ -678,6 +730,13 @@ def _notice_details(clauses: list[str]) -> tuple[str, str, str] | None:
     if len(clauses) == 3 and _NOTICE_OPEN.fullmatch(clauses[0]):
         if details := _NOTICE_DETAILS.fullmatch(clauses[2]):
             return details["conditional"], "zakończeniu", details["location"]
+    if (
+        len(clauses) == 4
+        and _NOTICE_OPEN.fullmatch(clauses[0])
+        and (condition := _NOTICE_SEPARATE_CONDITION.fullmatch(clauses[2]))
+        and (questions := _NOTICE_SEPARATE_QUESTIONS.fullmatch(clauses[3]))
+    ):
+        return condition["conditional"], questions["after"], questions["location"]
     if (
         len(clauses) == 5
         and _COMMUNICATE_NOTICE.fullmatch(clauses[0])
@@ -901,6 +960,7 @@ def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     return (
         communication_note(current, prior)
         or _quoted_rules_reply(current, history)
+        or _numbered_edit(current, history)
         or _pickup_reply(current, history)
         or _room_notice_reply(current, history)
         or _access_rules_reply(current, prior, origin)

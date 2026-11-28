@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
+from venom_core.services.chat_policy.studio_dialog_evidence import dialog_evidence
 
 _FLAGS = re.IGNORECASE
 _WORD = r"[^\W\d_]+"
@@ -1110,6 +1111,20 @@ _KIT_LISTS = re.compile(
     r"(?:wskaż wspólne przedmioty|wypisz wspólne przedmioty|które przedmioty są wspólne)[.?!]?",
     re.I,
 )
+_NAMED_LISTS = re.compile(
+    rf"lista (?P<first>{_LIST_LABEL}) (?:to|zawiera) (?P<left>{_ITEMS}), "
+    rf"(?:a )?(?:lista )?(?P<second>{_LIST_LABEL}) (?:to |zawiera )?(?P<right>{_ITEMS})[.!] "
+    r"(?:co mają wspólnego|które elementy są wspólne)\?",
+    re.I,
+)
+_LIST_DIRECT_ADD = re.compile(
+    rf"(?:dodaj|dopisz) (?P<item>{_LIST_ITEM}) do (?:listy )?(?P<label>{_LIST_LABEL})",
+    re.I,
+)
+_LIST_DIRECT_REMOVE = re.compile(
+    rf"(?:usuń|wykreśl) (?P<item>{_LIST_ITEM}) z (?:listy )?(?P<label>{_LIST_LABEL})",
+    re.I,
+)
 _LABELED_LIST_REMOVE = re.compile(
     rf"z (?:(?P<scope>listy|zestawu|pakietu) )?(?P<label>{_LIST_LABEL}) (?:jednocześnie )?"
     rf"(?:usuwamy|wykreślamy) (?P<item>{_LIST_ITEM})",
@@ -1123,11 +1138,11 @@ _LABELED_LIST_ADD = re.compile(
 _LABELED_LIST_UPDATE = re.compile(
     r"(?P<operations>[^.!?\n]{10,140})[.!] "
     r"(?:jakie teraz są wspólne|które elementy są teraz wspólne|co jest teraz wspólne"
-    r"|wskaż teraz część wspólną)[.?!]?",
+    r"|wskaż teraz część wspólną|wypisz wspólne po zmianach)[.?!]?",
     re.I,
 )
 _TABLE_ONLY = re.compile(
-    rf"(?:które pozostają|co zostaje) (?:tylko|wyłącznie) dla (?P<label>{_LIST_LABEL})\?",
+    rf"(?:które pozostają|co zostaje|co zostało) (?:tylko|wyłącznie) dla (?P<label>{_LIST_LABEL})\?",
     re.I,
 )
 _KIT_ONLY = re.compile(
@@ -1149,12 +1164,19 @@ def _apply_labeled_list_update(
     lists: dict[str, dict[str, str]], update: re.Match[str], scope: str
 ) -> bool:
     changes: set[tuple[str, str]] = set()
-    for clause in re.split(r", (?:a )?", update["operations"], flags=re.I):
-        add = _LABELED_LIST_ADD.fullmatch(clause)
-        edit = add or _LABELED_LIST_REMOVE.fullmatch(clause)
+    for clause in re.split(r", (?:a )?| (?:i|oraz) ", update["operations"], flags=re.I):
+        add = _LABELED_LIST_ADD.fullmatch(clause) or _LIST_DIRECT_ADD.fullmatch(clause)
+        edit = (
+            add
+            or _LABELED_LIST_REMOVE.fullmatch(clause)
+            or _LIST_DIRECT_REMOVE.fullmatch(clause)
+        )
         if edit is None:
             return False
-        if edit["scope"] and edit["scope"].casefold() not in {"listy", scope}:
+        if edit.groupdict().get("scope") and edit["scope"].casefold() not in {
+            "listy",
+            scope,
+        }:
             return False
         label, item = (edit[name].casefold() for name in ("label", "item"))
         positions = lists.get(label)
@@ -1171,7 +1193,11 @@ def _apply_labeled_list_update(
 
 
 def _named_list_comparison(current: str, users: Sequence[str]) -> str | None:
-    source = _TABLE_LISTS.fullmatch(current) or _KIT_LISTS.fullmatch(current)
+    source = (
+        _TABLE_LISTS.fullmatch(current)
+        or _KIT_LISTS.fullmatch(current)
+        or _NAMED_LISTS.fullmatch(current)
+    )
     exclusive = _TABLE_ONLY.fullmatch(current) or _KIT_ONLY.fullmatch(current)
     update = _LABELED_LIST_UPDATE.fullmatch(current)
     if source is None and update is None and exclusive is None:
@@ -1180,7 +1206,11 @@ def _named_list_comparison(current: str, users: Sequence[str]) -> str | None:
     edits = [update] if update is not None else []
     if source is None:
         for prior in reversed(users):
-            if source := _TABLE_LISTS.fullmatch(prior) or _KIT_LISTS.fullmatch(prior):
+            if (
+                source := _TABLE_LISTS.fullmatch(prior)
+                or _KIT_LISTS.fullmatch(prior)
+                or _NAMED_LISTS.fullmatch(prior)
+            ):
                 break
             if (previous := _LABELED_LIST_UPDATE.fullmatch(prior)) is None:
                 return None
@@ -1207,6 +1237,8 @@ def _named_list_comparison(current: str, users: Sequence[str]) -> str | None:
         prefix = "Dla obu list"
     if not items:
         return f"{prefix}: brak pozycji."
+    if source.re is _NAMED_LISTS:
+        return f"{prefix}: {', '.join(items)}."
     if source.re is _KIT_LISTS:
         kit = source["scope"].casefold()
         description = (
@@ -1287,6 +1319,7 @@ def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | Non
         or _wheel_reply(current, previous)
         or _app_reply(current, previous)
         or _frame_reply(current, previous)
+        or dialog_evidence(current, previous)
         or _list_comparison(
             current, [turn.content for turn in history[-4:] if turn.role == "user"]
         )

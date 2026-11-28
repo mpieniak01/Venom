@@ -12,6 +12,7 @@ from venom_core.services.chat_policy.studio_evidence_ledger import (
     clause_evidence_status,
 )
 from venom_core.services.chat_policy.studio_evidence_status import evidence_status
+from venom_core.services.chat_policy.studio_record_summary import record_status
 from venom_core.services.chat_policy.studio_status_transitions import (
     status_transition_reply,
 )
@@ -944,4 +945,5 @@ def studio_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
         or evidence_status(text, earlier)
         or status_transition_reply(text, earlier)
         or clause_evidence_status(text, earlier)
+        or record_status(text, previous)
     )

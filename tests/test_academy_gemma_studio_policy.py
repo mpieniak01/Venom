@@ -8,6 +8,7 @@ from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services import llm_simple_service
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.chat_policy.studio_calculator import plan_studio_calculation
+from venom_core.services.chat_policy.studio_dialog_compare import studio_comparison
 from venom_core.services.chat_policy.studio_publication import publication_check
 from venom_core.services.chat_policy.studio_revision import studio_revision
 from venom_core.services.chat_policy.studio_visibility import studio_visibility
@@ -1775,3 +1776,404 @@ def test_local_revision_defers_an_edit_without_matching_source_evidence(source, 
         ),
     ]
     assert studio_revision(edit, history) is None
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        pytest.param(
+            [
+                (
+                    "Na zamówienie potrzebuję trzy długie listwy po 28 cm i cztery krótkie po 9 cm. Oblicz sumę długości.",
+                    ("120 cm",),
+                ),
+                (
+                    "Krótkie zamieniam na 11 cm. Mam odłożone 1,35 m. Podaj brak po korekcie w cm.",
+                    ("7 cm", "więcej"),
+                ),
+            ],
+            id="length",
+        ),
+        pytest.param(
+            [
+                (
+                    "Koszt: 8 koszy metalowych po 13 zł oraz 3 wiklinowych po 18 zł. Podaj koszt samych wiklinowych.",
+                    ("54 zł",),
+                ),
+                (
+                    "Stawka metalowych spada z 13 zł do 10 zł. Oblicz całość.",
+                    ("134 zł",),
+                ),
+            ],
+            id="price",
+        ),
+        pytest.param(
+            [
+                (
+                    "Porównaj szerokość płyt: Topaz 184 mm, Jaspis 0,2 m, Cytryn 22 cm. Która najszersza?",
+                    ("Cytryn, 22 cm",),
+                ),
+                (
+                    "Płytę Cytryn wymieniono. Teraz ma 0,17 m. Która najszersza?",
+                    ("Jaspis, 20 cm",),
+                ),
+            ],
+            id="width",
+        ),
+        pytest.param(
+            [
+                (
+                    "Bez opakowania: pierwsza część waży 95 g, druga 0,22 kg oraz trzecia 130 g. Opakowanie waży 18 g. Oblicz masę samych części w gramach.",
+                    ("445 g",),
+                ),
+                (
+                    "Pierwsza część waży jednak 0,125 kg. Dolicz również opakowanie.",
+                    ("493 g",),
+                ),
+            ],
+            id="mass",
+        ),
+        pytest.param(
+            [
+                ("Lista: 22, 8, 10 i 16. Oblicz medianę.", ("Mediana: 13",)),
+                (
+                    "Skreśl 22 z listy jako wadliwy pomiar. Podaj medianę.",
+                    ("Mediana: 10",),
+                ),
+            ],
+            id="median",
+        ),
+        pytest.param(
+            [
+                (
+                    "Dopuszczamy długość od 12 mm bez punktu granicznego do 1,5 cm włącznie. Próbki W 1,2 cm, X 13 mm, Y 0,015 m, Z 16 mm. Wskaż dopuszczone próbki.",
+                    (": X, Y",),
+                ),
+                (
+                    "Dolna granica włącznie, górna granica wyłącznie. Wskaż aktualny zestaw.",
+                    (": W, X",),
+                ),
+            ],
+            id="interval",
+        ),
+        pytest.param(
+            [
+                (
+                    "Na stanowisku X wpisano 9 dobrych i 8 do przeglądu. Na Y 15 dobrych i 5 do przeglądu. Ile dobrych łącznie?",
+                    ("24 dobrych",),
+                ),
+                (
+                    "Na X cztery dobre przenieś do przeglądu. Podaj obie liczby na X.",
+                    ("5 dobrych", "12 do przeglądu"),
+                ),
+                ("Ile dobrych w obu stanowiskach?", ("20 dobrych",)),
+            ],
+            id="stations",
+        ),
+        pytest.param(
+            [
+                (
+                    "Lista X zawiera klucz, kompas i notes, a lista Y to kompas, notes i kabel. Które elementy są wspólne?",
+                    ("kompas, notes",),
+                ),
+                (
+                    "Dopisz kabel do listy X oraz wykreśl notes z listy Y. Wypisz wspólne po zmianach.",
+                    ("kompas, kabel",),
+                ),
+                ("Co zostało wyłącznie dla X?", ("klucz, notes",)),
+            ],
+            id="sets",
+        ),
+        pytest.param(
+            [
+                (
+                    "Zanotowano trzy pomiary: 4, 11 i 15 g. Następny jeszcze nie powstał. Podaj średnią do dwóch miejsc.",
+                    ("10,00 g",),
+                ),
+                (
+                    "Drugi wpis po korekcie to 0,02 kg zamiast 11 g. Podaj średnią w tym samym zapisie.",
+                    ("13,00 g",),
+                ),
+            ],
+            id="mean",
+        ),
+        pytest.param(
+            [
+                (
+                    "Do magazynu kupiono 3 paczki zielonych po 9 i 2 paczki fioletowych po 4. Ile jest fioletowych?",
+                    ("8 szt.",),
+                ),
+                (
+                    "Jedna fioletowa paczka zawiera 6 sztuk zamiast 4. Ile po korekcie obu kolorów razem?",
+                    ("37 szt.", "27", "10"),
+                ),
+                (
+                    "Wydano pięć zielonych elementów. Wypisz ile zostało osobno.",
+                    ("22 szt.", "10 szt."),
+                ),
+            ],
+            id="packages",
+        ),
+        pytest.param(
+            [
+                (
+                    "Z 80 l odłożono 17 l na rezerwę. Dwie grupy zużyły po 21 l. Ile do wykorzystania poza rezerwą?",
+                    ("21 l",),
+                ),
+                (
+                    "Pierwsza grupa pobrała teraz 14 l, druga wciąż 21. Ile zostaje poza rezerwą?",
+                    ("28 l",),
+                ),
+            ],
+            id="reserve",
+        ),
+        pytest.param(
+            [
+                (
+                    "Minęło 130, 260 i 90 sekund w trzech odcinkach. Zsumuj w minutach.",
+                    ("480 sekund", "8 min"),
+                ),
+                (
+                    "Drugi odcinek trwał 200 s, nie 260 s. Podaj sumę po korekcie.",
+                    ("420 sekund", "7 min"),
+                ),
+            ],
+            id="time",
+        ),
+    ],
+)
+def test_quantity_revisions_publish_from_user_facts(studio_chat, monkeypatch, steps):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, pending = studio_chat
+    history = []
+    for prompt, fragments in steps:
+        result = chat(prompt, history, verify_history=True)
+        for fragment in fragments:
+            assert fragment in result
+        history.extend(
+            (
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": "Poprzedni szkic podaje 999."},
+            )
+        )
+    assert not sent and not pending
+
+
+@pytest.mark.parametrize(
+    ("source", "current"),
+    [
+        (
+            "Na zamówienie potrzebuję trzy długie listwy po 28 cm i cztery krótkie po 9 cm. Oblicz sumę długości.",
+            "Krótkie zamieniam na 11 cm i na 12 cm. Mam odłożone 1,35 m. Podaj brak po korekcie w cm.",
+        ),
+        (
+            "Koszt: 8 koszy metalowych po 13 zł oraz 3 wiklinowych po 18 zł. Podaj koszt samych wiklinowych.",
+            "Stawka metalowych spada z 11 zł do 10 zł. Oblicz całość.",
+        ),
+        (
+            "Koszt: 8 koszy metalowych po 13 zł oraz 3 wiklinowych po 18 zł. Podaj koszt samych wiklinowych.",
+            "Stawka wiklinowych spada z 18 zł do 10 zł, dodaj też 40 zł opłaty. Oblicz całość.",
+        ),
+        (
+            "Porównaj szerokość płyt: Topaz 184 mm, Jaspis 0,2 m, Cytryn 22 cm. Która najszersza?",
+            "Płytę Azur wymieniono. Teraz ma 0,17 m. Która najszersza?",
+        ),
+        (
+            "Bez opakowania: pierwsza część waży 95 g, druga 0,22 kg oraz trzecia 130 g. Opakowanie waży 18 g. Oblicz masę samych części w gramach.",
+            "Pierwsza część waży jednak 0,125 kg. Dolicz również pudełko.",
+        ),
+        (
+            "Bez opakowania: pierwsza część waży 95 g, druga 0,22 kg oraz trzecia 130 g. Opakowanie waży 18 g. Oblicz masę samych części w gramach.",
+            "Czwarta część waży jednak 0,125 kg. Dolicz również opakowanie.",
+        ),
+        (
+            "Lista: 22, 8, 10 i 16. Oblicz medianę.",
+            "Skreśl 19 z listy jako wadliwy pomiar. Podaj medianę.",
+        ),
+        (
+            "Dopuszczamy długość od 12 mm bez punktu granicznego do 1,5 cm włącznie. Próbki W 1,2 cm, X 13 mm, Y 0,015 m, Z 16 mm. Wskaż dopuszczone próbki.",
+            "Dolna granica jest nieznana. Wskaż aktualny zestaw.",
+        ),
+        (
+            "Na stanowisku X wpisano 9 dobrych i 8 do przeglądu. Na Y 15 dobrych i 5 do przeglądu. Ile dobrych łącznie?",
+            "Na Z cztery dobre przenieś do przeglądu. Podaj obie liczby na Z.",
+        ),
+        (
+            "Na stanowisku X wpisano 9 dobrych i 8 do przeglądu. Na Y 15 dobrych i 5 do przeglądu. Ile dobrych łącznie?",
+            "Na X cztery dobre przenieś do przeglądu. Podaj obie liczby na Y.",
+        ),
+        (
+            "Lista X zawiera klucz, kompas i notes, a lista Y to kompas, notes i kabel. Które elementy są wspólne?",
+            "Dopisz kabel do listy Q oraz wykreśl notes z listy Y. Wypisz wspólne po zmianach.",
+        ),
+        (
+            "Zanotowano trzy pomiary: 4, 11 i 15 g. Następny jeszcze nie powstał. Podaj średnią do dwóch miejsc.",
+            "Drugi wpis po korekcie to 0,02 kg zamiast 15 g. Podaj średnią w tym samym zapisie.",
+        ),
+        (
+            "Do magazynu kupiono 3 paczki zielonych po 9 i 2 paczki fioletowych po 4. Ile jest fioletowych?",
+            "Jedna fioletowa paczka zawiera 6 sztuk zamiast 8. Ile po korekcie obu kolorów razem?",
+        ),
+        (
+            "Z 80 l odłożono 17 l na rezerwę. Dwie grupy zużyły po 21 l. Ile do wykorzystania poza rezerwą?",
+            "Pierwsza grupa pobrała teraz 14 l, druga wciąż 19. Ile zostaje poza rezerwą?",
+        ),
+        (
+            "Minęło 130, 260 i 90 sekund w trzech odcinkach. Zsumuj w minutach.",
+            "Drugi odcinek trwał 200 s, nie 90 s. Podaj sumę po korekcie.",
+        ),
+    ],
+)
+def test_quantity_revisions_abstain_on_scope_or_source_mismatch(source, current):
+    history = [HistoryMessage(role="user", content=source)]
+    assert plan_studio_calculation(current, history) is None
+    assert studio_comparison(current, history) is None
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Zanotowano trzy pomiary: 4, 11 i 15 g. Następny jeszcze nie powstał. Podaj średnią z czterech pomiarów do dwóch miejsc.",
+        "Minęło 130, 210 i 90 sekund w czterech odcinkach. Zsumuj w minutach.",
+        "Bez opakowania: pierwsza część waży 95 g, pierwsza 0,22 kg oraz trzecia 130 g. Opakowanie waży 18 g. Oblicz masę samych części w gramach.",
+    ],
+)
+def test_quantity_totals_abstain_if_input_is_incomplete(source):
+    assert plan_studio_calculation(source, ()) is None
+
+
+@pytest.mark.parametrize(
+    ("source", "initial", "revision", "updated"),
+    [
+        (
+            "Wycena: Bursztyn – 5 pakietów po 12 zł; Rubin – 4 po 11 zł. Podaj kwotę za Rubin.",
+            "44 zł",
+            "Zmieniam cenę za pakiet Rubin na 9 zł. Ile zapłacę za obie pozycje?",
+            "96 zł",
+        ),
+        (
+            "Są trzy paczki po 7 zł za każdą małą i dwie paczki po 14 zł za każdą dużą. Ile kosztują małe?",
+            "21 zł",
+            "Stawka za dużą teraz wynosi 17 zł. Podaj koszt wszystkich paczek.",
+            "55 zł",
+        ),
+        (
+            "Cena małych 7 zł za paczkę, liczba 5. Cena dużych 11 zł za paczkę, liczba 4. Podaj łączny koszt.",
+            "79 zł",
+            "Stawka dużych teraz wynosi 15 zł. Oblicz całość.",
+            "95 zł",
+        ),
+        (
+            "Czasy etapów: 150 s, 210 sekund oraz 60 s. Oblicz łączny czas w minutach.",
+            "7 min",
+            "Zamiast 210 sekund wpisz 90 sekund. Przelicz sumę w minutach.",
+            "5 min",
+        ),
+        (
+            "Dodaj trzy czasy okrążeń: 80 s, 180 s i 100 s. Podaj wynik w minutach.",
+            "6 min",
+            "Zamiast 180 wpisz 120. Jaka jest nowa suma w minutach?",
+            "5 min",
+        ),
+        (
+            "Odcinki: 2 min, 180 s i 60 s. Ile minut razem?",
+            "6 min",
+            "Zamiast 180 s wpisz 1 min. Podaj sumę po korekcie.",
+            "4 min",
+        ),
+        (
+            "Trzy odczyty to 3, 6 i 9 ml. Następnej próbki jeszcze nie pobrano. Podaj średnią do dwóch miejsc.",
+            "6,00 ml",
+            "Pierwszy odczyt poprawiam na 0,012 l. Podaj średnią w tym samym formacie.",
+            "9,00 ml",
+        ),
+        (
+            "Mamy dwa typy mydła po trzy butelki. Pierwszy typ kosztuje 7 zł za butelkę, ceny drugiego brak. Jaki był łączny wydatek?",
+            None,
+            "Drugi typ kosztował po 13 zł. Ile razem?",
+            "60 zł",
+        ),
+    ],
+)
+def test_quantity_operands_survive_field_order_and_units(
+    source, initial, revision, updated
+):
+    first = plan_studio_calculation(source, ())
+    if initial is None:
+        assert first is None
+    else:
+        assert first and initial in first.publish()["text"]
+    current = plan_studio_calculation(
+        revision, [HistoryMessage(role="user", content=source)]
+    )
+    assert current and updated in current.publish()["text"]
+
+
+@pytest.mark.parametrize(
+    ("source", "revision"),
+    [
+        (
+            "Odcinki: 2 min, 180 s i 60 s. Ile minut razem?",
+            "Zamiast 180 wpisz 120. Jaka jest nowa suma w minutach?",
+        ),
+        (
+            "Odcinki: 90 s, 90 s i 60 s. Ile minut razem?",
+            "Zamiast 90 s wpisz 80 s. Podaj sumę po korekcie.",
+        ),
+        (
+            "Odcinki: 90 s, 80 s i 60 s. Ile minut razem?",
+            "Zamiast 70 s wpisz 20 s. Podaj sumę po korekcie.",
+        ),
+        (
+            "Trzy odczyty to 3, 6 i 9 ml. Podaj średnią do dwóch miejsc.",
+            "Piąty odczyt poprawiam na 8 ml. Podaj średnią.",
+        ),
+        (
+            "Trzy odczyty to 3, 6 i 9 ml. Podaj średnią do dwóch miejsc.",
+            "Trzeci odczyt poprawiam na 8 g. Podaj średnią.",
+        ),
+        (
+            "Koszty: Bursztyn – 5 pakietów po 12 zł; Rubin – 4 po 11 zł. Podaj kwotę za Rubin.",
+            "Zmieniam cenę za pakiet Piryt na 9 zł. Ile zapłacę za obie pozycje?",
+        ),
+        (
+            "Koszty: Bursztyn – 5 pakietów po 12 zł; Rubin – 4 po 11 zł. Podaj kwotę za Rubin.",
+            "Zmieniam cenę za pakiet Rubin na 9 zł. Ile zapłacę za obie pozycje po rabacie?",
+        ),
+        (
+            "Mamy trzy typy mydła po dwie butelki. Pierwszy typ kosztuje 7 zł za butelkę, ceny drugiego brak. Jaki był łączny wydatek?",
+            "Drugi typ kosztuje po 13 zł. Ile razem?",
+        ),
+        (
+            "Mamy dwa typy mydła po dwie butelki. Pierwszy typ nie kosztuje 7 zł za butelkę, ceny drugiego brak. Jaki był łączny wydatek?",
+            "Drugi typ kosztuje po 13 zł. Ile razem?",
+        ),
+        (
+            "Mamy dwa typy mydła po dwie butelki. Pierwszy typ kosztuje 7 zł za karton, ceny drugiego brak. Jaki był łączny wydatek?",
+            "Drugi typ kosztuje po 13 zł. Ile razem?",
+        ),
+    ],
+)
+def test_quantity_rejects_incomplete_cost_or_quantity_update(source, revision):
+    assert (
+        plan_studio_calculation(revision, [HistoryMessage(role="user", content=source)])
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Czasy etapów: 60 s, 90 kg i 60 s. Podaj sumę w minutach.",
+        "Czasy etapów: 60 s plus przerwa do 90 s i 60 s. Podaj sumę w minutach.",
+        "Czasy etapów: 60 s, 90 s i 60 s bez limitu. Podaj sumę w minutach.",
+        "Cztery odcinki: 60 s, 90 s i 60 s. Podaj sumę w minutach.",
+        "Czasy etapów: -60 s, 90 s i 60 s. Podaj sumę w minutach.",
+        "Wycena: Bursztyn – 5 lub 6 pakietów po 12 zł; Rubin – 4 po 11 zł. Podaj kwotę za Rubin.",
+        "Wycena: Bursztyn – 5 pakietów po 12 zł; Rubin – 4 po 11 zł. Podaj koszt obu po rabacie.",
+    ],
+)
+def test_quantity_rejects_unbound_source_operands(source):
+    assert plan_studio_calculation(source, ()) is None

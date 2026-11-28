@@ -4,6 +4,7 @@ import pytest
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services.chat_policy.studio_followup import studio_followup
+from venom_core.services.chat_policy.studio_record_summary import evidence_hint
 
 _REQUEST = (
     "Poprosiłam o odczyt próbnej planszy, lecz jeszcze nikt nie potwierdził "
@@ -1183,4 +1184,218 @@ def test_reported_dispatch_does_not_drop_either_approval(sent, unsent):
     assert studio_followup(update, _history(source)) == (
         "Pierwszą ofertę zatwierdziła koordynatorka. Drugą ofertę też zaakceptowano. "
         f"Zgodnie z raportem Oli wysłano wyłącznie {sent} ofertę. Nie wysłano {unsent} oferty."
+    )
+
+
+@pytest.mark.parametrize(
+    ("initial", "update", "initial_facts", "updated_facts"),
+    [
+        (
+            "Portier ma otworzyć archiwum i podać godzinę. W rejestrze widnieje jedynie zlecenie. Co jest udokumentowane?",
+            "Ewa zrelacjonowała, że otworzyła archiwum o 8:34. Nie potwierdzono zwrotu identyfikatora. Podaj aktualny stan.",
+            ("otworzyć archiwum", "godziny"),
+            ("Ewa relacjonuje", "8:34", "Nie potwierdzono zwrotu"),
+        ),
+        (
+            "Wniosek Fala złożono. Przesyłki obu nadal czekają. Zaakceptowano tylko wniosek Osa. Wypisz etapy.",
+            "Paweł zgłosił nadanie wyłącznie Osy. Fala zatwierdzony. Rozróżnij etapy.",
+            ("Osa", "Fala", "Żadnej"),
+            ("Oba wnioski zaakceptowano", "Paweł zgłosił", "Fala nadal czeka"),
+        ),
+        (
+            "W notesie zapisano 23 zawory. Odbiór wymaga 21 sprawnych zaworów i podpisu. Brakuje obu etapów. Co wiadomo?",
+            "Podpis inspektorki zaplanowano na środę. Potwierdzono 21 sprawnych zaworów. Czy odbiór jest zamknięty?",
+            ("23", "21", "otwarte"),
+            ("środę", "21", "otwarta"),
+        ),
+        (
+            "Ilustratorka preferuje czerwony brzeg, ale jeszcze brak decyzji dyrekcji. Co wiadomo?",
+            "Dyrektorka wybrała zielony brzeg. Druk ma nastąpić po dostawie farby, która jeszcze nie przyjechała. Jaki jest stan?",
+            ("preferuje", "wybór pozostaje otwarty"),
+            ("wybrała zielony", "po dostawie", "nadal zależy"),
+        ),
+        (
+            "W zatwierdzonym ogłoszeniu podano wierzbę, środę i 7:45. W szkicu kartki jest tylko nazwa. Podaj stan.",
+            "W potwierdzeniu nadania podano wierzbę oraz 7:45. Co ze słowem „wierzbę”?",
+            ("7:45", "Szkic nie potwierdza wysłania"),
+            ("zatwierdzono", "również w potwierdzeniu"),
+        ),
+        (
+            "Ustawiono 56 koszyków, z których sprawdzono 14. Pozostałych nikt nie sprawdził. Zapisz co wiemy.",
+            "Dalsze sprawdzanie odłożono. Czy zapis o 14 sprawdzonych koszykach zostaje?",
+            ("14", "56", "42"),
+            ("Tak", "42", "odłożono"),
+        ),
+        (
+            "Standardowo czytelnia rozpoczyna pracę o 6:20. W planie na 7:10 następuje zmiana, jeśli wymieniony zostanie zamek. Nikt tego nie potwierdził. Kiedy rozpocząć?",
+            "Serwisowi udało się wymienić zamek, co potwierdził administrator. Rozkład nadal podaje 6:20. Jaki czas obowiązuje?",
+            ("Obowiązuje 6:20", "7:10", "zamek"),
+            ("Obowiązuje 7:10", "administrator", "6:20"),
+        ),
+        (
+            "W systemie widnieje szkic listy. Ogłosić ją wolno dopiero po sprawdzeniu kodu szafki. Kodu nikt nie potwierdził. Podaj status.",
+            "Kamil potwierdził kod o 17:12. Na tablicy wciąż widać numer poprzedniej szafki. Co teraz wiemy?",
+            ("szkic", "potwierdził", "czeka na weryfikację"),
+            ("Kamil", "17:12", "poprzedniej szafki"),
+        ),
+        (
+            "Ola poprosiła w piątek o kontakt w sprawie dostawy. Brak potwierdzenia połączenia. Podaj status.",
+            "Lidia oddzwoniła w środę i ustaliła adres, ale godziny nadal nie ustalono. Podaj ustalenia.",
+            ("piątek", "Brak potwierdzenia"),
+            ("Lidia", "środę", "nie ustalono"),
+        ),
+        (
+            "Ela figuruje na liście chętnych na sobotni dyżur. Pole przydziału w grafiku jest puste. Jaki jest stan?",
+            "Brygadzistka wpisała Elę na czwartek o 13:20. Ela nie potwierdziła. Podaj aktualny stan.",
+            ("sobotni", "jest puste"),
+            ("Brygadzistka", "czwartek o 13:20", "Ela nie potwierdziła"),
+        ),
+        (
+            "Kontroler zwrócił dokument, bo brakuje podpisu opiekuna. Warunkiem zamknięcia jest pomiar i podpis. Podaj stan.",
+            "Pomiar wykonano, lecz opiekun nadal nie podpisał. Czy dokument ma status zamknięty?",
+            ("brakuje podpisu", "pomiar", "otwarta"),
+            ("Pomiar wykonano", "nie podpisał", "otwarta"),
+        ),
+        (
+            "Planowaliśmy przenieść gablotę we wtorek po kontroli windy. Kontroli jeszcze nie wykonano. Stan w jednym zdaniu.",
+            "Kontrola windy wykonana, termin cofnięto bez podania nowej daty. Zaktualizuj jedno zdanie.",
+            ("wtorek", "kontroli jeszcze nie wykonano"),
+            ("wykonana", "termin cofnięto", "bez podania nowej daty"),
+        ),
+    ],
+)
+def test_status_reports_preserve_actor_scope_and_latest_update(
+    initial, update, initial_facts, updated_facts
+):
+    first = studio_followup(initial, [])
+    second = studio_followup(
+        update, _history(initial, assistant="Cała sprawa zakończona wcześniej.")
+    )
+    assert first and all(part in first for part in initial_facts)
+    assert second and all(part in second for part in updated_facts)
+
+
+def test_status_summary_requires_matching_polarity_action_and_object():
+    batch = "Dostarczono 15 pojemników, z których otwarto 4. Pozostałych nikt nie obejrzał. Co wiadomo?"
+    ask = "Dalsze oglądanie odłożono. Czy zapis o 4 otwartych pojemnikach zostaje?"
+    assert "11" in studio_followup(ask, _history(batch))
+    for changed in (ask.replace("otwartych", "zamkniętych"), ask.replace("4", "3")):
+        reply = studio_followup(changed, _history(batch))
+        assert reply and reply.startswith("Brak potwierdzenia takiego wpisu.")
+        assert "otwarto 4" in reply and "11" in reply and "odłożono" in reply
+    assert (
+        studio_followup(ask.replace("pojemnikach", "regałach"), _history(batch)) is None
+    )
+    clock = "Zwykle biuro otwiera się o 10:20. W planie na 11:30 przesuwa się start, gdy ustawiony zostanie odbiornik. Nikt tego nie potwierdził. Kiedy rozpocząć?"
+    new = "Ekipie nie udało się ustawić odbiornik, co potwierdził kierownik. Rozkład nadal pokazuje 10:20. Jaki czas obowiązuje?"
+    failed = studio_followup(new, _history(clock))
+    assert failed and "Obowiązuje 10:20" in failed
+    assert (
+        "nie udało" in failed
+        and "Rozkład nadal pokazuje 10:20" in failed
+        and "11:30" in failed
+    )
+    assert (
+        studio_followup(
+            new.replace("nie udało", "udało").replace("odbiornik", "nadajnik"),
+            _history(clock),
+        )
+        is None
+    )
+    record = "W notesie wpisano 11 urządzeń. Odbiór wymaga 10 sprawnych urządzeń i podpisu. Brakuje obu etapów. Co wiadomo?"
+    signed = "Potwierdzili złożenie podpisu inspektora i 10 sprawnych urządzeń. Podpis inspektora zaplanowano na środę. Czy odbiór jest zamknięty?"
+    conflict = studio_followup(signed, _history(record))
+    assert (
+        conflict
+        and "złożenie podpisu inspektora" in conflict
+        and "10 sprawnych urządzeń" in conflict
+    )
+    assert (
+        "na środę" in conflict
+        and "Czy" in conflict
+        and "Brakuje podpisu" not in conflict
+    )
+    assert (
+        studio_followup(
+            signed.replace("podpisu inspektora", "podpisu technika"), _history(record)
+        )
+        is None
+    )
+
+
+def test_evidence_summary_neither_changes_speaker_nor_confirms_another_person():
+    unconfirmed = "Nadal nie potwierdzono zwrotu dokumentu. Piotr powiedział, że nie zamknął biura. Co wiadomo?"
+    reply = studio_followup(unconfirmed, [])
+    assert "Piotr relacjonuje, że nie zamknął biura" in reply
+    assert "nie potwierdzono zwrotu dokumentu" in reply
+    assert (
+        studio_followup(unconfirmed.replace("Co wiadomo?", "Co wiadomo o Adamie?"), [])
+        is None
+    )
+    assert (
+        evidence_hint("Pośrednik przedstawił raport. Jakie jest potwierdzenie terminu?")
+        is not None
+    )
+    assert evidence_hint("Raport o pogodzie. Napisz wiersz.") is None
+    assert (
+        evidence_hint("Ratusz widnieje na zdjęciu. Które kolory są cieplejsze?") is None
+    )
+    assert evidence_hint("Prośba. Przetłumacz status na czeski.") is None
+
+
+def test_status_tracks_witness_decision_and_missing_shipment_separately():
+    initial = "Dwa zlecenia: Klon zatwierdzony, Brzeg dopiero zgłoszony. Oba transporty czekają. Co wpiszesz do raportu?"
+    change = "Brzeg także zatwierdzono. Nadawca opisał transport Klonu. Dla Brzegu nadal brak wpisu o transporcie. Oddziel status decyzji od transportu."
+    assert "Brzeg dopiero zgłoszono" in studio_followup(initial, [])
+    reply = studio_followup(change, _history(initial))
+    assert (
+        reply
+        and "Obie decyzje są zatwierdzone" in reply
+        and "Nadawca opisał" in reply
+        and "Brzegu nadal brak" in reply
+    )
+    assert (
+        studio_followup(
+            change.replace("transport Klonu", "transport Brzegu"), _history(initial)
+        )
+        is None
+    )
+
+
+def test_status_signoff_updates_prerequisites_but_needs_receipt_of_actual_delivery():
+    first = "Do przekazania kart potrzebne są przegląd i podpis Oli. Przegląd wykonano, podpisu nadal brak. Czy przekazanie można uznać za zamknięte?"
+    finish = "Ola podpisała, lecz brak pokwitowania przekazania. Co jest potwierdzone?"
+    assert "potrzeba jeszcze podpisu Oli" in studio_followup(first, [])
+    reply = studio_followup(finish, _history(first))
+    assert (
+        reply
+        and "Oba warunki są spełnione" in reply
+        and "Brak pokwitowania przekazania" in reply
+    )
+    assert studio_followup(finish.replace("Ola", "Ula"), _history(first)) is None
+    assert (
+        studio_followup(
+            finish.replace("pokwitowania przekazania", "pokwitowania publikacji"),
+            _history(first),
+        )
+        is None
+    )
+
+
+def test_status_preserves_reported_first_person_and_distinguishes_evidence_from_order():
+    question = "W rejestrze odnotowano polecenie otwarcia magazynu, bez potwierdzenia wykonania. Co wiadomo o otwarciu?"
+    assert "Brak potwierdzenia jego wykonania" in studio_followup(question, [])
+    assertion = (
+        "Otworzyłam magazyn o 11:40. Kwitu zwrotu klucza nikt nie odnotował. Podsumuj."
+    )
+    answer = studio_followup(assertion, _history(question))
+    assert (
+        answer
+        and "Zgłaszasz wykonanie" in answer
+        and "11:40" in answer
+        and "nikt nie odnotował" in answer
+    )
+    assert (
+        studio_followup("Przekazanie wpisano w scenariusz. Wymyśl filmowy tytuł.", [])
+        is None
     )

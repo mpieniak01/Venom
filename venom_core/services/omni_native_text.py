@@ -212,6 +212,7 @@ async def _generate(
             != selection.identity["snapshot_sha256"]
             or not isinstance(result.get("text"), str)
             or not result["text"].strip()
+            or omni_native_dialogue.contains_tool_markup(result["text"])
         ):
             raise ValueError("invalid_worker_result")
         return result

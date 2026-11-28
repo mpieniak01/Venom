@@ -43,6 +43,7 @@ class SimpleChatRequest(BaseModel):
     history: list[HistoryMessage] = Field(default_factory=list, max_length=200)
 
     _studio_public_source_evidence: dict[str, str] | None = PrivateAttr(default=None)
+    _studio_bill_reply: str | None = PrivateAttr(default=None)
     _studio_public_scope_reply: str | None = PrivateAttr(default=None)
     _studio_rss_headlines: tuple[NewsHeadline, ...] = PrivateAttr(default=())
 

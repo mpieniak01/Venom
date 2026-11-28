@@ -141,3 +141,16 @@ async def direct_material_messages(
                 400, {"reason_code": "material_image_adapter_unsupported"}
             )
     return messages
+
+
+def plain_text_request(request: SimpleChatRequest) -> bool:
+    """Whether the request permits a plain text local response."""
+    return (
+        not has_materials(request)
+        and request.tools is None
+        and request.tool_choice is None
+        and request.format is None
+        and request.response_format is None
+        and not request.logprobs
+        and request.top_logprobs is None
+    )

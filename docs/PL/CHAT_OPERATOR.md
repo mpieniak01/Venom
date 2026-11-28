@@ -119,6 +119,8 @@ Gdy tool jest pomijany:
 
 W lokalnym Studio Normal, przy wyłączonych notatkach, wpisz np. `Kalkulator: (4 × 13 + 3 × 7) zł`. Venom podaje wynik `73 zł` i zapisuje go w historii sesji. Polecenie przyjmuje jedno wyrażenie arytmetyczne i opcjonalną jednostkę. Po korekcie wpisz pełne zaktualizowane działanie. Do obliczenia nie potrzeba odpowiedzi modelu ani danych z sieci.
 
+W lokalnym Studio Normal przy wyłączonych notatkach można też podać opis. Na przykład `Rachunek: 2 koce po 15 zł i 3 lampy po 6 zł.` daje 48 zł z rozbiciem na pozycje. W tej samej rozmowie `Zmień cenę lampy z 6 zł na 5 zł.` zmienia sumę na 45 zł. Polecenie `Wycofaj lampy z rachunku.` pozostawia 30 zł. Każda pozycja wymaga nazwy, całkowitej ilości i jednostkowej ceny w PLN. Przy braku ceny, niejasnym zakresie, rabacie lub koszcie dostawy Studio prosi o doprecyzowanie. Pełną nową listę można rozpocząć od `Nowy rachunek:`.
+
 ### Źródła publiczne w Studio Normal
 
 W polskim czacie Studio Normal kieruje pytania o bieżącą pogodę do źródła

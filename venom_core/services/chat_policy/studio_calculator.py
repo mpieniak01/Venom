@@ -203,6 +203,15 @@ _DAY_SUM = re.compile(
 )
 
 
+_COUNT_KINDS = {
+    "wpis": "wpisów",
+    "wpisy": "wpisów",
+    "zgłoszenie": "zgłoszeń",
+    "zgłoszenia": "zgłoszeń",
+    "bilet": "biletów",
+    "bilety": "biletów",
+}
+
 _PACK_COUNTS = re.compile(
     rf"są (?P<a_count>{_COUNT}) wielopak\w* (?P<a>{_WORD}) po (?P<a_size>{_COUNT}) sztuk "
     rf"i (?P<b_count>{_COUNT}) wielopak\w* (?P<b>{_WORD}) po (?P<b_size>{_COUNT}) sztuk[.!] "
@@ -499,6 +508,18 @@ def _count(text: str) -> int:
     return 1 if word == "jedną" else _WORD_COUNTS[word]
 
 
+def _same_distribution_group(source: str, closed: str) -> bool:
+    source, closed = source.casefold(), closed.casefold()
+    if closed.endswith("ń"):
+        return source == closed[:-1] + "ni"
+    return source.rstrip("yi") == closed.rstrip("ęą")
+
+
+def _same_count_kind(source: str, updated: str) -> bool:
+    left, right = source.casefold(), updated.casefold()
+    return _COUNT_KINDS.get(left, left) == _COUNT_KINDS.get(right, right)
+
+
 def _distribution_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     current = turns[-1]
     source = _DISTRIBUTION.fullmatch(current)
@@ -510,8 +531,7 @@ def _distribution_calculation(turns: Sequence[str]) -> StudioCalculation | None:
             source is None
             or change is None
             or source["item"].casefold() != change["item"].casefold()
-            or source["group"].casefold().rstrip("yi")
-            != change["group"].casefold().rstrip("ęą")
+            or not _same_distribution_group(source["group"], change["group"])
         ):
             return None
         groups_closed = 1
@@ -550,13 +570,18 @@ def _mean_calculation(turns: Sequence[str]) -> StudioCalculation | None:
             return None
     if start is None:
         return None
+    source_text = turns[-2] if change else current
+    if re.search(r"\d", source_text[start.end() :]) and not _PLACES.search(
+        source_text[start.end() :]
+    ):
+        return None
     raw = re.findall(r"[0-9]+", start["values"])
     if any(len(value) > 6 for value in raw) or len(raw) != _count(start["groups"]):
         return None
     values = [int(value) for value in raw]
     if change is not None:
         measure = start["item"].casefold()
-        changed_measure = change["item"].casefold().removesuffix("ę")
+        changed_measure = change["item"].casefold().rstrip("ęiy")
         if changed_measure not in {measure, measure.removesuffix("ek") + "k"}:
             return None
         i = _ORDINALS.index(change["ordinal"].casefold())
@@ -602,7 +627,7 @@ def _day_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     }
     if rest:
         move = _DAY_MOVE.fullmatch(rest[0])
-        if move is None or move["kind"].casefold() != source["kind"].casefold():
+        if move is None or not _same_count_kind(move["kind"], source["kind"]):
             return None
         day, origin, target = (move[key].casefold() for key in ("day", "from", "to"))
         cells = ledger.get(day, {})
@@ -625,7 +650,7 @@ def _day_calculation(turns: Sequence[str]) -> StudioCalculation | None:
             )
         query = _DAY_SUM.fullmatch(rest[1])
         if query is None or (
-            query["kind"] and query["kind"].casefold() != source["kind"].casefold()
+            query["kind"] and not _same_count_kind(query["kind"], source["kind"])
         ):
             return None
         asked = query["column"].casefold()

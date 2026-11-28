@@ -327,6 +327,26 @@ def test_studio_retries_a_truncated_draft_with_default_transport(
         ),
         (
             (
+                "Z 48 par 6 odkładamy. Resztę dzielimy równo na 6 kieszeni. Ile par w każdej?",
+            ),
+            "Jedną pełną kieszeń zamknęliśmy na zapas. Ile par jest w otwartych?",
+            "W pozostałych jest 35 par (5 × 7).",
+        ),
+        (
+            ("Zużycie gąbek w trzech grupach to 6, 11 i 4. Jaka jest średnia?",),
+            "Drugiej grupie odejmij dwie gąbki. Podaj średnią do dwóch miejsc.",
+            "Średnia z 3 grup to 6,33 ((6 + 9 + 4) ÷ 3).",
+        ),
+        (
+            (
+                "We wtorek było 17 wpisów dla sali B i 8 dla C. W piątek B 5, C 9. Ile wpisów dla B w oba dni?",
+                "We wtorek cztery wpisy były błędnie w B, przenieś je do C. Podaj poprawny wtorek.",
+            ),
+            "Teraz ile C w oba dni?",
+            "Dla C w oba dni: 12 + 9 = 21 wpisów.",
+        ),
+        (
+            (
                 "Pakuję odważniki. Czerwony waży 1,2 kg, niebieski 670 g, "
                 "sztywne etui 115 g. Ile ważą same odważniki w gramach?",
             ),

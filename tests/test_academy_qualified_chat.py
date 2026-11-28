@@ -161,6 +161,13 @@ def test_studio_item_bill_in_normal_http(studio_chat, monkeypatch):
     assert chat("Cena mapy jednak 5 zł.", session=session).endswith("Razem: 48 zł")
     assert "Którego rachunku" in chat("Cena mapy jednak 5 zł za sztukę.")
     session = str(uuid4())
+    assert chat("Rachunek: 2 mapy po 3 zł i 1 lupa po 4 zł.", session=session).endswith(
+        "Razem: 10 zł"
+    )
+    assert chat("Jaki jest łączny koszt?", session=session).endswith("Razem: 10 zł")
+    assert chat("Teraz rozliczamy tylko mapy.", session=session).endswith("Razem: 6 zł")
+
+    session = str(uuid4())
     assert "cenę" in chat("Rachunek: 2 torby po 7 zł i 3 misy.", session=session)
     assert chat("4,50 zł", session=session).endswith("Razem: 27,5 zł")
     assert chat("Tylko torby.", session=session).endswith("Razem: 14 zł")
@@ -182,6 +189,7 @@ def test_studio_item_bill_in_normal_http(studio_chat, monkeypatch):
             "Razem: 18,5 zł",
         ),
         ("Rachunek: 3 mapy, 7 zł i 2 bloki po 3 zł.", "pełny rachunek"),
+        ("Rachunek: 2 mapy po ٣ zł.", "pełny rachunek"),
         ("Rachunek: 2 mapy po 0 zł.", "Razem: 0 zł"),
         ("Ile kosztują 3 rowery po 8 zł i 2 mapy po 4 zł?", "Razem: 32 zł"),
         ("Kalkulator: 2 lampy po 7 zł.", "Razem: 14 zł"),

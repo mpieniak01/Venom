@@ -10,26 +10,26 @@ from venom_core.services.grounded_calculator import CalculationError, calculate
 # Each recognized statement must consume its entire clause. A number from a
 # different product or an unparsed modifier cannot become a calculator operand.
 NAME = r"(?P<name>[a-ząćęłńóśźż]+(?:-[a-ząćęłńóśźż]+)?)"
-COUNT = r"(?P<count>[1-9][0-9]{0,5})"
-PRICE = r"(?P<price>(?:0|[1-9][0-9]{0,6})(?:[.,][0-9]{1,2})?) (?:zł|pln)"
+COUNT = r"(?P<count>[1-9]\d{0,5})"
+PRICE = r"(?P<price>(?:0|[1-9]\d{0,6})(?:[.,]\d{1,2})?) (?:zł|pln)"
 UNIT = r"(?: za sztukę)?"
 BARE_PRICE = re.compile(PRICE + UNIT, re.I)
 BARE_COUNT = re.compile(COUNT + r" sztuk(?:i)?", re.I)
 PREFIX = re.compile(r"^(?:nowy )?rachunek\s*:\s*", re.I)
 CALCULATOR = re.compile(r"^kalkulator\s*:\s*", re.I)
 COST_QUESTION = re.compile(
-    r"^(?:ile zapłacę za|ile kosztuj[ąe]|jaki jest koszt) (?=[0-9])", re.I
+    r"^(?:ile zapłacę za|ile kosztuj[ąe]|jaki jest koszt) (?=\d)", re.I
 )
 OPENING = re.compile(
     r"^(?:kupuję|kupił[ea]m|zamawiam|potrzebuję|w koszyku|wypożyczył[ea]m|zestaw obejmuje|"
-    r"chcę policzyć koszt|są w ofercie|za wydruk:|za [0-9]|[0-9])",
+    r"chcę policzyć koszt|są w ofercie|za wydruk:|za \d|\d)",
     re.I,
 )
 PRICE_SIGNAL = re.compile(r"\b(?:zł|pln|euro|eur|groszy)\b", re.I)
 FOLLOW = re.compile(
     r"^(?:zmień (?:cenę|ilość|liczbę)|zmieniam (?:cenę|ilość|liczbę)|korekta\b|cena\b|wycofaj\b|pomiń\b|dolicz\b|dodaj\b|zamiast\b|"
     r"ile (?:razem|za|zapłacę|płacę|zostało)|podaj sumę\b|interesują mnie (?:wyłącznie|tylko)\b|(?:policz )?tylko\b|"
-    r"[\w-]+ (?:opłacono|kosztuj\w*|po [0-9]))",
+    r"[\w-]+ (?:opłacono|kosztuj\w*|po \d))",
     re.I,
 )
 INTRO = re.compile(
@@ -48,8 +48,8 @@ ITEM_PRICE = re.compile(rf"{NAME} (?:kosztuje|kosztują po|po) {PRICE}{UNIT}")
 UNKNOWN_COUNT = re.compile(rf"nie wiadomo ile {NAME} dokupię")
 CHANGE_FROM = re.compile(
     rf"(?:zmień|zmieniam) (?P<field>cenę|ilość|liczbę) {NAME} z "
-    r"(?P<old>[0-9]+(?:[.,][0-9]{1,2})?)(?P<old_unit> zł)? na "
-    r"(?P<new>[0-9]{1,7}(?:[.,][0-9]{1,2})?)(?P<new_unit> zł)?"
+    r"(?P<old>\d+(?:[.,]\d{1,2})?)(?P<old_unit> zł)? na "
+    r"(?P<new>\d{1,7}(?:[.,]\d{1,2})?)(?P<new_unit> zł)?"
 )
 EXCLUDE = re.compile(rf"(?:wycofaj|pomiń) {NAME}(?: z rachunku)?")
 SEPARATELY = re.compile(rf"{NAME} opłacono osobno")
@@ -63,7 +63,7 @@ TOTAL = re.compile(
 )
 FILLER = "cena jednostkowa obu pozycji bez zmian"
 # Protect decimal separators, including in the middle of a sentence.
-SEPARATOR = re.compile(r"[;\n!?]|(?<![0-9])[.,]|[.,](?![0-9])| (?:i|oraz|plus) ")
+SEPARATOR = re.compile(r"[;\n!?]|(?<!\d)[.,]|[.,](?!\d)| (?:i|oraz|plus) ")
 GENERIC = (
     "Podaj pełny rachunek: dla każdej pozycji wpisz ilość, nazwę i cenę za sztukę w zł."
 )
@@ -129,34 +129,24 @@ class Bill:
         self.items[name] = Item(count, price)
 
     def apply(self, text: str) -> None:
-        if len(text) > 1600 or re.search(
-            r"(?:\b(?:i|oraz|plus)|[,;:]|\.{2,}|…)\s*$", text, re.I
-        ):
+        text = text.strip().lower()
+        if not text or len(text) > 1600 or text.endswith((",", ";", ":", "..", "…")):
             raise BillQuestion(GENERIC)
-        short_answer = text.strip().rstrip(".!").strip()
+        if any(ch.isdecimal() and not ch.isascii() for ch in text):
+            raise BillQuestion(GENERIC)
+        if text.rsplit(maxsplit=1)[-1] in {"i", "oraz", "plus"}:
+            raise BillQuestion(GENERIC)
+        short_answer = text.rstrip(".!").rstrip()
         if match := BARE_PRICE.fullmatch(short_answer) or BARE_COUNT.fullmatch(
             short_answer
         ):
             self._fill_missing(match)
             return
-        text = _description(text.strip().lower())
-        text = re.sub(r"\s*\(po (" + PRICE + r")\)", r" po \1", text)
-        text = re.sub(r",\s*każd[aye] (?:po|kosztuje) ", " po ", text)
-        text = re.sub(r"\bnie wiadomo,\s*ile ", "nie wiadomo ile ", text)
-        clauses = SEPARATOR.split(text)
         offer: str | None = None
         selected_in_turn = None
-        for raw in clauses:
-            clause = " ".join(raw.split())
-            if not clause:
-                continue
+        for clause in _clauses(text):
             if selected := SUBSET.fullmatch(clause):
-                name = self.resolve(selected["name"])
-                if selected_in_turn not in (None, name):
-                    raise BillQuestion(
-                        "Które pozycje mam zsumować? Podaj jeden zakres rachunku."
-                    )
-                selected_in_turn = name
+                selected_in_turn = self._select_once(selected["name"], selected_in_turn)
             if match := UNIT_OFFER.fullmatch(clause):
                 offer = match["name"]
                 self.add(offer, None, match["price"])
@@ -166,6 +156,14 @@ class Bill:
             else:
                 self._apply_clause(clause)
             offer = None
+
+    def _select_once(self, name: str, previous: str | None) -> str:
+        selected = self.resolve(name)
+        if previous not in (None, selected):
+            raise BillQuestion(
+                "Które pozycje mam zsumować? Podaj jeden zakres rachunku."
+            )
+        return selected
 
     def _apply_clause(self, clause: str) -> None:
         if _bare_value(clause):
@@ -297,6 +295,14 @@ class Bill:
         return "\n".join([*lines, f"Razem: {total} zł"])
 
 
+def _clauses(text: str) -> list[str]:
+    text = _description(text)
+    text = re.sub(r"\(po (" + PRICE + r")\)", r" po \1", text)
+    text = re.sub(r",\s*każd[aye] (?:po|kosztuje) ", " po ", text)
+    text = re.sub(r"\bnie wiadomo,\s*ile ", "nie wiadomo ile ", text)
+    return [" ".join(part.split()) for part in SEPARATOR.split(text) if part.strip()]
+
+
 def _description(text: str) -> str:
     body = CALCULATOR.sub("", PREFIX.sub("", text, count=1), count=1)
     return COST_QUESTION.sub("", body, count=1)
@@ -308,7 +314,10 @@ def _bare_value(text: str) -> bool:
 
 
 def _follow(text: str) -> bool:
-    return bool(FOLLOW.match(text)) or _bare_value(text)
+    clause = SEPARATOR.split(text.strip().lower(), maxsplit=1)[0].strip()
+    return bool(
+        FOLLOW.match(text) or TOTAL.fullmatch(clause) or SUBSET.fullmatch(clause)
+    ) or _bare_value(text)
 
 
 def _starts(text: str) -> bool:
@@ -316,13 +325,13 @@ def _starts(text: str) -> bool:
         return False
     if PREFIX.match(text):
         return True
-    if CALCULATOR.match(text) and not re.search(r"\bpo\s+[0-9]", text, re.I):
+    if CALCULATOR.match(text) and not re.search(r"\bpo\s+\d", text, re.I):
         return False
     text = _description(text)
     monetary = PRICE_SIGNAL.search(text) or re.search(
         r"\b(?:koszt|zapłacę|do zapłaty)\b", text, re.I
     )
-    return bool(OPENING.match(text) and re.search(r"[0-9]", text) and monetary)
+    return bool(OPENING.match(text) and re.search(r"\d", text) and monetary)
 
 
 def _previous_prompts(records: list[dict[str, object]]) -> list[str] | None:

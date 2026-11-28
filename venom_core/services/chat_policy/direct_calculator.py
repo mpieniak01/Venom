@@ -19,6 +19,7 @@ _PREFIX = re.compile(
     r"(?:oblicz|policz|użyj kalkulatora)(?:[ \t]*:[ \t]*|[ \t]+|(?=[.!]?$))",
     re.IGNORECASE,
 )
+_STUDIO_PREFIX = re.compile(r"kalkulator[ \t]*:[ \t]*", re.IGNORECASE)
 _UNIT_CLAUSE = re.compile(
     r"[.;][ \t]*jednostka[ \t]*:[ \t]*|"
     r"[ \t]+i[ \t]+podaj[ \t]+wynik[ \t]+w[ \t]+",
@@ -65,11 +66,13 @@ class CalculatorRequest:
     repeat: bool = False
 
 
-def _command(content: str) -> CalculatorRequest | None:
+def _command(
+    content: str, prefix_pattern: re.Pattern[str] = _PREFIX
+) -> CalculatorRequest | None:
     text = content.strip()
     if len(text) > MAX_COMMAND_CHARS or "\n" in text or "\r" in text:
         return None
-    prefix = _PREFIX.match(text)
+    prefix = prefix_pattern.match(text)
     if prefix is None:
         return None
     body = text[prefix.end() :].strip().removesuffix("!").strip()
@@ -99,6 +102,13 @@ def _split_inline_unit(expression: str) -> tuple[str, str]:
     if len(parts) != 2 or _UNIT_SUFFIX.fullmatch(parts[1]) is None:
         return expression, ""
     return parts[0], parts[1].removesuffix(".")
+
+
+def plan_studio_calculator_command(content: str) -> CalculatorRequest | None:
+    """Reserve an explicit operator command in Studio Normal."""
+    if _STUDIO_PREFIX.match(content.lstrip()) is None:
+        return None
+    return _command(content, _STUDIO_PREFIX) or CalculatorRequest("")
 
 
 def plan_calculator(

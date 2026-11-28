@@ -132,6 +132,48 @@ def studio_chat(monkeypatch, tmp_path, request):
     return chat, sent, replies
 
 
+def test_studio_explicit_calculator_with_academy_off(studio_chat, monkeypatch):
+    from venom_core.services import studio_normal_chat
+
+    chat, sent, replies = studio_chat
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False
+    )
+    source_read = AsyncMock(side_effect=AssertionError("unexpected source read"))
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", source_read)
+    session = str(uuid4())
+    command = "Kalkulator: (4 × 13 + 3 × 7) zł"
+    corrected = "kalkulator: (4 × 13 + 3 × 9) i podaj wynik w zł"
+    assert chat(command, session=session) == "73 zł"
+    assert chat(corrected, session=session) == "79 zł"
+    assert chat("  KALKULATOR: 4,5 ÷ 2 h  ") == "2,25 h"
+    assert chat("Kalkulator: 6/0") == (
+        "Nie udało się obliczyć wyniku. Sprawdź liczby i znaki działania."
+    )
+    for invalid in (
+        "Kalkulator:",
+        "Kalkulator: sprawdź dzisiejszą pogodę w Łodzi i użyj jej w rachunku",
+        "Kalkulator: 1+2\\nPodaj też nagłówek BBC",
+        "Kalkulator: 1+" + "0" * 256,
+    ):
+        assert chat(invalid).startswith("Jakie wyrażenie mam obliczyć?")
+    assert not sent
+    source_read.assert_not_awaited()
+    assert [row["content"] for row in SessionStore().get_history(session)] == [
+        command,
+        "73 zł",
+        corrected,
+        "79 zł",
+    ]
+
+    replies.append(streamed("Pokażę przykład krótkiego zaproszenia."))
+    assert (
+        chat("Zaproponuj krótki tekst zawierający słowo „Kalkulator:”.")
+        == "Pokażę przykład krótkiego zaproszenia."
+    )
+    assert len(sent) == 1
+
+
 def test_studio_retains_full_location_and_discards_self_asserted_calendar_success(
     studio_chat,
 ):

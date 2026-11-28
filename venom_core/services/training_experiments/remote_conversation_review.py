@@ -12,6 +12,7 @@ from .conversation_blind import (
     publish_blind_package,
     read_consumed_blind_review,
     register_blind_review,
+    register_blind_review_batch,
 )
 from .conversation_review import checkpoint_review_id
 from .profiles import load_profile, read_json, resolve_input
@@ -115,6 +116,10 @@ def submit(
         )
         if checkpoint.get("conversation_review_sha256"):
             return read_consumed_blind_review(directory, checkpoint, target, submission)
+        if isinstance(submission, dict) and "batch" in submission:
+            return register_blind_review_batch(
+                service.experiments.root, checkpoint, target, submission
+            )
         return register_blind_review(
             service.experiments.root, checkpoint, target, submission
         )

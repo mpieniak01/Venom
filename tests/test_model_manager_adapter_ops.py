@@ -1,7 +1,15 @@
 """Unit tests for extracted ModelManager adapter ops helpers."""
 
+import pytest
+
 from venom_core.core import model_manager_adapter_ops as adapter_ops
 from venom_core.core.model_manager import ModelManager
+
+
+@pytest.fixture(autouse=True)
+def isolate_adapter_state(tmp_path, monkeypatch):
+    """Keep ModelManager's relative adapter state inside the test directory."""
+    monkeypatch.chdir(tmp_path)
 
 
 class _DummyLogger:

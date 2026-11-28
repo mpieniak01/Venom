@@ -379,6 +379,101 @@ def _blind_review_hash(private: dict, submitted: object) -> str:
     )
 
 
+def register_blind_review_batch(
+    root: Path, pending: dict, package_dir: Path, batch: dict
+) -> dict:
+    """Persist valid partial judgments and register the review once coverage is complete."""
+    package = read_json(package_dir / _REVIEWER)
+    private = read_json(package_dir / _PRIVATE)
+    _verify_blind_package(pending, package, private)
+    _validate_review_batch(package, private, batch)
+    fragments = operator_path(package_dir / "judgment-batches")
+    fragments.mkdir(mode=0o700, exist_ok=True)
+    batch_hash = stable_hash(batch)
+    metadata = {
+        key: batch[key] for key in ("package_sha256", "reviewer_id", "reviewer_note")
+    }
+    with file_lock(fragments / ".lock"):
+        judgments: dict = {}
+        _merge_review_batch(judgments, batch["batch"])
+        for path in sorted(fragments.glob("*.json")):
+            _read_review_batch(package, private, path, metadata, judgments)
+        target = fragments / f"{batch_hash}.json"
+        if not target.exists():
+            atomic_json(target, batch)
+        expected = sum(
+            len(row["answers"])
+            for spec in package["conversations"].values()
+            for row in spec["turns"].values()
+        )
+        covered = sum(
+            len(aliases) for turns in judgments.values() for aliases in turns.values()
+        )
+        if covered < expected:
+            return {
+                "status": "pending",
+                "review_id": private["review_id"],
+                "package_sha256": private["package_sha256"],
+                "received": covered,
+                "expected": expected,
+            }
+        return register_blind_review(
+            root, pending, package_dir, {**metadata, "judgments": judgments}
+        )
+
+
+def _read_review_batch(
+    package: dict, private: dict, path: Path, metadata: dict, judgments: dict
+) -> None:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("conversation_review_batch_receipt_invalid")
+    saved = read_json(path)
+    _validate_review_batch(package, private, saved)
+    if path.stem != stable_hash(saved) or any(
+        saved[key] != value for key, value in metadata.items()
+    ):
+        raise ValueError("conversation_review_batch_receipt_invalid")
+    _merge_review_batch(judgments, saved["batch"])
+
+
+def _validate_review_batch(package: dict, private: dict, batch: object) -> None:
+    if (
+        not isinstance(batch, dict)
+        or batch.keys() != {"package_sha256", "reviewer_id", "reviewer_note", "batch"}
+        or batch["package_sha256"] != private["package_sha256"]
+        or any(
+            not isinstance(batch[key], str) or not batch[key].strip()
+            for key in ("reviewer_id", "reviewer_note")
+        )
+    ):
+        raise ValueError("conversation_review_blind_submission_invalid")
+    for name, turns in _review_batch_items(batch["batch"], package["conversations"]):
+        for turn, votes in _review_batch_items(
+            turns, package["conversations"][name]["turns"]
+        ):
+            row = package["conversations"][name]["turns"][turn]
+            for alias, verdict in _review_batch_items(votes, row["answers"]):
+                checked = _operator_verdict(verdict, row, row["answers"][alias]["text"])
+                if not _valid_verdict(checked, row["criteria"]):
+                    raise ValueError("conversation_review_verdict_invalid")
+
+
+def _review_batch_items(value: object, expected: dict):
+    if not isinstance(value, dict) or not value or not value.keys() <= expected.keys():
+        raise ValueError("conversation_review_blind_coverage_invalid")
+    return value.items()
+
+
+def _merge_review_batch(judgments: dict, additions: dict) -> None:
+    for conversation, turns in additions.items():
+        target = judgments.setdefault(conversation, {})
+        for turn, votes in turns.items():
+            aliases = target.setdefault(turn, {})
+            for alias, verdict in votes.items():
+                if aliases.setdefault(alias, verdict) != verdict:
+                    raise ValueError("conversation_review_batch_conflict")
+
+
 def _verify_blind_package(pending: dict, package: dict, private: dict) -> None:
     _verify_package_seal(package, private)
     binding = pending["conversation_review_binding"]

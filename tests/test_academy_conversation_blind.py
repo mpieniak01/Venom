@@ -18,6 +18,7 @@ from venom_core.services.training_experiments.conversation_blind import (
     prepare_blind_package,
     publish_blind_package,
     register_blind_review,
+    register_blind_review_batch,
 )
 from venom_core.services.training_experiments.conversation_review import payload_sha
 from venom_core.services.training_experiments.profiles import (
@@ -1191,6 +1192,76 @@ def test_cli_registers_blind_verdict_with_original_aliases(
     submitted["reviewer_note"] = "Inna ocena."
     with pytest.raises(ValueError, match="immutable_conflict"):
         register_blind_review(root, pending, output, submitted)
+
+
+def test_blind_review_batches_resume_and_keep_completed_verdicts(
+    issued_review, tmp_path
+):
+    pending, output, submitted, _ = issued_review
+    _fill_review(submitted)
+    votes = submitted.pop("judgments")
+    root = tmp_path / "experiments"
+    one = votes["C000"]["T2"].pop("A")
+    first = {**submitted, "batch": {"C000": {"T2": {"A": one}}}}
+    progress = register_blind_review_batch(root, pending, output, first)
+    assert progress["status"] == "pending"
+    assert progress["received"] == 1
+    assert not root.exists()
+    assert register_blind_review_batch(root, pending, output, first) == progress
+
+    conflict = {
+        **submitted,
+        "batch": {"C000": {"T2": {"A": {**one, "critical": True}}}},
+    }
+    with pytest.raises(ValueError, match="batch_conflict"):
+        register_blind_review_batch(root, pending, output, conflict)
+
+    second = {**submitted, "batch": votes}
+    receipt = register_blind_review_batch(root, pending, output, second)
+    assert receipt["status"] == "PASS"
+    assert register_blind_review_batch(root, pending, output, second) == receipt
+
+
+def test_campaign_submit_resumes_fragment_without_replacing_full_contract(
+    issued_review, tmp_path, monkeypatch
+):
+    from shutil import copytree
+    from types import SimpleNamespace
+
+    from venom_core.services.training_experiments import remote_conversation_review
+
+    pending, output, submitted, private = issued_review
+    _fill_review(submitted)
+    judgments = submitted.pop("judgments")
+    campaign = tmp_path / "campaign"
+    fragments = campaign / "remote-review-packages" / private["review_id"]
+    copytree(output, fragments)
+    root = tmp_path / "experiments"
+    service = SimpleNamespace(
+        directory=lambda _: campaign,
+        _state=lambda _: {"status": "awaiting_review"},
+        experiments=SimpleNamespace(root=root),
+    )
+    monkeypatch.setattr(
+        remote_conversation_review, "_checkpoint", lambda *_args, **_kwargs: pending
+    )
+    request = tmp_path / "fragment.json"
+    first = judgments["C000"]["T2"].pop("A")
+
+    def submit(batch, **changes):
+        _write(request, {**submitted, **changes, "batch": batch})
+        return remote_conversation_review.submit(service, "campaign", "run", 1, request)
+
+    with pytest.raises(ValueError, match="coverage_invalid"):
+        submit({})
+    with pytest.raises(ValueError, match="verdict_invalid"):
+        submit({"C000": {"T2": {"A": {**first, "critical": None}}}})
+    partial = {"C000": {"T2": {"A": first}}}
+    assert submit(partial)["received"] == 1
+    with pytest.raises(ValueError, match="batch_receipt_invalid"):
+        submit(judgments, reviewer_id="inny recenzent")
+    assert not root.exists()
+    assert submit(judgments)["status"] == "PASS"
 
 
 @pytest.mark.parametrize(

@@ -28,6 +28,7 @@ from venom_core.services.training_experiments.conversation_review import (
     prepare_checkpoint_review,
     register_review_request,
     score,
+    verify_review,
 )
 from venom_core.services.training_experiments.conversation_text import (
     text_expectation,
@@ -344,13 +345,37 @@ def register_blind_review(
     return register_review_request(
         root,
         request,
-        blind_review_sha256=stable_hash(
-            {
-                "package": private["package_sha256"],
-                "private": private,
-                "submission": submitted,
-            }
-        ),
+        blind_review_sha256=_blind_review_hash(private, submitted),
+    )
+
+
+def read_consumed_blind_review(
+    directory: Path, checkpoint: dict, package_dir: Path, submitted: object
+) -> dict:
+    """Return the exact receipt already consumed by the campaign worker."""
+    package = read_json(package_dir / _REVIEWER)
+    private = read_json(package_dir / _PRIVATE)
+    _verify_blind_package(checkpoint, package, private)
+    receipt = verify_review(
+        directory,
+        checkpoint["conversation_review_id"],
+        checkpoint["conversation_review_binding"],
+        require_pass=False,
+    )
+    if stable_hash(receipt) != checkpoint["conversation_review_sha256"] or receipt.get(
+        "blind_review_sha256"
+    ) != _blind_review_hash(private, submitted):
+        raise ValueError("conversation_review_immutable_conflict")
+    return receipt
+
+
+def _blind_review_hash(private: dict, submitted: object) -> str:
+    return stable_hash(
+        {
+            "package": private["package_sha256"],
+            "private": private,
+            "submission": submitted,
+        }
     )
 
 

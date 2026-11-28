@@ -1084,6 +1084,20 @@ def test_blind_review_controls_restarted_campaign(
     resumed = restarted.advance(campaign_id)
     (outcome,) = resumed["trials"][0]["checkpoint_evaluations"]
     assert outcome["conversation_review_sha256"] == stable_hash(receipt)
+    if remote:
+        monkeypatch.setattr(campaign_cli, "CampaignService", lambda _: restarted)
+        state_path = directory / "state.json"
+        saved_state = state_path.read_bytes()
+        main(args)
+        assert json.loads(capsys.readouterr().out) == receipt
+        assert state_path.read_bytes() == saved_state
+        assert receipt_path.stat().st_mtime_ns == before
+        _write(judgments, {**submitted, "reviewer_note": "Changed on retry."})
+        with pytest.raises(SystemExit, match="1"):
+            main(args)
+        assert "conversation_review_immutable_conflict" in capsys.readouterr().err
+        assert state_path.read_bytes() == saved_state
+        assert receipt_path.stat().st_mtime_ns == before
     if extension:
         assert resumed["status"] == "running"
         assert resumed["qualification_status"] == "pending"

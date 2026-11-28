@@ -341,6 +341,7 @@ class RemoteTextService:
     ) -> None:
         remote = state["remote"]
         receipts = state["evidence"]
+        state["result"] = summarize(remote, receipts)
         remaining = spec.campaign.budget.max_artifact_bytes - sum(
             entry["archive_bytes"] for entry in receipts.values()
         )
@@ -360,8 +361,9 @@ class RemoteTextService:
                 )
                 receipts[run_id] = receipt
                 remaining -= receipt["archive_bytes"]
+                # Keep the report consistent if the next transfer fails.
+                state["result"] = summarize(remote, receipts)
                 atomic_json(directory / "state.json", state)
-        state["result"] = summarize(remote, receipts)
 
     def _observe(self, state: dict, remote: dict) -> None:
         if (

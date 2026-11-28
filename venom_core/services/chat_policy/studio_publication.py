@@ -24,6 +24,11 @@ _SOURCE_TEASER = re.compile(
     r"źródło do zajawki\s*[.!:]?\s*napisz dwa zdania w bezosobowym stylu[.!]?",
     re.I,
 )
+_COMMUNICATION_NOTE = re.compile(
+    r"(?:notatka do komunikatu|materiał do ogłoszenia)\s*:\s*[.!]?\s*"
+    r"(?:oddaj|podaj) to w dwóch zdaniach bezosobowych[.!]?",
+    re.I,
+)
 _DAYS = {
     "poniedziałek": "w poniedziałek",
     "wtorek": "we wtorek",
@@ -39,6 +44,12 @@ _PLAN_DATE_EDIT = re.compile(
     r"(?P<old>[^\W\d_]+) w planie (?:ogłoszenia|publikacji)[.!]?",
     re.I,
 )
+_COMMUNICATION_DATE_EDIT = re.compile(
+    r"(?P<subject>[^.!?]{3,44}?) planujemy (?:w|we) (?P<new>[^\W\d_]+) "
+    r"zamiast (?:w|we) (?P<old>[^\W\d_]+)[.!]\s*"
+    r"(?:liczb i dwóch zdań nie zmieniaj|zachowaj liczby i dwa zdania)[.!]?",
+    re.I,
+)
 _IMPERSONAL = re.compile(r"napisz od strony czytelnika,\s*bez\s+i\s*[.!]?", re.I)
 _PENDING = re.compile(
     r"(?P<detail>[^.!?]{4,120}?\bbez\s+[^.!?]{2,65}?)\s+"
@@ -48,6 +59,12 @@ _PENDING = re.compile(
 _PENDING_PASSIVE = re.compile(
     r"(?P<detail>[^.!?]{4,120}?\bbez\s+[^.!?]{2,65}?)\s+"
     r"(?:jest|są)\s+(?:jeszcze|nadal|wciąż)\s+(?:sprawdzan(?:e|y|ych)|weryfikowan(?:e|y|ych))[.!]?",
+    re.I,
+)
+_PENDING_QUEUE = re.compile(
+    r"(?P<detail>[^.!?]{4,120}?\bbez\s+[^.!?]{2,65}?)\s+"
+    r"(?:jeszcze|nadal|wciąż)\s+(?:czeka(?:ją)?|oczekuje|oczekują) na "
+    r"(?:kontrolę|sprawdzenie|weryfikację)[.!]?",
     re.I,
 )
 _PLAN = re.compile(
@@ -147,7 +164,8 @@ def _bulletin(
     if len(lines) != 3 or not _PROVISIONAL.search(lines[0]):
         return None
     passive = _PENDING_PASSIVE.fullmatch(lines[1])
-    pending = _PENDING.fullmatch(lines[1]) or passive
+    queue = _PENDING_QUEUE.fullmatch(lines[1])
+    pending = _PENDING.fullmatch(lines[1]) or passive or queue
     plan = _PLAN.fullmatch(lines[2])
     if not pending or not plan:
         return None
@@ -163,12 +181,23 @@ def _bulletin(
         old = date_edit["old"].casefold()
         old = _DAY_ACCUSATIVE.get(old, old)
         new = date_edit["new"].casefold()
-        if timing.casefold() != _DAYS.get(old) or new not in _DAYS:
+        new = _DAY_ACCUSATIVE.get(new, new)
+        subject = date_edit.groupdict().get("subject")
+        if (
+            timing.casefold() != _DAYS.get(old)
+            or new not in _DAYS
+            or (
+                subject is not None and subject.casefold() != plan["subject"].casefold()
+            )
+        ):
             return None
         timing = _DAYS[new]
     detail = pending["detail"][:1].lower() + pending["detail"][1:]
+    pending_fact = (
+        lines[1][:1].lower() + lines[1][1:] if queue else f"nadal sprawdza się {detail}"
+    )
     fallback = (
-        f"{opening}, a nadal sprawdza się {detail}. "
+        f"{opening}, a {pending_fact}. "
         f"{plan['subject']} planuje się {plan['action']} {timing}."
     )
     # Keep the plan, its action and the date in one sentence.
@@ -194,7 +223,7 @@ def _bulletin(
     planning = re.compile(plan_pattern, re.I)
     return PublicationCheck(
         fallback,
-        (opening, pending["detail"]),
+        (opening, pending_fact if queue else pending["detail"]),
         sentences=2,
         modality=planning,
         forbidden=forbidden,
@@ -251,6 +280,18 @@ def _source(text: str, command: re.Pattern[str]) -> str | None:
     return (
         source if source and len(source) <= 750 and command.fullmatch(visible) else None
     )
+
+
+def communication_note(text: str, prior: str) -> str | None:
+    """Compose a bounded two-sentence note from the user's three source facts."""
+    if source := _source(text, _COMMUNICATION_NOTE):
+        check = _bulletin(source)
+        return check.fallback if check else None
+    if edit := _COMMUNICATION_DATE_EDIT.fullmatch(text):
+        if source := _source(prior, _COMMUNICATION_NOTE):
+            check = _bulletin(source, date_edit=edit)
+            return check.fallback if check else None
+    return None
 
 
 def publication_check(

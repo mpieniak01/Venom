@@ -13,6 +13,7 @@ from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.chat_policy.studio_dialog import studio_dialog
 from venom_core.services.chat_policy.studio_dialog_compare import studio_comparison
 from venom_core.services.chat_policy.studio_revision import studio_revision
+from venom_core.services.chat_policy.studio_revision_facts import studio_revision_facts
 from venom_core.services.ollama_text_adapter import QUALIFIED_BOLT_MODEL
 
 studio_chat = qualified_studio_chat
@@ -983,3 +984,119 @@ def test_room_notice_revision_requires_distinct_rooms_and_contiguous_source():
         )
         is None
     )
+
+
+_TWO_SOUNDS = (
+    "Uprość w jednym zdaniu: „Po przesunięciu płyty silnik przestał drżeć w pracowni, "
+    "a dzwonek w holu wciąż brzęczał”."
+)
+_MOTOR_MOVE = (
+    "Silnik był jednak w warsztacie. Zmień tylko miejsce silnika, nadal jedno zdanie."
+)
+_BELL_MOVE = (
+    "Dzwonek był przy schodach. Zmień tylko miejsce dzwonka, zachowaj jedno zdanie."
+)
+_TWO_MESSAGES = (
+    "Przepisz dwa komunikaty po jednym zdaniu. „Odczyt karty A zapisano w dzienniku. "
+    "Karty N trzeba sprawdzić do wieczora”."
+)
+_MESSAGE_PROOF = (
+    "Tylko o N jest teraz dowód wykonania „Sprawdzenie kart N wpisano o 16:40”. "
+    "Pierwszy komunikat zachowaj."
+)
+
+
+def test_sound_edits_preserve_observations_from_original_and_ordered_user_changes():
+    first = _history(_TWO_SOUNDS, "Silnik przestał drżeć, a dzwonek nie działał.")
+    prior = first + _history(_MOTOR_MOVE, "Oba przedmioty przeniesiono do warsztatu.")
+    assert studio_revision_facts(_BELL_MOVE, prior) == (
+        "Po przesunięciu płyty silnik w warsztacie przestał drżeć, "
+        "a dzwonek przy schodach wciąż brzęczał."
+    )
+    assert (
+        studio_revision_facts(_BELL_MOVE.replace("dzwonka", "silnika"), prior) is None
+    )
+    assert (
+        studio_revision_facts(
+            _BELL_MOVE.replace("przy schodach", "na lewo albo prawo"), prior
+        )
+        is None
+    )
+    assert (
+        studio_revision_facts(
+            _BELL_MOVE, first + _history("Rozmawiamy o recepcji.", "Tak.")
+        )
+        is None
+    )
+    assert studio_revision_facts(_BELL_MOVE, []) is None
+    assert studio_revision_facts(_TWO_SOUNDS.replace("dzwonek", "silnik"), []) is None
+
+
+def test_message_update_requires_matching_scope_evidence_and_preserved_slot():
+    history = _history(_TWO_MESSAGES, "Obie karty mają być dopiero sprawdzone.")
+    assert studio_revision_facts(_MESSAGE_PROOF, history) == (
+        "Odczyt karty A zapisano w dzienniku.\nSprawdzenie kart N wpisano o 16:40."
+    )
+    assert (
+        studio_revision_facts(_MESSAGE_PROOF.replace("kart N", "kart A"), history)
+        is None
+    )
+    assert studio_revision_facts(_MESSAGE_PROOF.replace("o N", "o A"), history) is None
+    assert (
+        studio_revision_facts(_MESSAGE_PROOF.replace("Pierwszy", "Drugi"), history)
+        is None
+    )
+    assert (
+        studio_revision_facts(_MESSAGE_PROOF.replace("16:40", "26:40"), history) is None
+    )
+    assert studio_revision_facts(_MESSAGE_PROOF, []) is None
+    assert (
+        studio_revision_facts(_TWO_MESSAGES.replace("karty A", "karty N"), []) is None
+    )
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        (
+            (
+                _TWO_SOUNDS,
+                "Po przesunięciu płyty silnik w pracowni przestał drżeć, a dzwonek w holu wciąż brzęczał.",
+            ),
+            (
+                _MOTOR_MOVE,
+                "Po przesunięciu płyty silnik w warsztacie przestał drżeć, a dzwonek w holu wciąż brzęczał.",
+            ),
+            (
+                _BELL_MOVE,
+                "Po przesunięciu płyty silnik w warsztacie przestał drżeć, a dzwonek przy schodach wciąż brzęczał.",
+            ),
+        ),
+        (
+            (
+                _TWO_MESSAGES,
+                "Odczyt karty A zapisano w dzienniku.\nKarty N trzeba sprawdzić do wieczora.",
+            ),
+            (
+                _MESSAGE_PROOF,
+                "Odczyt karty A zapisano w dzienniku.\nSprawdzenie kart N wpisano o 16:40.",
+            ),
+        ),
+    ],
+)
+def test_studio_replays_source_preserving_edits_locally(
+    studio_chat, monkeypatch, scenario
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    read = AsyncMock()
+    monkeypatch.setattr(chat_grounding, "_execute_public_source_read", read)
+    chat, sent, _ = studio_chat
+    session = str(uuid4())
+    for prompt, expected in scenario:
+        assert (
+            chat(prompt, session=session, verify_history=True, stream=False) == expected
+        )
+    read.assert_not_awaited()
+    assert not sent

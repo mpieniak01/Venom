@@ -4,6 +4,7 @@ import pytest
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services.chat_policy.studio_dialog_compare import studio_comparison
+from venom_core.services.chat_policy.studio_dialog_layout import layout_reply
 from venom_core.services.chat_policy.studio_quantity import studio_quantity
 
 _BUNDLE = (
@@ -625,5 +626,222 @@ def test_named_kits_replay_ordered_updates_bound_to_each_label():
             ),
             history[:-2],
         )
+        is None
+    )
+
+
+def test_route_comparison_keeps_stops_distinct_from_touch_stations():
+    source = (
+        "Na pierwszej trasie są 8 krótkich przystanków, na drugiej aż 4, ale wszystkie są "
+        "przy stanowiskach dotykowych. Jak porównać trasy pod kątem liczby przystanków "
+        "i rodzaju doświadczenia?"
+    )
+    change = (
+        "Goście chcą przede wszystkim korzystać ze stanowisk dotykowych. "
+        "Co polecić na podstawie tych informacji?"
+    )
+    assert studio_comparison(source, []) == (
+        "Pierwsza trasa ma 8 przystanków. Na drugiej trasie liczba przystanków to 4. "
+        "Każdy z nich jest przy stanowisku dotykowym. "
+        "Dla pierwszej trasy nie podano, przy czym znajdują się przystanki."
+    )
+    bogus = "Pierwsza ma osiem stanowisk dotykowych i jest szybsza."
+    assert studio_comparison(change, _history(source, bogus)) == (
+        "Wybierz drugą trasę. Na drugiej trasie liczba przystanków to 4. "
+        "Każdy z nich jest przy stanowisku dotykowym."
+    )
+    assert studio_comparison(source.replace("wszystkie", "oba"), []) is None
+    assert studio_comparison(source.replace("aż 4", "aż 1"), []) is None
+    assert studio_comparison(change, []) is None
+    assert (
+        studio_comparison(change, _history("Nie ma informacji o stanowiskach.")) is None
+    )
+
+
+def test_copy_placement_is_independent_of_the_purpose_of_each_document():
+    source = (
+        "W czytelni legenda skrótów objaśnia skróty przy salach, a mapa warsztatów pokazuje "
+        "drogi między stoiskami. Przy biurku będzie kopia obu materiałów. "
+        "Tylko mapa jest dodatkowo w holu. Co przekazać obsłudze?"
+    )
+    assert studio_comparison(source, []) == (
+        "Przy biurku będą kopie obu materiałów. Legenda skrótów objaśnia skróty przy salach. "
+        "Mapa warsztatów pokazuje drogi między stoiskami. W holu będzie dodatkowo tylko "
+        "materiał „mapa warsztatów”."
+    )
+    lookup = (
+        "Gość jest już w holu i pyta o drogę między stoiskami. "
+        "Do którego materiału go odesłać i dlaczego?"
+    )
+    assert studio_comparison(
+        lookup, _history(source, "Przy salach udostępniamy legendę.")
+    ) == (
+        "Odeślij go do materiału „mapa warsztatów” w holu. Mapa warsztatów pokazuje drogi między stoiskami."
+    )
+    assert (
+        studio_comparison(lookup.replace("w holu", "w szatni"), _history(source))
+        is None
+    )
+    assert (
+        studio_comparison(
+            lookup.replace("między stoiskami", "do szatni"), _history(source)
+        )
+        is None
+    )
+    assert (
+        studio_comparison(source.replace("Tylko mapa", "Tylko harmonogram"), []) is None
+    )
+    assert (
+        studio_comparison(
+            source.replace("dodatkowo w holu", "dodatkowo przy biurku"), []
+        )
+        is None
+    )
+
+
+def test_numeric_fit_is_required_before_flexibility_resolves_the_choice():
+    source = (
+        "Do futerału mieści się element o boku poniżej 40 cm. Dalia ma 39 cm i jest sztywna, "
+        "Azalia ma 40 cm i ugina się. Najpierw musi się zmieścić, "
+        "potem liczy się możliwość zgięcia. Co wybrać?"
+    )
+    repick = "Futerał wymieniono, teraz mieści do 40 cm włącznie. Z tymi samymi priorytetami wskaż wybór."
+    reply = studio_comparison(source, [])
+    assert reply and "Dalia" in reply and "39 cm" in reply and "poniżej 40 cm" in reply
+    reply = studio_comparison(
+        repick, _history(source, "Dalia od teraz się nie mieści.")
+    )
+    assert (
+        reply
+        and "Oba warianty" in reply
+        and "Azalia" in reply
+        and "możliwość zgięcia" in reply
+    )
+    assert (
+        studio_comparison(repick.replace("Futerał", "Pokrowiec"), _history(source))
+        is None
+    )
+    assert (
+        studio_comparison(source.replace("poniżej 40 cm", "poniżej 40 cm włącznie"), [])
+        is None
+    )
+    assert studio_comparison(source.replace("ma 39 cm", "ma 0 cm"), []) is None
+    assert studio_comparison(source.replace("Azalia", "Dalia"), []) is None
+    assert studio_comparison(source.replace("poniżej 40", "poniżej 38"), []) == (
+        "Żaden wariant się nie mieści przy granicy poniżej 38 cm."
+    )
+    assert studio_comparison(
+        repick, _history(source.replace("ugina się", "jest sztywna"))
+    ) == (
+        "Oba warianty mieszczą się przy granicy do 40 cm włącznie. Możliwość zgięcia nie rozstrzyga wyboru."
+    )
+
+
+def test_entrance_diagram_preserves_the_confirmed_landmark_for_both_branches():
+    source = (
+        "Wejście Ogród prowadzi do sali jednym korytarzem, a przez Korytarz wchodzi się do "
+        "dwóch odnóg po bokach recepcji. Wyjaśnij różnicę w dwóch zdaniach."
+    )
+    drawing = "Jak prostym jednym rysunkiem pokazać układ Korytarzu bez sugerowania, którą odnogę wybrać?"
+    assert layout_reply(source, []) == (
+        "Wejście Ogród prowadzi do sali jednym korytarzem. "
+        "Przez Korytarz wchodzi się do dwóch odnóg po bokach recepcji."
+    )
+    assert layout_reply(
+        drawing, _history(source, "Punktem centralnym jest szatnia.")
+    ) == (
+        "Narysuj jeden schemat z wejściem Korytarz i zaznacz recepcję pośrodku. "
+        "Po jej bokach pokaż obie odnogi liniami tej samej grubości, bez strzałek i numeracji."
+    )
+    assert (
+        layout_reply(drawing.replace("Korytarzu", "Ogrodu"), _history(source)) is None
+    )
+    assert layout_reply(source.replace("przez Korytarz", "przez Ogród"), []) is None
+
+
+def test_observed_wheel_size_is_not_evidence_for_payload_capacity():
+    source = (
+        "Jeden wózek ma duże koła, drugi ma małe. Producent nie podał maksymalnych obciążeń. "
+        "Którą różnicę można potwierdzić?"
+    )
+    prompt = "Chcę przewieźć ciężki ładunek. Co sprawdzić przed wyborem przy tych informacjach?"
+    assert studio_comparison(source, []) == (
+        "Wielkość kół jest potwierdzona: jeden wózek ma duże koła, drugi małe. "
+        "Nie podano dopuszczalnych obciążeń."
+    )
+    assert studio_comparison(
+        prompt, _history(source, "Wózek z dużymi kołami ma większą nośność.")
+    ) == (
+        "Porównaj masę ładunku z dopuszczalnym obciążeniem każdego wózka. "
+        "W danych brakuje tych obciążeń, a wielkość kół nie potwierdza nośności."
+    )
+    assert studio_comparison(prompt, []) is None
+    assert (
+        studio_comparison(source.replace("drugi ma małe", "drugi ma duże"), []) is None
+    )
+
+
+def test_app_selection_binds_sync_to_available_network_after_moving():
+    source = (
+        "Aplikacja Notatka działa bez sieci, ale nie synchronizuje wpisów. "
+        "Aplikacja Chmura synchronizuje wpisy, ale wymaga połączenia. "
+        "Która ma sens w pomieszczeniu bez zasięgu?"
+    )
+    update = "Przenosimy stanowisko do miejsca z siecią. Teraz wpisy mają być wspólne. Ponów wybór."
+    assert studio_comparison(source, []) == (
+        "Wybierz „Notatka”, bo działa bez połączenia. Wpisów nie synchronizuje."
+    )
+    assert studio_comparison(
+        update, _history(source, "Chmura działa bez zasięgu.")
+    ) == (
+        "Wybierz „Chmura”. W nowym miejscu dostępna jest sieć, więc aplikacja może synchronizować wpisy między zespołami."
+    )
+    assert (
+        studio_comparison(update.replace("z siecią", "bez sieci"), _history(source))
+        is None
+    )
+    assert (
+        studio_comparison(source.replace("Aplikacja Chmura", "Aplikacja Notatka"), [])
+        is None
+    )
+
+
+def test_paper_format_selected_by_declared_capacity_and_updated_need():
+    source = (
+        "Ramka Świerk mieści jeden dokument A2, a ramka Cis mieści trzy A4 obok siebie, "
+        "ale nie mieści A2. Na pokaz potrzebuję trzech A4 obok siebie. Wybierz z krótką przyczyną."
+    )
+    change = "Okazało się, że będzie jeden dokument A2. Którą teraz wybrać?"
+    assert (
+        studio_comparison(source, []) == "Wybierz „Cis”, bo mieści trzy A4 obok siebie."
+    )
+    assert studio_comparison(change, _history(source, "Tniemy A2 na A4.")) == (
+        "Wybierz „Świerk”, bo mieści dokument A2. „Cis” go nie mieści."
+    )
+    assert studio_comparison(source.replace("trzech A4", "dwóch A4"), []) is None
+    assert studio_comparison(change.replace("A2", "A3"), _history(source)) is None
+
+
+def test_document_choice_needs_the_complete_requested_information():
+    source = (
+        "W dokumentach wersja wewnętrzna zawiera uwagi monterów, a wersja dla odwiedzających "
+        "ma plan sal i godziny. Którą otworzy osoba szukająca uwag do rozstawienia sprzętu?"
+    )
+    change = "Po zmianie celem jest przekazanie odwiedzającym dokładnej godziny i sali. Którą wersję im dać?"
+    assert studio_comparison(source, []) == (
+        "Wybierz dokument „wersja wewnętrzna”, bo zawiera uwagi monterów."
+    )
+    assert studio_comparison(
+        change, _history(source, "Godziny są tylko w wersji wewnętrznej.")
+    ) == ("Wybierz dokument „wersja dla odwiedzających”, bo ma plan sal i godziny.")
+    assert studio_comparison(change, _history(source.replace("i godziny", ""))) is None
+    assert (
+        studio_comparison(
+            change, _history(source.replace("i godziny", "i nie ma godzin"))
+        )
+        is None
+    )
+    assert (
+        studio_comparison(source.replace("plan sal i godziny", "uwagi monterów"), [])
         is None
     )

@@ -1672,3 +1672,106 @@ def test_scoped_session_reclassification_preserves_sum_and_other_session(
 def test_structural_studio_calculation_defers_unbound_revisions(sources, current):
     history = [HistoryMessage(role="user", content=message) for message in sources]
     assert plan_studio_calculation(current, history) is None
+
+
+_COMMUNICATION_QUEUE = (
+    "Notatka do komunikatu: „Wstępnie zgłoszono około 35 zespołów. "
+    "Cztery zgłoszenia bez numeru nadal czekają na sprawdzenie. "
+    "Podsumowanie zamierzamy podać w sobotę”. Oddaj to w dwóch zdaniach bezosobowych."
+)
+_QUEUE_REPLY = (
+    "Wstępnie zgłoszono około 35 zespołów, a cztery zgłoszenia bez numeru "
+    "nadal czekają na sprawdzenie. Podsumowanie planuje się podać w sobotę."
+)
+_QUEUE_EDIT = (
+    "Podsumowanie planujemy w środę zamiast w sobotę. Liczb i dwóch zdań nie zmieniaj."
+)
+_SCOPED_CARD = (
+    "Zapisz dwa punkty na kartę. „Osoby poniżej 15 lat potrzebują zgody opiekuna. "
+    "Do hali wchodzi się z przepustką”. Drugi ma dotyczyć hali."
+)
+_CARD_EDIT = (
+    "Przepustka przestała być wymagana. "
+    "Drugi punkt ma brzmieć „Hala czynna do 17:00”. Pierwszego nie zmieniaj."
+)
+_SEPARATE_NOTICE = (
+    "Napisz krótką informację. Odbiór odbędzie się wieczorem i potrwa nie dłużej niż 23 minuty. "
+    "Gdy dopisze pogoda, pokażemy przykładową osłonę. Pytania po odbiorze przy portierni. "
+    "Treść bez ocen."
+)
+_NOTICE_AS_PARAGRAPH = (
+    "Wersja w jednym akapicie, bez nowego spotkania. Zachowaj wszystkie fakty."
+)
+
+
+@pytest.mark.parametrize(
+    ("source", "initial", "change", "updated"),
+    [
+        (
+            _COMMUNICATION_QUEUE,
+            _QUEUE_REPLY,
+            _QUEUE_EDIT,
+            _QUEUE_REPLY.replace("w sobotę", "w środę"),
+        ),
+        (
+            _SCOPED_CARD,
+            "- Osoby poniżej 15 lat potrzebują zgody opiekuna.\n- Do hali wchodzi się z przepustką",
+            _CARD_EDIT,
+            "- Osoby poniżej 15 lat potrzebują zgody opiekuna.\n- Hala czynna do 17:00",
+        ),
+        (
+            _SEPARATE_NOTICE,
+            "Odbiór odbędzie się wieczorem i potrwa do 23 minut. "
+            "Gdy dopisze pogoda, pokażemy przykładową osłonę. "
+            "Po odbiorze można zadawać pytania przy portierni.",
+            _NOTICE_AS_PARAGRAPH,
+            "Odbiór odbędzie się wieczorem i potrwa do 23 minut. "
+            "Gdy dopisze pogoda, pokażemy przykładową osłonę. "
+            "Po odbiorze można zadawać pytania przy portierni.",
+        ),
+    ],
+)
+def test_local_revision_keeps_scope_and_modality_after_explicit_edits(
+    studio_chat, monkeypatch, source, initial, change, updated
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    assert chat(source, stream=False, verify_history=True) == initial
+    history = [
+        {"role": "user", "content": source},
+        {
+            "role": "assistant",
+            "content": "Ogłoszono termin i wymagania w obu punktach.",
+        },
+    ]
+    assert chat(change, history, stream=False, verify_history=True) == updated
+    assert not sent and not replies
+
+
+@pytest.mark.parametrize(
+    ("source", "edit"),
+    [
+        (
+            _COMMUNICATION_QUEUE,
+            _QUEUE_EDIT.replace("zamiast w sobotę", "zamiast w piątek"),
+        ),
+        (_COMMUNICATION_QUEUE, _QUEUE_EDIT.replace("Podsumowanie", "Odbiór")),
+        (_SCOPED_CARD, _CARD_EDIT.replace("Pierwszego", "Drugiego")),
+        (_SCOPED_CARD, _CARD_EDIT.replace("Przepustka", "Karta")),
+        (
+            _SCOPED_CARD,
+            _CARD_EDIT.replace("Hala czynna do 17:00", "Hala otwarta z przepustką"),
+        ),
+        (_SEPARATE_NOTICE.replace("nie dłużej niż", "dokładnie"), _NOTICE_AS_PARAGRAPH),
+    ],
+)
+def test_local_revision_defers_an_edit_without_matching_source_evidence(source, edit):
+    history = [
+        HistoryMessage(role="user", content=source),
+        HistoryMessage(
+            role="assistant", content="Sprzeczna odpowiedź z wcześniejszego szkicu."
+        ),
+    ]
+    assert studio_revision(edit, history) is None

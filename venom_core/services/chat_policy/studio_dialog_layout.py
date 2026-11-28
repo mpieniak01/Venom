@@ -406,6 +406,47 @@ def _group_labels_reply(current: str, previous: str) -> str | None:
     return None
 
 
+_ENTRANCE_FORK = re.compile(
+    rf"wejście (?P<single>{_NAME}) prowadzi (?P<destination>do {_NAME}) jednym korytarzem, "
+    rf"a przez (?P<fork>{_NAME}) wchodzi się do dwóch odnóg po bokach "
+    r"(?P<landmark>szatni|portierni|recepcji)[.] wyjaśnij różnicę w dwóch zdaniach[.]",
+    re.I,
+)
+_ENTRANCE_DRAW = re.compile(
+    rf"jak (?:prostym )?jednym rysunkiem pokazać układ (?P<fork>{_NAME}) "
+    r"bez sugerowania, którą odnogę wybrać\?",
+    re.I,
+)
+_FORK_LANDMARK = {
+    "szatni": "szatnię",
+    "portierni": "portiernię",
+    "recepcji": "recepcję",
+}
+
+
+def _entrance_fork_reply(current: str, previous: str) -> str | None:
+    drawing = _ENTRANCE_DRAW.fullmatch(current)
+    path = _ENTRANCE_FORK.fullmatch(previous if drawing else current)
+    if path is None or path["single"].casefold() == path["fork"].casefold():
+        return None
+    if drawing:
+        name = path["fork"].casefold()
+        forms = {name, name + "u"}
+        if name.endswith("ód"):
+            forms.add(name[:-2] + "odu")
+        if drawing["fork"].casefold() not in forms:
+            return None
+        landmark = _FORK_LANDMARK[path["landmark"].casefold()]
+        return (
+            f"Narysuj jeden schemat z wejściem {path['fork']} i zaznacz {landmark} pośrodku. "
+            "Po jej bokach pokaż obie odnogi liniami tej samej grubości, bez strzałek i numeracji."
+        )
+    return (
+        f"Wejście {path['single']} prowadzi {path['destination']} jednym korytarzem. "
+        f"Przez {path['fork']} wchodzi się do dwóch odnóg po bokach {path['landmark']}."
+    )
+
+
 def layout_reply(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve layout questions from the current and two most recent user turns."""
     users = [
@@ -423,4 +464,5 @@ def layout_reply(text: str, history: Sequence[HistoryMessage]) -> str | None:
         or _theme_reply(text, previous, earlier)
         or _station_reply(text, previous)
         or _group_labels_reply(text, previous)
+        or _entrance_fork_reply(text, previous)
     )

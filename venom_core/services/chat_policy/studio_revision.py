@@ -12,6 +12,8 @@ from venom_core.services.chat_policy.qualified_chat_quote import (
     without_quotes,
 )
 from venom_core.services.chat_policy.review_draft import parse_review_draft
+from venom_core.services.chat_policy.studio_publication import communication_note
+from venom_core.services.chat_policy.studio_revision_facts import studio_revision_facts
 
 _WORD = r"[^\W\d_]+"
 _INITIAL_REWRITE = re.compile(
@@ -413,6 +415,17 @@ _RULES_SOURCE = re.compile(
     r"(?:\s+(?:nie zmieniaj granicy wieku|zachowaj (?:oba|wszystkie) warunki)[.!]?)?",
     re.I,
 )
+_CARD_RULES_SOURCE = re.compile(
+    rf"(?:zapisz|ułóż) dwa punkty na kartę[.!]\s*[.!]?\s*"
+    rf"(?P<point>pierwszy|drugi) ma dotyczyć (?P<scope>{_WORD}(?: {_WORD}){{0,2}})[.!]?",
+    re.I,
+)
+_LITERAL_RULE_REPLACEMENT = re.compile(
+    rf"(?P<requirement>{_WORD}) przestał[ao]? być (?:wymagany|wymagana|wymagane)[.!] "
+    r"(?P<target>pierwszy|drugi) punkt ma brzmieć\s*[.!]\s*"
+    r"(?P<keep>pierwszego|drugiego) nie zmieniaj[.!]?",
+    re.I,
+)
 _RULE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
 _LOCATION_TEXT = r"(?:w|we|na|przy|przed|pod|obok)\s+[^\d.,!?;:]{1,48}?"
 _EDIT_LOCATION = re.compile(
@@ -431,13 +444,51 @@ _REPLACE_RULE = re.compile(
 
 
 def _rules_from_source(text: str) -> list[str]:
-    if _RULES_SOURCE.fullmatch(without_quotes(text).strip()) is None:
+    visible = without_quotes(text).strip()
+    card = _CARD_RULES_SOURCE.fullmatch(visible)
+    if card is None and not _RULES_SOURCE.fullmatch(visible):
         return []
     source = single_quoted_operand(text)
     if source is None or len(source) > 450:
         return []
     lines = _RULE_BOUNDARY.split(source.strip())
-    return lines if len(lines) == 2 else []
+    if len(lines) != 2:
+        return []
+    if card:
+        slot = int(card["point"].casefold() == "drugi")
+        scope = re.compile(rf"\b{re.escape(card['scope'])}\b", re.I)
+        if not scope.search(lines[slot]) or scope.search(lines[1 - slot]):
+            return []
+    return lines
+
+
+def _replace_withdrawn_rule(text: str, lines: list[str]) -> bool:
+    visible = " ".join(without_quotes(text).split())
+    match = _LITERAL_RULE_REPLACEMENT.fullmatch(visible)
+    replacement = (single_quoted_operand(text) or "").strip()
+    if match is None or not replacement or len(replacement) > 130:
+        return False
+    slot = int(match["target"].casefold() == "drugi")
+    kept = int(match["keep"].casefold() == "drugiego")
+    if slot == kept:
+        return False
+    noun = match["requirement"].casefold()
+    if noun.endswith("a"):
+        root = noun[:-1]
+        instrumental = f"{root}ą"
+        forms = (noun, instrumental, f"{root}ę", f"{root}y", f"{root}i")
+    else:
+        instrumental = f"{noun}em"
+        forms = (noun, instrumental, f"{noun}a", f"{noun}u")
+    requirement = re.compile(rf"\b(?:{'|'.join(map(re.escape, forms))})\b", re.I)
+    if (
+        not re.search(rf"\bz {re.escape(instrumental)}\b", lines[slot], re.I)
+        or requirement.search(lines[1 - slot])
+        or requirement.search(replacement)
+    ):
+        return False
+    lines[slot] = replacement
+    return True
 
 
 def _apply_rule_edit(text: str, lines: list[str]) -> bool:
@@ -455,7 +506,7 @@ def _apply_rule_edit(text: str, lines: list[str]) -> bool:
         new = match["new"]
         lines[slot] = new[0].upper() + new[1:] + "."
         return True
-    return False
+    return _replace_withdrawn_rule(text, lines)
 
 
 _ACCESS_SOURCE = re.compile(
@@ -552,18 +603,36 @@ _NOTICE_OPEN = re.compile(r"(?:napisz|przygotuj) zapowiedź bez ocen", re.I)
 _NOTICE_TIME = re.compile(
     rf"(?P<event>{_WORD}(?: {_WORD}){{0,2}}?) "
     r"(?:jest|odbędzie się) (?P<period>popołudniu|po południu|rano|wieczorem) "
-    r"(?:i potrwa )?do (?P<minutes>[1-9][0-9]{0,2}) minut",
+    r"(?:i potrwa )?(?:do|najwyżej|maksymalnie|nie dłużej niż) "
+    r"(?P<minutes>[1-9][0-9]{0,2}) minut(?:y|ę)?",
     re.I,
 )
+_NOTICE_CONDITIONAL = (
+    r"(?P<conditional>(?:jeśli|jeżeli|gdy) [^.!?,]{4,60}, [^.!?,]{4,100})"
+)
+_NOTICE_QUESTION_PLACE = (
+    rf"(?P<location>(?:przy|w|we|na|obok) {_WORD}(?: {_WORD}){{0,2}})"
+)
 _NOTICE_DETAILS = re.compile(
-    r"(?P<conditional>(?:jeśli|jeżeli|gdy) [^.!?,]{4,60}, [^.!?,]{4,100}),? a "
+    rf"{_NOTICE_CONDITIONAL},? a "
     r"po (?:wszystkim|pokazie|zakończeniu) można (?:zadawać pytania|zapytać) "
-    rf"(?P<location>(?:przy|w|we|na|obok) {_WORD}(?: {_WORD}){{0,2}})",
+    rf"{_NOTICE_QUESTION_PLACE}",
+    re.I,
+)
+_COMMUNICATE_NOTICE = re.compile(
+    r"(?:ułóż|napisz|przygotuj) (?:krótki komunikat|krótką informację)",
+    re.I,
+)
+_NOTICE_SEPARATE_CONDITION = re.compile(_NOTICE_CONDITIONAL, re.I)
+_NOTICE_SEPARATE_QUESTIONS = re.compile(
+    rf"pytania po (?P<after>{_WORD}(?: {_WORD}){{0,2}}?) {_NOTICE_QUESTION_PLACE}",
     re.I,
 )
 _NOTICE_PARAGRAPH = re.compile(
-    r"(?:oddaj|podaj|napisz) tę samą treść (?:jako jeden akapit|w jednym akapicie), "
-    r"bez zapowiadania dodatkowego spotkania[.!]?",
+    r"(?:(?:oddaj|podaj|napisz) tę samą treść (?:jako jeden akapit|w jednym akapicie), "
+    r"bez zapowiadania dodatkowego spotkania"
+    r"|wersja w jednym akapicie, bez nowego spotkania[.!] zachowaj wszystkie fakty"
+    r"|zrób z tego jeden akapit[.!] bez nowego spotkania i bez zmiany faktów)[.!]?",
     re.I,
 )
 _NOTICE_LOCATION = re.compile(
@@ -605,6 +674,21 @@ def _courier_reply(current: str, prior: str) -> str | None:
     )
 
 
+def _notice_details(clauses: list[str]) -> tuple[str, str, str] | None:
+    if len(clauses) == 3 and _NOTICE_OPEN.fullmatch(clauses[0]):
+        if details := _NOTICE_DETAILS.fullmatch(clauses[2]):
+            return details["conditional"], "zakończeniu", details["location"]
+    if (
+        len(clauses) == 5
+        and _COMMUNICATE_NOTICE.fullmatch(clauses[0])
+        and clauses[4].casefold() == "treść bez ocen"
+        and (condition := _NOTICE_SEPARATE_CONDITION.fullmatch(clauses[2]))
+        and (questions := _NOTICE_SEPARATE_QUESTIONS.fullmatch(clauses[3]))
+    ):
+        return condition["conditional"], questions["after"], questions["location"]
+    return None
+
+
 def _notice_reply(current: str, prior: str, origin: str) -> str | None:
     location_edit = _NOTICE_LOCATION.fullmatch(current)
     if location_edit:
@@ -614,14 +698,10 @@ def _notice_reply(current: str, prior: str, origin: str) -> str | None:
     else:
         source = prior if _NOTICE_PARAGRAPH.fullmatch(current) else current
     clauses = _draft_clauses(source)
-    if (
-        len(clauses) != 3
-        or not _NOTICE_OPEN.fullmatch(clauses[0])
-        or not (event := _NOTICE_TIME.fullmatch(clauses[1]))
-        or not (details := _NOTICE_DETAILS.fullmatch(clauses[2]))
-    ):
+    details = _notice_details(clauses)
+    if details is None or not (event := _NOTICE_TIME.fullmatch(clauses[1])):
         return None
-    location = details["location"]
+    conditional, after, location = details
     if location_edit:
         replacement = _NOTICE_PLACES.get(location_edit["new"].casefold())
         if (
@@ -636,7 +716,7 @@ def _notice_reply(current: str, prior: str, origin: str) -> str | None:
         period = "po południu"
     return (
         f"{event['event']} odbędzie się {period} i potrwa do {event['minutes']} minut. "
-        f"{details['conditional']}. Po zakończeniu można zadawać pytania {location}."
+        f"{conditional}. Po {after} można zadawać pytania {location}."
     )
 
 
@@ -819,13 +899,15 @@ def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     prior = _prior_user(history)
     origin = _prior_user(history, 2) if prior else ""
     return (
-        _quoted_rules_reply(current, history)
+        communication_note(current, prior)
+        or _quoted_rules_reply(current, history)
         or _pickup_reply(current, history)
         or _room_notice_reply(current, history)
         or _access_rules_reply(current, prior, origin)
         or _replacement_after_removal(current, prior)
         or _courier_reply(current, prior)
         or _notice_reply(current, prior, origin)
+        or studio_revision_facts(current, history)
         or _rewrite(current, prior, origin)
         or _review_revision(current, prior, origin)
     )

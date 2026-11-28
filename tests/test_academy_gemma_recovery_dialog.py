@@ -368,3 +368,95 @@ def test_sorting_checks_size_and_explicit_placement_together(placement, expected
         assert answer is None
     else:
         assert answer is not None and "według rozmiaru" in answer and expected in answer
+
+
+_ROW_PLAN = (
+    "Wariant Wichura ma dwanaście plansz w jednym rzędzie, "
+    "a wariant Mgła ma dziewięć plansz w dwóch osobnych salach. "
+    "Zależy mi na prostej orientacji. Który wariant bardziej do tego pasuje?"
+)
+_ROW_ENTRANCES = (
+    "W Wichurze da się wejść do rzędu z obu stron. "
+    "Czy strzałka od wejścia nadal jest dobrym pomysłem?"
+)
+_GATE_LAYOUT = (
+    "Wyjaśnij różnicę między dziedzińcem otwartym od ulicy "
+    "a zamkniętym bramą w dwóch zdaniach."
+)
+_STYLE_OPTIONS = (
+    "Alicja chce ułożyć na stole nagrania alfabetycznie według wykonawców. "
+    "Tomek chce pogrupować płyty według gatunku. Jakie są zalety obu układów?"
+)
+
+
+def test_studio_layout_publishes_undirected_scheme_for_both_entrances(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, calls, replies = studio_chat
+    session = str(uuid4())
+    turns = (
+        (_ROW_PLAN, "Wariant Wichura"),
+        (_ROW_ENTRANCES, "Przy obu wejściach"),
+        (
+            "Bez kierunku i bez numerów. Podaj jeden sposób oznaczenia.",
+            "Umieść przy obu wejściach ten sam prosty schemat pokazujący układ ekspozycji w jednym rzędzie.",
+        ),
+    )
+    for prompt, expected in turns:
+        answer = chat(prompt, session=session, verify_history=True, stream=False)
+        assert expected in answer
+    assert not calls and not replies
+
+
+def test_studio_courtyard_distinguishes_layout_from_temporary_gate_state():
+    layout = studio_dialog(_GATE_LAYOUT, [])
+    assert layout and "z ulicy" in layout and "przez bramę" in layout
+    boundary = "Nie zakładaj, że goście nie mogą wejść."
+    history = _history(_GATE_LAYOUT, layout)
+    assert studio_dialog(boundary, history) == layout
+    history += _history(boundary, "Teren jest prywatny.")
+    answer = studio_dialog("A jeśli brama jest otwarta?", history)
+    assert answer and "układu wejścia" in answer and "chwilowe" in answer
+    assert "prywatn" not in answer
+
+
+def test_studio_catalog_switch_retains_genre_for_one_table_sign():
+    comparison = studio_dialog(_STYLE_OPTIONS, [])
+    assert comparison and "według wykonawców" in comparison and "gatunku" in comparison
+    selection = "Zachowujemy tylko układ Tomka. Jak oznaczyć grupy?"
+    history = _history(_STYLE_OPTIONS, comparison)
+    labels = studio_dialog(selection, history)
+    assert labels and "stojące przekładki z nazwami stylów" in labels
+    history += _history(selection, labels)
+    assert (
+        studio_dialog(
+            "Bez tablic wiszących. Jeden sposób, który mieści się na stole.",
+            history,
+        )
+        == "Ustaw między grupami na stole stojące przekładki z nazwami stylów."
+    )
+
+
+@pytest.mark.parametrize(
+    "prompt,history",
+    [
+        (
+            "Dziś brama jest otwarta i mam pozwolenie wejścia. Czy dostęp jest potwierdzony?",
+            _history(_GATE_LAYOUT, "Są dwa układy wejścia."),
+        ),
+        (
+            "Bez strzałek ani numerów. Podaj jeden sposób orientacji.",
+            _history(_ROW_PLAN, "Wariant Wichura."),
+        ),
+        (
+            "Zachowujemy tylko układ Alicji. Jak oznaczyć grupy?",
+            _history(_STYLE_OPTIONS, "Alfabet i gatunek porządkują nagrania inaczej."),
+        ),
+        ('Przetłumacz: "' + _GATE_LAYOUT + '"', []),
+    ],
+)
+def test_studio_layout_defers_unbound_or_changed_scope(prompt, history):
+    assert studio_dialog(prompt, history) is None

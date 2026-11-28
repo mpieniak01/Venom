@@ -78,6 +78,7 @@ from venom_core.services.chat_policy.studio_claims import (
     topic_only_sms,
 )
 from venom_core.services.chat_policy.studio_dialog import studio_dialog
+from venom_core.services.chat_policy.studio_dialog_compare import studio_comparison
 from venom_core.services.chat_policy.studio_followup import (
     studio_concise_hint,
     studio_followup,
@@ -1606,6 +1607,7 @@ def _prepare_qualified_reply(
                 or studio_revision(content, history)
                 or studio_visibility(content, history)
                 or studio_dialog(content, history)
+                or studio_comparison(content, history)
                 or studio_quantity(content, history)
             )
             if answer is not None:

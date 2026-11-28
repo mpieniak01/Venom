@@ -12,6 +12,7 @@ from venom_core.services.chat_policy.qualified_chat_quote import (
     single_quoted_operand,
     without_quotes,
 )
+from venom_core.services.chat_policy.studio_dialog_layout import layout_reply
 
 _WORD = r"[^\W\d_]+"
 _PHRASE = rf"{_WORD}(?: {_WORD}){{0,3}}"
@@ -271,6 +272,8 @@ def _notice_rewordings(text: str) -> str | None:
 def studio_dialog(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve a bounded dialogue request using explicit current and prior facts."""
     current = " ".join(text.split())
+    if layout := layout_reply(current, history):
+        return layout
     if notices := _notice_rewordings(current):
         return notices
     if program := _program_with_shared_condition(current):

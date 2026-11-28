@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
+from venom_core.services.chat_policy.studio_dialog_compare import studio_comparison
 from venom_core.services.chat_policy.studio_quantity import studio_quantity
 
 _BUNDLE = (
@@ -412,5 +413,122 @@ def test_new_pickup_day_uses_only_the_seller_that_confirmed_it():
                 )
             ),
         )
+        is None
+    )
+
+
+def test_support_changes_weight_priority_instead_of_copying_previous_choice():
+    prompt = (
+        "Paproć jest sztywna i waży 580 g, a Śnieg jest elastyczna i waży 410 g. "
+        "Bez stolika, rysuję na kolanach. Która lepsza?"
+    )
+    initial = studio_comparison(prompt, [])
+    assert initial is not None and "sztywny wariant „Paproć”" in initial
+    change = "A gdy pojawi się stół?"
+    history = _history(prompt, "Nadal konieczna będzie Paproć.")
+    reply = studio_comparison(change, history)
+    assert reply is not None and "lżejszy wariant „Śnieg” może wystarczyć" in reply
+    assert "pełnym podparciu" in reply
+    same = prompt.replace("410 g", "580 g")
+    assert studio_comparison(change, _history(same)) == (
+        "Przy pełnym podparciu na blacie oba warianty mogą wystarczyć, a różnicy w wadze nie ma."
+    )
+    reverse = prompt.replace("410 g", "600 g")
+    response = studio_comparison(change, _history(reverse))
+    assert response is not None and "lżejszy wariant „Paproć”" in response
+    assert studio_comparison(change, _history("Mam tylko jedną podkładkę.")) is None
+
+
+def test_square_fit_keeps_equal_price_and_treats_cleaning_as_secondary():
+    prompt = (
+        "Mam matę z aksamitem, 24,5 × 24,5 cm, i drugą z lnem, 33 × 33 cm. "
+        "Obie kosztują 21 zł. Podstawa ma 26 × 26 cm. Która zmieści się w całości?"
+    )
+    result = studio_comparison(prompt, [])
+    assert result is not None and "pierwsza opcja" in result
+    assert all(
+        value in result for value in ("z aksamitem", "24,5 × 24,5 cm", "33 cm", "21 zł")
+    )
+    clean = (
+        "Ale z lnem czyści się łatwiej. Co wybrać, jeśli nie chcę wystających brzegów?"
+    )
+    chosen = studio_comparison(clean, _history(prompt, "Zamówiono lnianą."))
+    assert chosen is not None and "pierwszą" in chosen
+    assert "z lnem łatwiej czyścić, ale jej brzegi będą wystawać" in chosen
+    assert (
+        studio_comparison(clean.replace("z lnem", "ze skórą"), _history(prompt)) is None
+    )
+    same = studio_comparison(clean.replace("z lnem", "z aksamitem"), _history(prompt))
+    assert same is not None and "też łatwiejsza do czyszczenia" in same
+    both = prompt.replace("26 × 26", "33 × 33")
+    assert studio_comparison(both, []) == (
+        "Obie opcje mieszczą się w całości. Bok dostępnej powierzchni ma 33 cm. Obie opcje kosztują 21 zł."
+    )
+    neither = prompt.replace("26 × 26", "20 × 20")
+    denied = studio_comparison(neither, [])
+    assert denied is not None and denied.startswith("Żadna opcja nie mieści się")
+    assert studio_comparison(clean, _history(both)) is None
+    assert studio_comparison(prompt.replace("26 × 26", "26 × 22"), []) is None
+    assert studio_comparison(prompt.replace("Obie", "Jedna"), []) is None
+
+
+def test_material_roles_survive_selective_pdf_availability():
+    prompt = (
+        "W czytelni jest wykaz wydań do wyboru mapy i osobny przewodnik do opisów legendy. "
+        "Oba chcę udostępnić, ale tylko przewodnik będzie pojutrze drukowany. "
+        "Jak opisać te dwa materiały na liście dla zespołu?"
+    )
+    assert studio_comparison(prompt, []) == (
+        "1. Wykaz wydań do wyboru mapy — do udostępnienia.\n"
+        "2. Przewodnik do opisów legendy — do udostępnienia, do druku pojutrze."
+    )
+    change = "Dopisz przy tym pierwszym, że można go pobrać jako PDF."
+    assert studio_comparison(change, _history(prompt, "Przewodnik z PDF.")) == (
+        "1. Wykaz wydań do wyboru mapy — do udostępnienia, do pobrania jako PDF.\n"
+        "2. Przewodnik do opisów legendy — do udostępnienia, do druku pojutrze."
+    )
+    assert (
+        studio_comparison(prompt.replace("tylko przewodnik", "tylko legenda"), [])
+        is None
+    )
+    assert (
+        studio_comparison(
+            change, _history("W czytelni niczego jeszcze nie zestawiono.")
+        )
+        is None
+    )
+
+
+def test_definitions_are_selected_from_meaning_for_each_user_goal():
+    prompt = (
+        "Porównano dwa terminy: pole tekstu i obszar pieczęci. Pole określa miejsce na tekst, "
+        "a obszar pieczęci oznacza wymiar całej odbitki. Jak to prosto wyjaśnić?"
+    )
+    assert studio_comparison(prompt, []) == (
+        "Pole tekstu określa miejsce na tekst. Obszar pieczęci oznacza wymiar całej odbitki."
+    )
+    previous = _history(prompt, "Mylący opis wielkości uchwytu.")
+    assert (
+        studio_comparison(
+            "Czy na oszacowanie rozmiaru odbitki patrzeć pod tym pierwszym czy drugim?",
+            previous,
+        )
+        == "Wybierz drugie pojęcie, „obszar pieczęci”. Obszar pieczęci oznacza wymiar całej odbitki."
+    )
+    assert (
+        studio_comparison(
+            "Czy na długość napisu patrzeć pod tym pierwszym czy drugim?",
+            previous,
+        )
+        == "Wybierz pierwsze pojęcie, „pole tekstu”. Pole tekstu określa miejsce na tekst."
+    )
+    assert (
+        studio_comparison(
+            "Czy na wygląd uchwytu patrzeć pod tym pierwszym czy drugim?", previous
+        )
+        is None
+    )
+    assert (
+        studio_comparison(prompt.replace("obszar pieczęci", "pole pieczęci"), [])
         is None
     )

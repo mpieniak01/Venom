@@ -8,6 +8,9 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
+from venom_core.services.chat_policy.studio_status_transitions import (
+    status_transition_reply,
+)
 
 _TOPIC = r"[\w -]{2,75}"
 _CLAUSE_BREAK = re.compile(
@@ -744,4 +747,7 @@ def studio_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
         or _recorded_operational_status(text, history)
         or _request_status(text, history)
         or _pickup_status(text, history)
+        or status_transition_reply(
+            text, _last_users(history, 2) or _last_users(history, 1)
+        )
     )

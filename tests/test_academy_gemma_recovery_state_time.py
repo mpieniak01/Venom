@@ -466,3 +466,108 @@ def test_pickup_declines_a_shared_surname_without_its_first_name():
     )
     ambiguous = "Lis zrezygnowała. Nie potwierdzono zastępcy. Podaj właścicielkę i stan odbioru."
     assert studio_followup(ambiguous, _history(source)) is None
+
+
+_DUTY_INTEREST = (
+    "W klubie Nina jest na liście osób chętnych do sobotniego dyżuru. "
+    "W grafiku przy jej imieniu widnieje puste pole. Czy mogę napisać, że Nina ma dyżur?"
+)
+_APPROVED_PLACE = (
+    "Zaakceptowałem do wysłania tylko informację o adresie pracowni, "
+    "a godzina spotkania nie jest jeszcze ustalona. "
+    "Czy w tabeli mogę napisać „pełny komunikat zatwierdzony”?"
+)
+_APPROVED_BOTH = (
+    "Już ustaliliśmy spotkanie o 9:50 i zatwierdzam obie informacje. "
+    "Komunikatu jeszcze nie wysłano. Podaj status do tabeli."
+)
+
+
+def test_status_separates_duty_interest_assignment_and_confirmation():
+    assert studio_followup(_DUTY_INTEREST, []) == (
+        "Nina jest na liście chętnych do dyżuru w sobotę, ale w grafiku nie ma przydziału."
+    )
+    assignment = (
+        "Koordynatorka wpisała Ninę na 10:25, ona jeszcze tego nie potwierdziła. "
+        "Jak zapisać stan w jednym zdaniu?"
+    )
+    assert studio_followup(assignment, _history(_DUTY_INTEREST)) == (
+        "Na dyżur w sobotę o 10:25 wpisano Ninę do grafiku, "
+        "a przydział nadal czeka na potwierdzenie tej osoby."
+    )
+    assert (
+        studio_followup(
+            assignment, _history(_DUTY_INTEREST, "Jaki przygotowujemy grafik?")
+        )
+        is None
+    )
+    assert (
+        studio_followup(_DUTY_INTEREST.replace("Nina ma dyżur", "Lena ma dyżur"), [])
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("assignment", "expected"),
+    [
+        (
+            "Wpisano Lenę do grafiku na 19:25. Ona jeszcze tego nie potwierdziła. "
+            "Podaj stan w jednym zdaniu.",
+            "Do grafiku wpisano Lenę na 19:25, dnia nie podano, "
+            "a przydział nadal czeka na potwierdzenie tej osoby.",
+        ),
+        (
+            "Organizatorka wpisała Ninę na piątek o 8:10 i ona już to potwierdziła. "
+            "Zapisz stan w jednym zdaniu.",
+            "Na dyżur w piątek o 8:10 wpisano Ninę do grafiku, a ta osoba potwierdziła przydział.",
+        ),
+    ],
+)
+def test_status_uses_current_person_and_explicit_day(assignment, expected):
+    assert studio_followup(assignment, _history(_DUTY_INTEREST)) == expected
+
+
+def test_approval_is_bound_to_the_original_activity_before_dispatch():
+    assert studio_followup(_APPROVED_PLACE, []) == (
+        "Zatwierdzono tylko informację o adresie pracowni, "
+        "a godzina spotkania nadal nie jest ustalona."
+    )
+    assert studio_followup(_APPROVED_BOTH, _history(_APPROVED_PLACE)) == (
+        "Pełny komunikat zatwierdzony, łącznie z informacją o adresie pracowni "
+        "i godziną spotkania 9:50. Wysyłka jeszcze nie nastąpiła."
+    )
+    assert (
+        studio_followup(
+            _APPROVED_BOTH.replace("spotkanie", "odbiór"), _history(_APPROVED_PLACE)
+        )
+        is None
+    )
+    assert studio_followup(_APPROVED_BOTH, _history(_REQUEST)) is None
+
+
+@pytest.mark.parametrize(
+    ("dispatch", "expected"),
+    [
+        (
+            "wysłana wiadomość z adresem, bez godziny",
+            "Wysłano informację o adresie pracowni. Zatwierdzona godzina spotkania to 9:50, "
+            "ale nie było jej w wysłanym komunikacie.",
+        ),
+        (
+            "wysłana wiadomość z godziną 8:35, bez adresu",
+            "Wysłano godzinę 8:35, bez informacji o adresie pracowni. "
+            "Zatwierdzona godzina spotkania to 9:50. "
+            "Informacja o adresie pracowni pozostaje zaakceptowana.",
+        ),
+        (
+            "wysłana wiadomość z godziną 09:50 i z adresem",
+            "Wysłano informację o adresie pracowni i godzinę 09:50.",
+        ),
+    ],
+)
+def test_status_distinguishes_approved_and_actually_sent_fields(dispatch, expected):
+    prompt = f"W rejestrze jest {dispatch}. Co faktycznie wysłano?"
+    assert (
+        studio_followup(prompt, _history(_APPROVED_PLACE, _APPROVED_BOTH)) == expected
+    )
+    assert studio_followup(prompt, _history(_APPROVED_BOTH)) is None

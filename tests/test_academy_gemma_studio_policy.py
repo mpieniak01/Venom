@@ -274,6 +274,28 @@ def test_studio_retries_a_truncated_draft_with_default_transport(
         ),
         (
             (
+                "Ile cm wstążki na pięć długich pasków po 31 cm i dwa krótkie po 10 cm?",
+                "Każdy krótki zmieniam na 0,15 m. Długich nie zmieniam.",
+            ),
+            "Odmierzyłam 184 cm. Ile brakuje?",
+            "Brakuje 1 cm (5 × 31 cm + 2 × 15 cm − 184 cm).",
+        ),
+        (
+            (
+                "9 wejść zwykłych kosztuje po 7 zł, 4 ulgowe po 3 zł. Ile koszt samych zwykłych?",
+            ),
+            "Ulgowe teraz po 5 zł. Ile łącznie za obie grupy?",
+            "63 zł + 20 zł = 83 zł.",
+        ),
+        (
+            (
+                "Odczyt szerokości desek: Runa 20 cm, Tara 0,25 m, Arka 265 mm. Wskaż najwęższą.",
+            ),
+            "Deskę Runa wymieniliśmy na 28 cm. Która jest teraz najszersza?",
+            "Największa szerokość: Runa, 28 cm. Porównanie: Runa 28 cm, Tara 25 cm, Arka 26,5 cm.",
+        ),
+        (
+            (
                 "Pakuję odważniki. Czerwony waży 1,2 kg, niebieski 670 g, "
                 "sztywne etui 115 g. Ile ważą same odważniki w gramach?",
             ),

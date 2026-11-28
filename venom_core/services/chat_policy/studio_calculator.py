@@ -64,17 +64,17 @@ _LENGTH_GAP = re.compile(
     r"\bile\s+(?:dokładnie\s+|jeszcze\s+)?(?:(?:cm|centymetr\w*)\s+)?brakuje\b", re.I
 )
 _LENGTH_CHANGE = re.compile(
-    rf"\bkażd[ay]\s+(?P<label>krótk\w*|dług\w*)\s+ma(?:\s+mieć)?\s+{_LENGTH}",
+    rf"\bkażd[ay]\s+(?P<label>krótk\w*|dług\w*)\s+(?:ma(?:\s+mieć)?|zmieniam\s+na)\s+{_LENGTH}",
     re.I,
 )
 _AVAILABLE = re.compile(
     rf"\b(?:odciął[ae]m|odcięt[eo]|odmierzy[łl][ae]m)\s+{_LENGTH}", re.I
 )
 
-_RATE_NAME = r"krajow\w*|zagraniczn\w*|normaln\w*|ulgow\w*"
+_RATE_NAME = r"krajow\w*|zagraniczn\w*|normaln\w*|zwykł\w*|ulgow\w*"
 _RATE = re.compile(
     rf"\b(?P<count>[1-9][0-9]{{0,3}})\s+(?:{_WORD}\s+)?(?P<label>{_RATE_NAME})"
-    rf"\s+po\s+(?P<value>{_NUMBER})\s*zł\b",
+    rf"\s+(?:(?:kosztuje|kosztują)\s+)?po\s+(?P<value>{_NUMBER})\s*zł\b",
     re.I,
 )
 _RATE_CHANGE = re.compile(
@@ -83,10 +83,13 @@ _RATE_CHANGE = re.compile(
     re.I,
 )
 _MONEY_VALUE = re.compile(rf"\b{_NUMBER}\s*zł\b", re.I)
-_RATE_ONLY = re.compile(rf"\btylko\s+(?:za\s+)?(?P<label>{_RATE_NAME})\b", re.I)
+_RATE_ONLY = re.compile(
+    rf"\b(?:tylko\s+(?:za\s+)?|sam(?:ych|e|ymi)\s+)(?P<label>{_RATE_NAME})\b", re.I
+)
 _RATE_TOTAL = re.compile(
-    r"\b(?:kwot[ayę]|koszt|ile|sum[ayę])\b[^.!?\n]{0,42}"
-    r"\b(?:wszystk\w*|całoś\w*|łącznie|razem)\b",
+    r"(?:\b(?:kwot[ayę]|koszt|ile|sum[ayę])\b[^.!?\n]{0,42}"
+    r"\b(?:wszystk\w*|całoś\w*|łącznie|razem)\b)"
+    r"|\bile\s+łącznie\s+za\s+obie\s+grupy\b",
     re.I,
 )
 
@@ -112,7 +115,9 @@ _MASS_WITHOUT_CASE = re.compile(
 )
 _MASS_CASE = re.compile(r"\b(?:pokrowiec|etui|opakowanie)$", re.I)
 
-_WIDTHS = re.compile(r"\b(?:odczyty\s+szerokości|szerokości)\s*:\s*", re.I)
+_WIDTHS = re.compile(
+    r"\b(?:odczyt(?:y)?\s+)?szerokości(?:\s+desek|\s+listew|\s+płyt)?\s*:\s*", re.I
+)
 _WIDTH = re.compile(
     rf"(?:^|[,;]\s*|\s+(?:i|oraz)\s+)(?P<label>{_WORD}(?:\s+{_WORD}){{0,3}}?)"
     rf"\s+{_LENGTH}",
@@ -121,6 +126,10 @@ _WIDTH = re.compile(
 _WIDTH_CHANGE = re.compile(
     rf"\b(?:poszerz\w*|zwę[żz]\w*|zmieniam)\s+(?P<label>{_WORD}(?:\s+{_WORD}){{0,3}}?)"
     rf"\s+(?:do|na)\s+{_LENGTH}",
+    re.I,
+)
+_WIDTH_REPLACEMENT = re.compile(
+    rf"\b(?:deskę|listwę|płytę)\s+(?P<label>{_WORD})\s+wymieniliśm[yi]\s+na\s+{_LENGTH}",
     re.I,
 )
 _WIDTH_QUERY = re.compile(r"\b(?P<widest>najszer\w*)\b|\bnajwęż\w*\b", re.I)
@@ -152,6 +161,8 @@ def _polish(value: Decimal) -> str:
 
 def _rate_key(text: str) -> str:
     text = text.casefold()
+    if text.startswith("zwykł"):
+        return "normaln"
     return next(
         key
         for key in ("krajow", "zagraniczn", "normaln", "ulgow")
@@ -328,7 +339,10 @@ def _width_calculation(turns: Sequence[str]) -> StudioCalculation | None:
             }
             if len(widths) != len(matches):
                 return None
-        elif widths and (update := _WIDTH_CHANGE.search(message)):
+        elif widths and (
+            update := _WIDTH_CHANGE.search(message)
+            or _WIDTH_REPLACEMENT.search(message)
+        ):
             key = _width_key(update["label"])
             if key not in widths or len(_LENGTH_VALUE.findall(message)) != 1:
                 return None

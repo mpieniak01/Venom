@@ -17,7 +17,7 @@ UNIT = r"(?: za sztukę)?"
 BARE_PRICE = re.compile(PRICE + UNIT, re.I)
 BARE_COUNT = re.compile(COUNT + r" sztuk(?:i)?", re.I)
 SHORT_VALUE = re.compile(
-    r"[-+−]?\d+(?:[.,]\d+)?\s+(?P<unit>zł|pln|sztuk(?:a|i)?)(?: za sztukę)?", re.I
+    r"[-+−]?\d+(?:[.,]\d+)?\s+(?P<unit>zł|pln|sztuk[ai]?)(?: za sztukę)?", re.I
 )
 PREFIX = re.compile(r"^(?:nowy )?rachunek\s*:\s*", re.I)
 CALCULATOR = re.compile(r"^kalkulator\s*:\s*", re.I)

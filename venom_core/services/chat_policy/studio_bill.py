@@ -14,6 +14,10 @@ COUNT = r"(?P<count>[1-9][0-9]{0,5})"
 PRICE = r"(?P<price>(?:0|[1-9][0-9]{0,6})(?:[.,][0-9]{1,2})?) (?:zł|pln)"
 UNIT = r"(?: za sztukę)?"
 PREFIX = re.compile(r"^(?:nowy )?rachunek\s*:\s*", re.I)
+CALCULATOR = re.compile(r"^kalkulator\s*:\s*", re.I)
+COST_QUESTION = re.compile(
+    r"^(?:ile zapłacę za|ile kosztuj[ąe]|jaki jest koszt) (?=[0-9])", re.I
+)
 OPENING = re.compile(
     r"^(?:kupuję|kupił[ea]m|zamawiam|potrzebuję|w koszyku|wypożyczył[ea]m|zestaw obejmuje|"
     r"chcę policzyć koszt|są w ofercie|za wydruk:|za [0-9]|[0-9])",
@@ -49,7 +53,7 @@ EXCLUDE = re.compile(rf"(?:wycofaj|pomiń) {NAME}(?: z rachunku)?")
 SEPARATELY = re.compile(rf"{NAME} opłacono osobno")
 SUBSET = re.compile(
     rf"(?:interesują mnie (?:tylko|wyłącznie)|teraz rozliczamy tylko|"
-    rf"(?:policz )?tylko|jaki jest koszt samych|ile zostało do zapłaty za) {NAME}"
+    rf"(?:policz )?tylko|jaki jest koszt samych|ile zapłacę za same|ile zostało do zapłaty za) {NAME}"
 )
 TOTAL = re.compile(
     r"(?:jaki jest łączny koszt|ile (?:razem|płacę|zapłacę|to (?:kosztuje|wyniesie))|"
@@ -118,7 +122,7 @@ class Bill:
             r"(?:\b(?:i|oraz|plus)|[,;:]|\.{2,}|…)\s*$", text, re.I
         ):
             raise BillQuestion(GENERIC)
-        text = PREFIX.sub("", text.strip().lower(), count=1)
+        text = _description(text.strip().lower())
         text = re.sub(r"\s*\(po (" + PRICE + r")\)", r" po \1", text)
         text = re.sub(r",\s*każd[aye] (?:po|kosztuje) ", " po ", text)
         text = re.sub(r"\bnie wiadomo,\s*ile ", "nie wiadomo ile ", text)
@@ -244,9 +248,17 @@ class Bill:
         return "\n".join([*lines, f"Razem: {total} zł"])
 
 
+def _description(text: str) -> str:
+    body = CALCULATOR.sub("", PREFIX.sub("", text, count=1), count=1)
+    return COST_QUESTION.sub("", body, count=1)
+
+
 def _starts(text: str) -> bool:
     if PREFIX.match(text):
         return True
+    if CALCULATOR.match(text) and not re.search(r"\bpo\s+[0-9]", text, re.I):
+        return False
+    text = _description(text)
     monetary = PRICE_SIGNAL.search(text) or re.search(
         r"\b(?:koszt|zapłacę|do zapłaty)\b", text, re.I
     )
@@ -283,9 +295,10 @@ def studio_bill_reply(message: str, history: list[dict[str, object]]) -> str | N
     """Build amounts exclusively from complete user clauses in this bill."""
     message = message.strip()
     prompts: list[str] = []
-    if _starts(message) and not PREFIX.match(message) and _previous_prompts(history):
+    starts = _starts(message)
+    if starts and not PREFIX.match(message) and _previous_prompts(history):
         return NEW_OR_CHANGE
-    if not _starts(message):
+    if not starts:
         if not FOLLOW.match(message):
             return None
         prompts = _previous_prompts(history)

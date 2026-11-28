@@ -640,6 +640,95 @@ def _notice_reply(current: str, prior: str, origin: str) -> str | None:
     )
 
 
+_PICKUP_COMMAND = re.compile(
+    r"(?:napisz|podaj|przygotuj) (?:krótką )?informację bez dopisków\s*:\s*[.!]?",
+    re.I,
+)
+_PICKUP_WORDS = rf"{_WORD}(?:[- ]{_WORD}){{0,4}}"
+_PICKUP_PREPOSITION = r"(?:przy|w|we|na|obok)"
+_PICKUP_PLACE = rf"{_PICKUP_PREPOSITION} {_PICKUP_WORDS}"
+_PICKUP_OTHER = r"(?:pozostali|osoby bez rezerwacji)"
+_PICKUP_TIME = r"(?:[01]?[0-9]|2[0-3]):[0-5][0-9]"
+_PICKUP_SOURCE = re.compile(
+    rf"osoby z rezerwacją odbierają (?P<items>{_PICKUP_WORDS}?) "
+    rf"(?P<reserved>{_PICKUP_PLACE}), (?P<others>{_PICKUP_OTHER}) "
+    rf"(?:odbierają je )?(?P<unreserved>{_PICKUP_PLACE})[.!] "
+    rf"(?P<hours>odbiór od {_PICKUP_TIME} do {_PICKUP_TIME})[.!]?",
+    re.I,
+)
+_PICKUP_FORM = (
+    r"(?:[.] (?:podaj|powtórz) całą informację"
+    r"(?: (?:nadal )?bez dopisków)?)?[.!]?"
+)
+_PICKUP_UPDATE = re.compile(
+    rf"(?:tylko )?dla (?P<group>osób z rezerwacją|osób bez rezerwacji|pozostałych) "
+    rf"nowe miejsce(?: odbioru)? to (?P<place>{_PICKUP_WORDS}){_PICKUP_FORM}",
+    re.I,
+)
+_PICKUP_RELOCATE = re.compile(
+    rf"(?P<group>osoby z rezerwacją|{_PICKUP_OTHER}) "
+    rf"(?:odbierają teraz|teraz odbierają) (?P<place>{_PICKUP_PLACE}){_PICKUP_FORM}",
+    re.I,
+)
+
+
+_PICKUP_UNCERTAIN = re.compile(
+    r"\b(?:albo|lub|jeżeli|jeśli|chyba|może|nie|prawdopodobnie)\b", re.I
+)
+
+
+def _pickup_source(request: str) -> re.Match[str] | None:
+    if not _PICKUP_COMMAND.fullmatch(without_quotes(request).strip()):
+        return None
+    source = single_quoted_operand(request)
+    return _PICKUP_SOURCE.fullmatch(source.strip()) if source else None
+
+
+def _pickup_edit(text: str) -> tuple[bool, str] | None:
+    change = _PICKUP_UPDATE.fullmatch(text) or _PICKUP_RELOCATE.fullmatch(text)
+    if change is None or _PICKUP_UNCERTAIN.search(change["place"]):
+        return None
+    return change["group"].casefold().endswith("z rezerwacją"), change["place"]
+
+
+def _pickup_clause(group: str, items: str, location: str) -> str:
+    if re.match(rf"{_PICKUP_PREPOSITION} ", location, re.I):
+        return f"{group} odbierają {items} {location}."
+    return f"{group} odbierają {items} — miejsce odbioru to {location}."
+
+
+def _pickup_reply(current: str, history: Sequence[HistoryMessage]) -> str | None:
+    if original := _pickup_source(current):
+        return original[0].rstrip(".!") + "."
+    edit = _pickup_edit(current)
+    if edit is None:
+        return None
+    reserved_group, place = edit
+    updates = {reserved_group: place}
+    for turn in reversed(history):
+        if turn.role != "user":
+            continue
+        text = " ".join(turn.content.split())
+        if notice := _pickup_source(text):
+            reserved = _pickup_clause(
+                "Osoby z rezerwacją",
+                notice["items"],
+                updates.get(True, notice["reserved"]),
+            )
+            unreserved = _pickup_clause(
+                notice["others"][0].upper() + notice["others"][1:],
+                notice["items"],
+                updates.get(False, notice["unreserved"]),
+            )
+            hours = notice["hours"][0].upper() + notice["hours"][1:]
+            return f"{reserved} {unreserved} {hours}."
+        if previous := _pickup_edit(text):
+            updates.setdefault(*previous)
+            continue
+        return None
+    return None
+
+
 def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve only recognized edits, using adjacent user turns as evidence."""
     current = " ".join(text.split())
@@ -647,6 +736,7 @@ def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     origin = _prior_user(history, 2) if prior else ""
     return (
         _quoted_rules_reply(current, history)
+        or _pickup_reply(current, history)
         or _access_rules_reply(current, prior, origin)
         or _replacement_after_removal(current, prior)
         or _courier_reply(current, prior)

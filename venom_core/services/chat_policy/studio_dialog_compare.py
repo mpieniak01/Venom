@@ -497,6 +497,97 @@ _LIST_ONLY = re.compile(
 )
 
 
+_LIST_LABEL = r"[A-Z]"
+_TABLE_NAME = r"(?:stolik|stół|stanowisko|blat)"
+_TABLE_LISTS = re.compile(
+    rf"na {_TABLE_NAME} (?P<first>{_LIST_LABEL}) (?:trzeba przygotować|przygotuj) "
+    rf"(?P<left>{_ITEMS}), (?:a )?na (?:{_TABLE_NAME} )?(?P<second>{_LIST_LABEL}) "
+    rf"(?P<right>{_ITEMS})[.!] "
+    r"(?:które elementy są wspólne|co jest wspólne)\?",
+    re.I,
+)
+_TABLE_REMOVE = re.compile(
+    rf"z listy (?P<label>{_LIST_LABEL}) (?:usuwamy|wykreślamy) (?P<item>{_LIST_ITEM})",
+    re.I,
+)
+_TABLE_ADD = re.compile(
+    rf"do (?:listy )?(?P<label>{_LIST_LABEL}) (?:dopisujemy|dodajemy) (?P<item>{_LIST_ITEM})",
+    re.I,
+)
+_TABLE_UPDATE = re.compile(
+    r"(?P<operations>[^.!?\n]{10,140})[.!] "
+    r"(?:jakie teraz są wspólne|które elementy są teraz wspólne|co jest teraz wspólne)\?",
+    re.I,
+)
+_TABLE_ONLY = re.compile(
+    rf"(?:które pozostają|co zostaje) (?:tylko|wyłącznie) dla (?P<label>{_LIST_LABEL})\?",
+    re.I,
+)
+
+
+def _item_lists(initial: re.Match[str]) -> dict[str, dict[str, str]]:
+    return {
+        initial[group].casefold(): {
+            item.casefold(): item
+            for item in re.split(", | i ", initial[scope], flags=re.I)
+        }
+        for group, scope in (("first", "left"), ("second", "right"))
+    }
+
+
+def _apply_table_update(
+    lists: dict[str, dict[str, str]], update: re.Match[str]
+) -> bool:
+    clauses = update["operations"].split(", ", 1)
+    if len(clauses) != 2:
+        return False
+    remove = _TABLE_REMOVE.fullmatch(clauses[0])
+    add = _TABLE_ADD.fullmatch(clauses[1].removeprefix("a "))
+    if remove is None or add is None:
+        return False
+    source, target = (lists.get(edit["label"].casefold()) for edit in (remove, add))
+    removed = remove["item"].casefold()
+    if source is None or target is None or removed not in source:
+        return False
+    del source[removed]
+    target.setdefault(add["item"].casefold(), add["item"])
+    return True
+
+
+def _table_comparison(current: str, users: Sequence[str]) -> str | None:
+    source = _TABLE_LISTS.fullmatch(current)
+    exclusive = _TABLE_ONLY.fullmatch(current)
+    update = _TABLE_UPDATE.fullmatch(current)
+    if update and users:
+        source = _TABLE_LISTS.fullmatch(users[-1])
+    elif exclusive and len(users) >= 2:
+        source = _TABLE_LISTS.fullmatch(users[-2])
+        update = _TABLE_UPDATE.fullmatch(users[-1])
+        if update is None:
+            return None
+    if source is None or source["first"].casefold() == source["second"].casefold():
+        return None
+    lists = _item_lists(source)
+    if update and not _apply_table_update(lists, update):
+        return None
+    first, second = lists.values()
+    if exclusive:
+        selected = lists.get(exclusive["label"].casefold())
+        if selected is None:
+            return None
+        other = second if selected is first else first
+        items = [value for key, value in selected.items() if key not in other]
+        prefix = f"Tylko dla {exclusive['label']}"
+    else:
+        items = [value for key, value in first.items() if key in second]
+        prefix = "Dla obu list"
+    return (
+        f"{prefix} przygotuj: {', '.join(items)}."
+        if items
+        else f"{prefix}: brak pozycji."
+    )
+
+
 def _list_comparison(current: str, users: Sequence[str]) -> str | None:
     initial = _DAY_LISTS.fullmatch(current)
     if initial:
@@ -517,13 +608,7 @@ def _list_comparison(current: str, users: Sequence[str]) -> str | None:
             return None
     if initial is None or initial["first"].casefold() == initial["second"].casefold():
         return None
-    lists = {
-        initial[day].casefold(): {
-            item.casefold(): item
-            for item in re.split(", | i ", initial[scope], flags=re.I)
-        }
-        for day, scope in (("first", "left"), ("second", "right"))
-    }
+    lists = _item_lists(initial)
     if addition:
         selected = lists.get(addition["day"].casefold())
         if selected is None:
@@ -552,6 +637,7 @@ def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | Non
     previous = _last_user(history)
     if len(current) > 600:
         return None
+    users = [turn.content for turn in history[-4:] if turn.role == "user"]
     return (
         _support_reply(current, previous)
         or _fits_reply(current, previous)
@@ -559,7 +645,6 @@ def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | Non
         or _definition_reply(current, previous)
         or _shared_reference_reply(current, previous)
         or _carry_reply(current, previous)
-        or _list_comparison(
-            current, [turn.content for turn in history[-4:] if turn.role == "user"]
-        )
+        or _list_comparison(current, users)
+        or _table_comparison(current, users)
     )

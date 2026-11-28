@@ -760,3 +760,168 @@ def test_replacement_is_preserved_without_implying_successful_review():
         )
         is None
     )
+
+
+def test_accepted_task_preserves_named_observation_scope():
+    task = (
+        "Poprosiłem o rozłożenie trzech osłon. W rejestrze zadanie jest przyjęte, "
+        "brak wpisu o wykonaniu. Zapisz status."
+    )
+    followup = (
+        "Lena widziała dwie rozłożone, trzeciej nie sprawdziła. "
+        "Podaj aktualny stan z rozróżnieniem źródła."
+    )
+    assert studio_followup(task, []) == (
+        "Przyjęto zadanie obejmujące rozłożenie trzech osłon. Wykonania nie potwierdzono."
+    )
+    assert studio_followup(followup, _history(task)) == (
+        "Lena widziała rozłożone 2 z 3 osłon. Trzeciej pozycji nie sprawdziła."
+    )
+    assert (
+        studio_followup(followup, _history(task.replace("trzech", "czterech"))) is None
+    )
+    visit = (
+        "Leszek podał, że był w hali wschodniej o 16:39, ale nie sprawdził mocowania. "
+        "Jaki jest stan?"
+    )
+    assert "Leszek podał, że był w hali wschodniej o 16:39." in studio_followup(
+        visit, []
+    )
+    assert "Leszek nie sprawdził mocowania." in studio_followup(visit, [])
+
+
+def test_dispatch_does_not_use_approval_as_evidence_of_shipment():
+    requests = (
+        "Wniosek o folder F jest zatwierdzony, a o folder G dopiero złożony. "
+        "Żadnego folderu nie wysłano. Zapisz stan obu."
+    )
+    update = (
+        "Także wniosek G zatwierdzono. Do nadania trafił tylko F, co potwierdza "
+        "wpis w księdze wysyłek. Podaj stan obu."
+    )
+    original = studio_followup(requests, [])
+    assert "Folder F jest niewysłany" in original
+    assert "Folder G też jest niewysłany" in original
+    assert "wniosek złożono" in original
+    assert studio_followup(update, _history(requests)) == (
+        "Folder F nadano, co potwierdza wpis w księdze wysyłek. "
+        "Folder G: wniosek zaakceptowany, przesyłki nie nadano."
+    )
+    assert (
+        studio_followup(update.replace("tylko F", "tylko H"), _history(requests))
+        is None
+    )
+    assert (
+        studio_followup(requests.replace("Żadnego folderu", "Żadnego kompletu"), [])
+        is None
+    )
+
+
+@pytest.mark.parametrize(("count", "discrepancy"), [("12", False), ("11", True)])
+def test_label_count_separates_declared_checked_and_approved(count, discrepancy):
+    label = (
+        "Etykieta na paczce pokazuje „13”. Warunek przyjęcia to policzenie "
+        "12 całych wkładek i podpis kontrolerki. Weryfikacji jeszcze nie wykonano. "
+        "Co jest potwierdzone?"
+    )
+    result = (
+        f"Policzono {count} całych wkładek, ale kontrolerka podpisze później. "
+        "Czy warunek przyjęcia jest zamknięty?"
+    )
+    assert studio_followup(label, []) == (
+        "Etykieta na paczce podaje 13. Do przyjęcia trzeba jeszcze sprawdzić "
+        "12 całych wkładek i uzyskać podpis kontrolerki."
+    )
+    status = studio_followup(result, _history(label))
+    assert f"Policzono {count}" in status
+    assert ("Wymagano 12" in status) is discrepancy
+    assert "Podpis kontrolerki nadal jest oczekiwany." in status
+    assert status.endswith("Przyjęcie pozostaje otwarte.")
+    assert (
+        studio_followup(result.replace("całych", "czystych"), _history(label)) is None
+    )
+
+
+def test_access_test_report_retains_reporter_without_claiming_activation():
+    pending = (
+        "Dostęp do biura po 15:00 ma zostać włączony wyłącznie po przetestowaniu zamka. "
+        "Zamek zainstalowano, ale testu nie zapisano. Jak opisać stan?"
+    )
+    checked = (
+        "Administratorka podała, że test nie przeszedł o 13:37. Nadal nie mam "
+        "informacji, czy rzeczywiście włączono dostęp. Zapisz oba stany."
+    )
+    assert studio_followup(pending, []).startswith(
+        "Zamek zainstalowano. Brak potwierdzenia testu zamka."
+    )
+    assert studio_followup(checked, _history(pending)) == (
+        "Administratorka podała, że test zamka nie przeszedł o 13:37. "
+        "Dostęp do biura po 15:00: włączenie nadal niepotwierdzone."
+    )
+    assert (
+        studio_followup(checked, _history(pending.replace("Zamek", "Czytnik"))) is None
+    )
+
+
+def test_place_only_in_published_record_does_not_publish_date_from_a_draft():
+    approval = (
+        "Do ogłoszenia zaakceptowano miejsce Sala Prób i datę 21 lutego. "
+        "Szkic podaje adres, bez daty. Co wiemy o akceptacji i publikacji?"
+    )
+    published = (
+        "W opublikowanym tekście widzę wyłącznie Sala Prób. "
+        "Jak w jednym zdaniu podać stan zaakceptowanej daty?"
+    )
+    assert studio_followup(approval, []).endswith(
+        "Szkic zawiera tylko miejsce i nie potwierdza publikacji."
+    )
+    assert studio_followup(published, _history(approval)) == (
+        "Datę 21 lutego zaakceptowano, ale nie ma jej w opublikowanym tekście."
+    )
+    assert (
+        studio_followup(published.replace("Sala Prób", "Sala A"), _history(approval))
+        is None
+    )
+
+
+def test_updated_measurement_counts_remain_tied_to_the_batch():
+    before = (
+        "Odłożono zadanie ponownego ważenia, ale cztery z pięciu worków już zważono. "
+        "Co jest wstrzymane i co pozostaje udokumentowane?"
+    )
+    reissue = (
+        "Ponownie zlecono zważenie piątego worka. Ważenia jeszcze nie wykonano. "
+        "Popraw status bez kasowania czterech pomiarów."
+    )
+    assert studio_followup(before, []) == (
+        "Dalsze ważenie wstrzymano. Udokumentowane pozostaje zważenie 4 z 5 worków."
+    )
+    assert studio_followup(reissue, _history(before)) == (
+        "Ponownie zlecono zważenie piątego worka, ale ważenia jeszcze nie wykonano. "
+        "Udokumentowane pozostaje zważenie 4 z 5 worków."
+    )
+    assert (
+        studio_followup(reissue.replace("worka", "kartonu"), _history(before)) is None
+    )
+
+
+def test_documented_correction_still_requires_the_named_review():
+    rejected = (
+        "Próbkę farby inspektor cofnął z powodu błędnego opisu odcienia. "
+        "Dopiero po ponownej kontroli może otrzymać „bez uwag”. Czy to już ten etap?"
+    )
+    correction = (
+        "Opis odcienia poprawiono i odnotowano to w rejestrze. "
+        "Inspektor nie wykonał ponownej kontroli. Czy można zapisać „bez uwag”?"
+    )
+    assert "inspektor cofnął z powodu błędnego opisu odcienia." in studio_followup(
+        rejected, []
+    )
+    assert studio_followup(correction, _history(rejected)) == (
+        "Zmieniono opis odcienia i odnotowano zmianę w rejestrze. "
+        "Inspektor nie wykonał ponownej kontroli. Status „bez uwag” nadal czeka na jej wynik."
+    )
+    assert (
+        studio_followup(correction.replace("odcienia", "formatu"), _history(rejected))
+        is None
+    )

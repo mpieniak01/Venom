@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
+from venom_core.services.chat_policy.studio_evidence_status import evidence_status
 from venom_core.services.chat_policy.studio_status_transitions import (
     status_transition_reply,
 )
@@ -680,6 +681,57 @@ _ACCEPTANCE_SIGNATURE = re.compile(
 )
 
 
+_LABEL_CHECK = re.compile(
+    r"etykieta na (?P<container>kartonie|pudełku|opakowaniu|paczce) "
+    r"(?:mówi|podaje|pokazuje) [„\"](?P<declared>[1-9][0-9]{0,3})[”\"][.!] "
+    rf"warunek przyjęcia to (?:policzenie|sprawdzenie) (?P<count>{_REQUIRED_COUNT}) "
+    r"(?P<items>(?:czystych|całych|zgodnych) [^\W\d_]+) i podpis "
+    r"(?P<authority>kontrolera|kontrolerki|inspektora|inspektorki)[.!] "
+    r"weryfikacji jeszcze nie (?:zrobiono|wykonano)[.!] co jest potwierdzone\?",
+    re.I,
+)
+_LABEL_CHECK_PENDING = re.compile(
+    rf"(?:policzono|sprawdzono) (?P<count>{_VERIFIED_COUNT}) "
+    r"(?P<items>(?:czystych|całych|zgodnych) [^\W\d_]+), (?:lecz|ale) "
+    r"(?P<authority>kontroler(?:ka)?|inspektor(?:ka)?) podpisze później[.!] "
+    r"czy warunek przyjęcia jest zamknięty\?",
+    re.I,
+)
+_LABEL_CHECK_AUTHORITY = {
+    "kontrolera": "kontroler",
+    "kontrolerki": "kontrolerka",
+    "inspektora": "inspektor",
+    "inspektorki": "inspektorka",
+}
+
+
+def _label_check_status(text: str, previous: str) -> str | None:
+    if source := _LABEL_CHECK.fullmatch(text):
+        required = _required_count(source["count"])
+        return (
+            f"Etykieta na {source['container']} podaje {source['declared']}. "
+            f"Do przyjęcia trzeba jeszcze sprawdzić {required} {source['items']} "
+            f"i uzyskać podpis {source['authority']}."
+        )
+    if (
+        (source := _LABEL_CHECK.fullmatch(previous))
+        and (checked := _LABEL_CHECK_PENDING.fullmatch(text))
+        and checked["items"].casefold() == source["items"].casefold()
+        and checked["authority"].casefold()
+        == _LABEL_CHECK_AUTHORITY[source["authority"].casefold()]
+    ):
+        expected = _required_count(source["count"])
+        count = _recorded_count(checked["count"])
+        status = f"Policzono {count} {checked['items']}."
+        if count != expected:
+            status += f" Wymagano {expected}."
+        return (
+            f"{status} Podpis {source['authority']} nadal jest oczekiwany. "
+            "Przyjęcie pozostaje otwarte."
+        )
+    return None
+
+
 def _required_count(text: str) -> int:
     return int(text) if text.isdecimal() else _EXPECTED_FORMS[text.casefold()]
 
@@ -839,6 +891,8 @@ def _recorded_operational_status(
 
 def studio_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Report explicit user evidence and keep planned and performed actions separate."""
+    earlier = _last_users(history, 2) or _last_users(history, 1)
+    previous = earlier[-1] if earlier else ""
     return (
         _pending_log_field(text)
         or _explicit_pending_status(text)
@@ -847,7 +901,7 @@ def studio_status(text: str, history: Sequence[HistoryMessage]) -> str | None:
         or _recorded_operational_status(text, history)
         or _request_status(text, history)
         or _pickup_status(text, history)
-        or status_transition_reply(
-            text, _last_users(history, 2) or _last_users(history, 1)
-        )
+        or _label_check_status(text, previous)
+        or evidence_status(text, earlier)
+        or status_transition_reply(text, earlier)
     )

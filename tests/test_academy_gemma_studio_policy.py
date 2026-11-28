@@ -775,3 +775,360 @@ def test_studio_rejects_mismatched_source_edits():
         studio_revision("Zamień recepcję na foyer. Podaj cały akapit.", notice[:2])
         is None
     )
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        [
+            (
+                "Do remontu trzeba 6 dłuższych listew po 31 cm i 3 krótsze po 11,5 cm. Ile cm potrzeba "
+                "łącznie?",
+                "6 × 31 cm + 3 × 11,5 cm = 220,5 cm.",
+                "220.5",
+                "cm",
+            ),
+            (
+                "Krótsze mają teraz po 13 cm, reszta bez zmian. Mam już 1,8 m. Ile cm brakuje?",
+                "Brakuje 45 cm (6 × 31 cm + 3 × 13 cm − 180 cm).",
+                "45",
+                "cm",
+            ),
+        ],
+        [
+            (
+                "Opłaty: 7 skrytek ma po 12 zł, 4 ma po 7 zł. Ile zapłacę tylko za tańsze?",
+                "4 × 7 zł = 28 zł.",
+                "28",
+                "zł",
+            ),
+            (
+                "Opłata za droższą skrytkę spada z 12 zł do 10 zł. Jaka jest suma obu stawek?",
+                "Razem 98 zł: (4 × 7 zł) + (7 × 10 zł).",
+                "98",
+                "zł",
+            ),
+        ],
+        [
+            (
+                "Na liście wymieniono cztery tabliczki: Chmura o szerokości 0,51 m, Wrzos 505 mm, Jantar "
+                "52 cm i Topaz 50 cm. Która jest najwęższa?",
+                "Najmniejsza szerokość: Topaz, 50 cm. Porównanie: Chmura 51 cm, Wrzos 50,5 cm, Jantar 52 "
+                "cm, Topaz 50 cm.",
+                "50",
+                "cm",
+            ),
+            (
+                "Topaz wymieniono na tabliczkę o szerokości 0,55 m. Która jest teraz najwęższa?",
+                "Najmniejsza szerokość: Wrzos, 50,5 cm. Porównanie: Chmura 51 cm, Wrzos 50,5 cm, Jantar "
+                "52 cm, Topaz 55 cm.",
+                "50.5",
+                "cm",
+            ),
+        ],
+        [
+            (
+                "Cztery paczki ważą 270 g, 0,62 kg, 305 g i 760 g. Pusty pojemnik waży 115 g. Ile ważą "
+                "same paczki, w gramach?",
+                "270 g + 620 g + 305 g + 760 g = 1955 g.",
+                "1955",
+                "g",
+            ),
+            (
+                "Trzecia paczka waży teraz 0,4 kg. Podaj masę paczek razem z pojemnikiem, w gramach.",
+                "270 g + 620 g + 400 g + 760 g + 115 g = 2165 g.",
+                "2165",
+                "g",
+            ),
+        ],
+        [
+            (
+                "Pięć wyników temperatury: -4, 5,5, 6, 10 i 2. Podaj medianę.",
+                "Mediana: 5,5.",
+                "5.5",
+                None,
+            ),
+            (
+                "Wynik 2 był duplikatem i znika z listy. Oblicz medianę.",
+                "Środkowe wartości: 5,5 i 6. Mediana: 5,75.",
+                "5.75",
+                None,
+            ),
+        ],
+        [
+            (
+                "Zakres od 0,45 m bez punktu granicznego do 56 cm włącznie. Próbki: A 450 mm, B 0,46 m, "
+                "C 56 cm, D 570 mm. Wskaż pasujące próbki.",
+                "Zakres spełniają: B, C (2 szt.).",
+                "2",
+                "szt.",
+            ),
+            (
+                "Dolna granica włącznie, górna bez punktu granicznego. Wskaż ponownie.",
+                "Zakres spełniają: A, B (2 szt.).",
+                "2",
+                "szt.",
+            ),
+        ],
+        [
+            (
+                "Zużyto 9, 12 i 15 ml lakieru w trzech próbach. Pomiń niewykonaną czwartą próbę i oblicz "
+                "średnią.",
+                "Średnia z 3 pomiarów: 12 ml ((9 + 12 + 15) ÷ 3).",
+                "12",
+                "ml",
+            ),
+            (
+                "Zmniejsz wartość drugiego odczytu o 0,004 l. Oblicz średnią do dwóch miejsc po "
+                "przecinku.",
+                "Średnia z 3 pomiarów: 10,67 ml ((9 + 8 + 15) ÷ 3).",
+                "10.66666666666666666666666667",
+                "ml",
+            ),
+        ],
+        [
+            (
+                "W koszu jest 4 opakowania niebieskich po 9 i 3 opakowania białych po 10. Ile "
+                "niebieskich sztuk?",
+                "Niebieskich: 36 szt.",
+                "36",
+                "szt.",
+            ),
+            (
+                "Ostatnie białe opakowanie ma tylko 7. Ile sztuk razem?",
+                "Razem 63 szt. (niebieskich: 36, białych: 27).",
+                "63",
+                "szt.",
+            ),
+            (
+                "Oddaliśmy 6 niebieskich. Podaj osobno, ile zostało obu kolorów.",
+                "Pozostałe: niebieskie 30 szt., białe 27 szt.",
+                "30",
+                "szt.",
+            ),
+        ],
+    ],
+    ids=(
+        "length",
+        "relative-rate",
+        "width",
+        "mass",
+        "median",
+        "interval",
+        "mean",
+        "packs",
+    ),
+)
+def test_studio_binds_operands_and_publishes_calculator_result(
+    studio_chat, monkeypatch, steps
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, replies = studio_chat
+    native_history = []
+    for prompt, expected_answer, amount, unit in steps:
+        history = [HistoryMessage(**message) for message in native_history]
+        plan = plan_studio_calculation(prompt, history)
+        assert plan is not None
+        receipt = plan.publish()
+        assert receipt["response_source"] == "calculator"
+        assert receipt["tool_result"] == {
+            "tool": "calculator",
+            "status": "succeeded",
+            "value": amount,
+            "unit": unit,
+            "recomputed": False,
+        }
+        assert chat(prompt, native_history, verify_history=True) == expected_answer
+        native_history.extend(
+            [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": "Wcześniejszy wynik to 999."},
+            ]
+        )
+    assert not sent and not replies
+
+
+@pytest.mark.parametrize(
+    ("source", "current"),
+    [
+        (
+            (),
+            "Opłaty: 7 skrytek ma po 12 zł, 4 ma po 12 zł. Ile zapłacę tylko za tańsze?",
+        ),
+        (
+            (),
+            "Opłaty: 7 skrytek ma po 12 zł, 4 półki ma po 7 zł. Ile zapłacę tylko za tańsze?",
+        ),
+        (
+            (
+                "Opłaty: 7 skrytek ma po 12 zł, 4 ma po 7 zł. Ile zapłacę tylko za tańsze?",
+            ),
+            "Opłata za droższą skrytkę spada z 11 zł do 10 zł. Jaka jest suma obu stawek?",
+        ),
+        (
+            (
+                "Opłaty: 7 skrytek ma po 12 zł, 4 ma po 7 zł. Ile zapłacę tylko za tańsze?",
+            ),
+            "Opłata za droższą półkę spada z 12 zł do 10 zł. Jaka jest suma obu stawek?",
+        ),
+        (
+            (
+                "Opłaty: 7 skrytek ma po 12 zł, 4 ma po 7 zł. Ile zapłacę tylko za tańsze?",
+            ),
+            "Opłata za droższą skrytkę spada z 12 zł do 13 zł. Jaka jest suma obu stawek?",
+        ),
+        (
+            (
+                "Opłaty: 7 skrytek ma po 12 zł, 4 ma po 7 zł. Ile zapłacę tylko za tańsze?",
+            ),
+            "Opłata za tańszą skrytkę rośnie z 7 zł do 6 zł. Jaka jest suma obu stawek?",
+        ),
+        (
+            (
+                "Opłaty: 7 skrytek ma po 12 zł, 4 ma po 7 zł. Ile zapłacę tylko za tańsze?",
+            ),
+            "Kaucja za droższą skrytkę spada z 12 zł do 10 zł. Jaka jest suma obu stawek?",
+        ),
+        (
+            (),
+            "Opłaty: 7 skrytek ma po 12 zł, 4 ma po 7 zł. Ile zapłacę za jedną wybraną?",
+        ),
+        (
+            (),
+            "Na liście są trzy rury: M 35 cm, N 36 cm i O 47 cm. Która jest najwęższa?",
+        ),
+        (
+            (
+                "Na liście wymieniono cztery tabliczki: Chmura o szerokości 0,51 m, Wrzos 505 mm, Jantar "
+                "52 cm i Topaz 50 cm. Która jest najwęższa?",
+            ),
+            "Amber wymieniono na tabliczkę o szerokości 55 cm. Która jest teraz najwęższa?",
+        ),
+        (
+            (),
+            "Trzy paczki ważą 270 g, 0,62 kg, 305 g i 760 g. Pusty pojemnik waży 115 g. Ile ważą same "
+            "paczki, w gramach?",
+        ),
+        (
+            (
+                "Cztery paczki ważą 270 g, 0,62 kg, 305 g i 760 g. Pusty pojemnik waży 115 g. Ile ważą "
+                "same paczki, w gramach?",
+            ),
+            "Piąta paczka waży teraz 320 g. Podaj masę paczek razem z pojemnikiem, w gramach.",
+        ),
+        (
+            (
+                "Cztery paczki ważą 270 g, 0,62 kg, 305 g i 760 g. Pusty pojemnik waży 115 g. Ile ważą "
+                "same paczki, w gramach?",
+            ),
+            "Trzecia paczka waży teraz 320 g. Podaj masę paczek razem z kufrem, w gramach.",
+        ),
+        ((), "Cztery wyniki temperatury: -4, 5,5, 6, 10 i 2. Podaj medianę."),
+        (
+            ("Pięć wyników temperatury: -4, 5,5, 6, 10 i 6. Podaj medianę.",),
+            "Wynik 6 był duplikatem i znika z listy. Oblicz medianę.",
+        ),
+        (
+            ("Pięć wyników temperatury: -4, 5,5, 6, 10 i 2. Podaj medianę.",),
+            "Wynik 8 był duplikatem i znika z listy. Oblicz medianę.",
+        ),
+        (
+            ("Pięć wyników temperatury: -4, 5,5, 6, 10 i 2. Podaj medianę.",),
+            "Zastosuj drugi algorytm i nie podawaj wyniku.",
+        ),
+        (
+            (),
+            "Zakres od 0,45 m bez punktu granicznego do 56 cm. Próbki: A 450 mm, B 0,46 m, C 56 cm, D "
+            "570 mm. Wskaż pasujące próbki.",
+        ),
+        (
+            (),
+            "Zakres od 0,45 m bez punktu granicznego do mniej niż 56 cm włącznie. Próbki: A 450 mm, B "
+            "0,46 m, C 56 cm, D 570 mm. Wskaż pasujące próbki.",
+        ),
+        (
+            (),
+            "Zakres od 0,6 m bez punktu granicznego do 56 cm włącznie. Próbki: A 450 mm, B 0,46 m, C 56 "
+            "cm, D 570 mm. Wskaż pasujące próbki.",
+        ),
+        (
+            (),
+            "Zakres od 0,45 m bez punktu granicznego do 56 cm włącznie. Próbki: A 450 mm, B 0,46 m, A "
+            "56 cm, D 570 mm. Wskaż pasujące próbki.",
+        ),
+        (
+            (),
+            "Zakres od 0,45 m bez punktu granicznego do 56 cm włącznie. Próbki: A 450 mm, B 0,46 m, C o "
+            "nieznanej szerokości, D 570 mm. Wskaż pasujące próbki.",
+        ),
+        (
+            (
+                "Zakres od 0,45 m bez punktu granicznego do 56 cm włącznie. Próbki: A 450 mm, B 0,46 m, C "
+                "56 cm, D 570 mm. Wskaż pasujące próbki.",
+            ),
+            "Dolna granica włącznie, górna do wartości opisanej wcześniej. Wskaż ponownie.",
+        ),
+        (
+            (),
+            "Zużyto 9, 12 i 15 ml lakieru w czterech próbach. Pomiń niewykonaną czwartą próbę i oblicz "
+            "średnią.",
+        ),
+        (
+            (
+                "Zużyto 9, 12 i 15 ml lakieru w trzech próbach. Pomiń niewykonaną czwartą próbę i oblicz "
+                "średnią.",
+            ),
+            "Zwiększ wartość drugiego odczytu o 2 g. Oblicz średnią do dwóch miejsc.",
+        ),
+        (
+            (
+                "Zużyto 9, 12 i 15 ml lakieru w trzech próbach. Pomiń niewykonaną czwartą próbę i oblicz "
+                "średnią.",
+            ),
+            "Zmniejsz wartość drugiego odczytu o 13 ml. Oblicz średnią.",
+        ),
+        (
+            (
+                "Zużyto 9, 12 i 15 ml lakieru w trzech próbach. Pomiń niewykonaną czwartą próbę i oblicz "
+                "średnią.",
+            ),
+            "Zmniejsz wartość czwartego odczytu o 3 ml. Oblicz średnią.",
+        ),
+        (
+            (
+                "Zużyto 9, 12 i 15 ml lakieru w trzech próbach. Pomiń niewykonaną czwartą próbę i oblicz "
+                "średnią.",
+            ),
+            "Podaj średnią do czterech miejsc po przecinku.",
+        ),
+        (
+            (
+                "W koszu jest 4 opakowania niebieskich po 9 i 3 opakowania białych po 10. Ile niebieskich "
+                "sztuk?",
+            ),
+            "Ostatnie czerwone opakowanie ma tylko 7. Ile sztuk razem?",
+        ),
+        (
+            (
+                "W koszu jest 4 opakowania niebieskich po 9 i 3 opakowania białych po 10. Ile niebieskich "
+                "sztuk?",
+            ),
+            "Ostatnie białe opakowanie ma tylko 11. Ile sztuk razem?",
+        ),
+        (
+            (
+                "W koszu jest 4 opakowania niebieskich po 9 i 3 opakowania białych po 10. Ile niebieskich "
+                "sztuk?",
+                "Ostatnie białe opakowanie ma tylko 7. Ile sztuk razem?",
+            ),
+            "Oddaliśmy 37 niebieskich. Podaj osobno, ile zostało obu kolorów.",
+        ),
+    ],
+)
+def test_studio_calculator_defers_ambiguous_or_inconsistent_corrections(
+    source, current
+):
+    history = [HistoryMessage(role="user", content=prompt) for prompt in source]
+    assert plan_studio_calculation(current, history) is None

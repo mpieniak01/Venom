@@ -64,11 +64,13 @@ _LENGTH_GAP = re.compile(
     r"\bile\s+(?:dokładnie\s+|jeszcze\s+)?(?:(?:cm|centymetr\w*)\s+)?brakuje\b", re.I
 )
 _LENGTH_CHANGE = re.compile(
-    rf"\bkażd[ay]\s+(?P<label>krótk\w*|dług\w*)\s+(?:ma(?:\s+mieć)?|zmieniam\s+na)\s+{_LENGTH}",
+    rf"\b(?P<each>każd[ay]\s+)?(?P<label>krót(?:k|sz)\w*|dłu(?:g|ż)\w*)\s+"
+    rf"(?(each)(?:ma(?:\s+mieć)?|zmieniam\s+na)|mają\s+(?:jednak\s+|teraz\s+)?po)\s+{_LENGTH}",
     re.I,
 )
 _AVAILABLE = re.compile(
-    rf"\b(?:odciął[ae]m|odcięt[eo]|odmierzy[łl][ae]m)\s+{_LENGTH}", re.I
+    rf"(?:\b(?:odciął[ae]m|odcięt[eo]|odmierzy[łl][ae]m)|(?:^|[.!]\s+)mam[y]?\s+już)\s+{_LENGTH}",
+    re.I,
 )
 
 _RATE_NAME = r"krajow\w*|zagraniczn\w*|normaln\w*|zwykł\w*|ulgow\w*"
@@ -93,6 +95,39 @@ _RATE_TOTAL = re.compile(
     re.I,
 )
 
+_RATE_KINDS = {
+    "kaucje": "kaucja",
+    "opłaty": "opłata",
+    "ceny": "cena",
+    "stawki": "stawka",
+}
+_RATE_GROUP_ACCUSATIVES = {
+    "przegród": "przegrodę",
+    "przegrody": "przegrodę",
+    "skrytek": "skrytkę",
+    "skrytki": "skrytkę",
+    "szafek": "szafkę",
+    "szafki": "szafkę",
+}
+_RELATIVE_RATE = re.compile(
+    rf"(?P<kind>{'|'.join(_RATE_KINDS)}): (?P<a_count>{_COUNT}) (?P<a_group>{_WORD})"
+    rf" (?:ma|kosztuje) po (?P<a>{_NUMBER}) zł, (?P<b_count>{_COUNT})"
+    rf"(?: (?P<b_group>{_WORD}))? (?:ma|kosztuje) po (?P<b>{_NUMBER}) zł[.!] (?P<query>[^.!?]+)\?",
+    re.I,
+)
+_RELATIVE_RATE_PICK = re.compile(
+    r"(?:jaka jest suma [^.!?]{2,30} |ile (?:zapłacimy|zapłacę) )?"
+    r"tylko za (?P<range>droższe|tańsze)",
+    re.I,
+)
+_RELATIVE_RATE_UPDATE = re.compile(
+    rf"(?P<kind>{'|'.join(_RATE_KINDS.values())}) za (?P<range>tańszą|droższą) (?P<group>{_WORD}) "
+    rf"(?P<direction>spada|rośnie|zmienia się) z (?P<old>{_NUMBER}) zł do (?P<new>{_NUMBER}) zł[.!] "
+    r"(?:ile zapłacimy za wszystkie razem|jaka jest suma obu stawek)\?",
+    re.I,
+)
+
+
 _MASS = rf"(?P<value>{_NUMBER})\s*(?P<unit>kg|g)\b"
 _MASS_VALUE = re.compile(rf"\b{_MASS}", re.I)
 _MASS_SCOPE = re.compile(r"\b(?:obciążniki|odważniki)\b", re.I)
@@ -115,12 +150,42 @@ _MASS_WITHOUT_CASE = re.compile(
 )
 _MASS_CASE = re.compile(r"\b(?:pokrowiec|etui|opakowanie)$", re.I)
 
+_MASS_ITEMS = {
+    "worki": ("worek", "worków"),
+    "paczki": ("paczka", "paczek"),
+    "kartony": ("karton", "kartonów"),
+}
+_MASS_CONTAINERS = {
+    "kufer": "kufrem",
+    "kosz": "koszem",
+    "pojemnik": "pojemnikiem",
+    "karton": "kartonem",
+    "opakowanie": "opakowaniem",
+}
+_MASS_LIST = re.compile(
+    rf"(?P<count>{_COUNT}) (?P<items>{'|'.join(_MASS_ITEMS)}) ważą "
+    rf"(?P<weights>{_NUMBER}\s*(?:kg|g)(?:, {_NUMBER}\s*(?:kg|g)){{0,5}} i {_NUMBER}\s*(?:kg|g))[.!] "
+    rf"pust[ye] (?P<container>{'|'.join(_MASS_CONTAINERS)}) waży {_MASS}[.!] "
+    rf"ile ważą same (?P=items)(?: łącznie)?,? w gramach\?",
+    re.I,
+)
+_MASS_ORDINAL_UPDATE = re.compile(
+    rf"(?P<ordinal>pierwsz[ya]|drug[ia]|trzeci(?:a)?|czwart[ya]|piąt[ya]|szóst[ya]|siódm[ya]|ósm[ya]) "
+    rf"(?P<item>{_WORD}) waży (?:jednak|teraz) {_MASS}[.!] "
+    rf"(?:podaj(?: teraz)? masę (?P<scope>{_WORD})(?: razem)? z (?P<container>{_WORD}),? w gramach[.!?]?)",
+    re.I,
+)
+_ORDINAL_STEMS = ("pierwsz", "drug", "trzec", "czwart", "piąt", "szóst", "siódm", "ósm")
+
+
 _WIDTHS = re.compile(
-    r"\b(?:odczyt(?:y)?\s+)?szerokości(?:\s+desek|\s+listew|\s+płyt)?\s*:\s*", re.I
+    r"(?:\b(?:odczyt(?:y)?\s+)?szerokości(?:\s+desek|\s+listew|\s+płyt)?"
+    rf"|^na liście (?:są|wymieniono) (?P<count>{_COUNT}) {_WORD})\s*:\s*",
+    re.I,
 )
 _WIDTH = re.compile(
     rf"(?:^|[,;]\s*|\s+(?:i|oraz)\s+)(?P<label>{_WORD}(?:\s+{_WORD}){{0,3}}?)"
-    rf"\s+{_LENGTH}",
+    rf"\s+(?:o\s+szerokości\s+)?{_LENGTH}",
     re.I,
 )
 _WIDTH_CHANGE = re.compile(
@@ -132,7 +197,33 @@ _WIDTH_REPLACEMENT = re.compile(
     rf"\b(?:deskę|listwę|płytę)\s+(?P<label>{_WORD})\s+wymieniliśm[yi]\s+na\s+{_LENGTH}",
     re.I,
 )
+_WIDTH_NAMED_REPLACEMENT = re.compile(
+    rf"^(?P<label>{_WORD}(?:\s+{_WORD}){{0,3}}?)\s+wymieniono\s+na\s+{_WORD}\s+"
+    rf"o\s+szerokości\s+{_LENGTH}",
+    re.I,
+)
 _WIDTH_QUERY = re.compile(r"\b(?P<widest>najszer\w*)\b|\bnajwęż\w*\b", re.I)
+_INTERVAL_EDGE = r"włącznie|bez punktu granicznego"
+_INTERVAL_SOURCE = re.compile(
+    rf"(?:obowiązuje )?zakres od (?P<lower>{_NUMBER}) (?P<lower_unit>mm|cm|m) "
+    rf"(?P<lower_edge>{_INTERVAL_EDGE}) do (?P<less>mniej niż )?"
+    rf"(?P<upper>{_NUMBER}) (?P<upper_unit>mm|cm|m)(?: (?P<upper_edge>{_INTERVAL_EDGE}))?[.!] "
+    r"(?:próbka |próbki:\s*)(?P<items>[^?!\n]{3,260}?)[.!] "
+    r"(?:wypisz|wskaż) (?:spełniające zakres|pasujące próbki)[.!?]?",
+    re.I,
+)
+_INTERVAL_ITEM = re.compile(
+    rf"(?P<item>[A-Z][A-Z0-9-]{{0,8}})(?: ma)? {_LENGTH}",
+    re.I,
+)
+_INTERVAL_UPDATE = re.compile(
+    rf"dolna granica (?:od teraz )?(?P<lower_edge>{_INTERVAL_EDGE}), "
+    rf"górna (?P<upper_edge>{_INTERVAL_EDGE})[.!] "
+    r"(?:wypisz|wskaż) ponownie[.!?]?",
+    re.I,
+)
+
+
 _UNCERTAIN = re.compile(
     r"\b(?:około|maksymalnie|co najmniej|co najwyżej|chyba|albo|nie wiem|nie znam)\b",
     re.I,
@@ -171,6 +262,46 @@ _PLACES = re.compile(
 )
 _PRECISION = {"jednego miejsca": 1, "dwóch miejsc": 2, "trzech miejsc": 3}
 _ROUNDING = re.compile(r"\b(?:zaokrągl|po przecinku|do \w+ miejsc)", re.I)
+_SERIES_NUMBER = rf"-?{_NUMBER}"
+_SERIES_VALUES = (
+    rf"{_SERIES_NUMBER}(?:, {_SERIES_NUMBER}){{0,6}}(?:, | i ){_SERIES_NUMBER}"
+)
+_MEDIAN_SOURCE = re.compile(
+    rf"(?:(?P<count>{_COUNT}) )?(?:wyniki|wyników) {_WORD}: (?P<values>{_SERIES_VALUES})"
+    r"(?: jednostek)?[.!] (?:oblicz|podaj) medianę"
+    r"(?: i (?:krótko )?pokaż dane środkowe)?[.!?]?",
+    re.I,
+)
+_MEDIAN_REMOVE = re.compile(
+    rf"wynik (?P<value>{_SERIES_NUMBER}) (?:był zdublowany|był duplikatem|jest kopią)"
+    r" i (?:znika z listy|usuwamy z listy)[.!] "
+    r"(?:podaj|oblicz) medianę(?:, reszta danych zostaje)?[.!?]?",
+    re.I,
+)
+_MEASURE_UNITS = {
+    "ml": ("volume", 0),
+    "l": ("volume", 3),
+    "g": ("mass", 0),
+    "kg": ("mass", 3),
+}
+_MEASURE_UNIT = "|".join(_MEASURE_UNITS)
+_MEASURED_MEAN = re.compile(
+    rf"zużyto (?P<values>{_SERIES_VALUES}) (?P<unit>{_MEASURE_UNIT}) {_WORD} "
+    rf"w (?P<count>{_COUNT}) (?:pomiarach|próbach)[.!] "
+    r"(?:(?:odrzuć|pomiń) niewykonaną [^\W\d_]+ próbę i )?"
+    r"(?:podaj|oblicz) średnią[.!?]?",
+    re.I,
+)
+_MEASURED_MEAN_DELTA = re.compile(
+    r"(?P<verb>zwiększ|zmniejsz) (?:zapis |wartość )?"
+    r"(?P<ordinal>pierwszego|drugiego|trzeciego|czwartego|piątego|szóstego|siódmego|ósmego) "
+    rf"(?:pomiaru|odczytu) o (?P<amount>{_NUMBER}) (?P<unit>{_MEASURE_UNIT})[.!] "
+    r"(?:podaj|oblicz) średnią(?: tych samych prób)?"
+    rf"(?: {_PLACES.pattern})?[.!?]?",
+    re.I,
+)
+
+
 _DISTRIBUTION = re.compile(
     rf"(?:z|mamy) (?P<stock>{_COUNT}) (?P<item>{_WORD})[:,]? (?P<reserve>{_COUNT}) odkładamy[.!] "
     rf"resztę dzielimy równo na (?P<groups>{_COUNT}) (?P<group>{_WORD})[.!] "
@@ -213,9 +344,11 @@ _COUNT_KINDS = {
 }
 
 _PACK_COUNTS = re.compile(
-    rf"są (?P<a_count>{_COUNT}) wielopak\w* (?P<a>{_WORD}) po (?P<a_size>{_COUNT}) sztuk "
-    rf"i (?P<b_count>{_COUNT}) wielopak\w* (?P<b>{_WORD}) po (?P<b_size>{_COUNT}) sztuk[.!] "
-    rf"ile (?P<pick>{_WORD})\?",
+    rf"(?:są|mam[y]?|w {_WORD} jest) (?P<a_count>{_COUNT}) (?:wielopak\w*|opakowa\w+) "
+    rf"(?P<a>{_WORD}) po (?P<a_size>{_COUNT})(?: sztuk)? "
+    rf"i (?P<b_count>{_COUNT}) (?:wielopak\w*|opakowa\w+) "
+    rf"(?P<b>{_WORD}) po (?P<b_size>{_COUNT})(?: sztuk)?[.!] "
+    rf"ile (?P<pick>{_WORD})(?: sztuk)?\?",
     re.I,
 )
 _PACK_EXCEPTION = re.compile(
@@ -223,9 +356,15 @@ _PACK_EXCEPTION = re.compile(
     r"a pozostałe są bez zmiany[.!] ile sztuk łącznie\?",
     re.I,
 )
+_PACK_NAMED_EXCEPTION = re.compile(
+    rf"ostatnie (?P<item>{_WORD}) opakowanie ma tylko (?P<count>{_COUNT})[.!] "
+    r"ile sztuk (?:obu kolorów )?razem\?",
+    re.I,
+)
 _PACK_TAKE = re.compile(
     rf"oddaliśm[yi] (?P<count>{_COUNT}) (?P<kind>{_WORD})[.!] "
-    rf"podaj pozostałe (?P<a>{_WORD}) i (?P<b>{_WORD}) oddzielnie[.!]?",
+    rf"(?:podaj pozostałe (?P<a>{_WORD}) i (?P<b>{_WORD}) oddzielnie"
+    r"|podaj osobno(?:,)? ile zostało obu kolorów)[.!?]?",
     re.I,
 )
 
@@ -258,14 +397,11 @@ def _rate_key(text: str) -> str:
 
 
 def _length_key(text: str) -> str:
-    return next(
-        (
-            key
-            for key in ("krótk", "dług")
-            if re.search(rf"\b{key}\w*", text.casefold())
-        ),
-        "",
-    )
+    if re.search(r"\bdłu(?:g|ż)\w*", text, re.I):
+        return "dług"
+    if re.search(r"\bkrót(?:k|sz)\w*", text, re.I):
+        return "krótk"
+    return ""
 
 
 @dataclass(frozen=True)
@@ -409,6 +545,56 @@ def _rate_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     return StudioCalculation(expression, "zł", lambda result: f"{formula} = {result}.")
 
 
+def _relative_rate_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    source = _RELATIVE_RATE.fullmatch(turns[-1])
+    update = None
+    if source is None and len(turns) > 1:
+        source = _RELATIVE_RATE.fullmatch(turns[-2])
+        update = _RELATIVE_RATE_UPDATE.fullmatch(turns[-1])
+        if source is None or update is None:
+            return None
+    if source is None or (
+        source["b_group"]
+        and source["a_group"].casefold() != source["b_group"].casefold()
+    ):
+        return None
+    pick = _RELATIVE_RATE_PICK.fullmatch(source["query"])
+    if pick is None:
+        return None
+    groups = sorted(
+        (_Term(_count(source[f"{key}_count"]), _decimal(source[key])) for key in "ab"),
+        key=lambda term: term.value,
+    )
+    if groups[0].value == groups[1].value:
+        return None
+    if update is None:
+        term = groups[int(pick["range"].casefold() == "droższe")]
+        return StudioCalculation(
+            term.expression, "zł", lambda result: f"{term.readable('zł')} = {result}."
+        )
+    index = int(update["range"].casefold() == "droższą")
+    current = groups[index]
+    new_rate = _decimal(update["new"])
+    direction = update["direction"].casefold()
+    source_group = source["a_group"].casefold()
+    bound_group = _RATE_GROUP_ACCUSATIVES.get(source_group, source_group)
+    if (
+        _RATE_KINDS[source["kind"].casefold()] != update["kind"].casefold()
+        or _decimal(update["old"]) != current.value
+        or bound_group != update["group"].casefold()
+        or (direction == "spada" and new_rate >= current.value)
+        or (direction == "rośnie" and new_rate <= current.value)
+    ):
+        return None
+    groups[index] = replace(current, value=new_rate)
+    parts = " + ".join(f"({term.readable('zł')})" for term in groups)
+    return StudioCalculation(
+        "+".join(term.expression for term in groups),
+        "zł",
+        lambda result: f"Razem {result}: {parts}.",
+    )
+
+
 def _width_key(label: str) -> str:
     return label.casefold().rstrip("aąęy")
 
@@ -419,7 +605,15 @@ def _width_calculation(turns: Sequence[str]) -> StudioCalculation | None:
         if header := _WIDTHS.search(message):
             fields = message[header.end() :].split(". ", 1)[0].rstrip(".?!")
             matches = list(_WIDTH.finditer(fields))
-            if not 2 <= len(matches) <= 6 or _WIDTH.sub("", fields).strip(" ,;"):
+            if (
+                not 2 <= len(matches) <= 6
+                or _WIDTH.sub("", fields).strip(" ,;")
+                or header["count"]
+                and (
+                    _count(header["count"]) != len(matches)
+                    or not re.search(r"\bo szerokości\b", fields, re.I)
+                )
+            ):
                 return None
             widths = {
                 _width_key(m["label"]): (m["label"], _length_in_cm(m)) for m in matches
@@ -429,6 +623,7 @@ def _width_calculation(turns: Sequence[str]) -> StudioCalculation | None:
         elif widths and (
             update := _WIDTH_CHANGE.search(message)
             or _WIDTH_REPLACEMENT.search(message)
+            or _WIDTH_NAMED_REPLACEMENT.search(message)
         ):
             key = _width_key(update["label"])
             if key not in widths or len(_LENGTH_VALUE.findall(message)) != 1:
@@ -454,6 +649,53 @@ def _width_calculation(turns: Sequence[str]) -> StudioCalculation | None:
         _number(amount),
         "cm",
         lambda result: f"{comparison}: {label}, {result}. Porównanie: {choices}.",
+    )
+
+
+def _interval_choices(items: str) -> list[tuple[str, Decimal]]:
+    choices = []
+    for item in re.split(r", | i | oraz ", items, maxsplit=7, flags=re.I):
+        match = _INTERVAL_ITEM.fullmatch(item)
+        if match is None:
+            return []
+        choices.append((match["item"], _length_in_cm(match)))
+    return choices
+
+
+def _interval_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    match = _measurement_source(turns, _INTERVAL_SOURCE)
+    if match is None:
+        return None
+    source, followups = match
+    # Endpoints must be stated. "Do" alone does not say if the end belongs.
+    if bool(source["less"]) == bool(source["upper_edge"]):
+        return None
+    lower = _decimal(source["lower"]).scaleb(_SCALES[source["lower_unit"].casefold()])
+    upper = _decimal(source["upper"]).scaleb(_SCALES[source["upper_unit"].casefold()])
+    choices = _interval_choices(source["items"])
+    if (
+        lower >= upper
+        or len(choices) < 2
+        or len({label.casefold() for label, _ in choices}) != len(choices)
+    ):
+        return None
+    edges = (source["lower_edge"], source["upper_edge"] or "")
+    for followup in followups:
+        update = _INTERVAL_UPDATE.fullmatch(followup)
+        if update is None:
+            return None
+        edges = (update["lower_edge"], update["upper_edge"])
+    low_closed, high_closed = (edge.casefold() == "włącznie" for edge in edges)
+    selected = [
+        label
+        for label, value in choices
+        if (lower < value or low_closed and lower == value)
+        and (value < upper or high_closed and value == upper)
+    ]
+    labels = ", ".join(selected) or "żadna próbka"
+    expression = "+".join("1" for _ in selected) or "0"
+    return StudioCalculation(
+        expression, "szt.", lambda result: f"Zakres spełniają: {labels} ({result})."
     )
 
 
@@ -498,6 +740,58 @@ def _mass_calculation(turns: Sequence[str]) -> StudioCalculation | None:
         del weights[container]
     expression = "+".join(_number(value) for value in weights.values())
     formula = " + ".join(f"{_polish(value)} g" for value in weights.values())
+    return StudioCalculation(expression, "g", lambda result: f"{formula} = {result}.")
+
+
+def _measurement_source(
+    turns: Sequence[str], anchor: re.Pattern[str]
+) -> tuple[re.Match[str], Sequence[str]] | None:
+    for index in reversed(range(len(turns))):
+        if source := anchor.fullmatch(turns[index]):
+            return source, turns[index + 1 :]
+    return None
+
+
+def _ordinal_index(text: str) -> int:
+    word = text.casefold()
+    return next(
+        index for index, stem in enumerate(_ORDINAL_STEMS) if word.startswith(stem)
+    )
+
+
+def _replace_raw_mass(
+    weights: list[Decimal], source: re.Match[str], update: re.Match[str]
+) -> bool:
+    item, scope = _MASS_ITEMS[source["items"].casefold()]
+    container = _MASS_CONTAINERS[source["container"].casefold()]
+    index = _ordinal_index(update["ordinal"])
+    if (
+        update["item"].casefold() != item
+        or update["scope"].casefold() != scope
+        or update["container"].casefold() != container
+        or index >= len(weights)
+    ):
+        return False
+    weights[index] = _grams(update)
+    return True
+
+
+def _mass_list_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    match = _measurement_source(turns, _MASS_LIST)
+    if match is None:
+        return None
+    source, followups = match
+    weights = [_grams(m) for m in _MASS_VALUE.finditer(source["weights"])]
+    if len(weights) != _count(source["count"]):
+        return None
+    for followup in followups:
+        update = _MASS_ORDINAL_UPDATE.fullmatch(followup)
+        if update is None or not _replace_raw_mass(weights, source, update):
+            return None
+    if followups:
+        weights.append(_grams(source))
+    expression = "+".join(_number(value) for value in weights)
+    formula = " + ".join(f"{_polish(value)} g" for value in weights)
     return StudioCalculation(expression, "g", lambda result: f"{formula} = {result}.")
 
 
@@ -608,6 +902,86 @@ def _mean_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     return StudioCalculation(f"({terms})/{len(values)}", None, render)
 
 
+def _series_values(source: re.Match[str]) -> list[Decimal]:
+    return [_decimal(raw) for raw in re.findall(_SERIES_NUMBER, source["values"])]
+
+
+def _median_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    match = _measurement_source(turns, _MEDIAN_SOURCE)
+    if match is None:
+        return None
+    source, followups = match
+    values = _series_values(source)
+    if source["count"] and _count(source["count"]) != len(values):
+        return None
+    for followup in followups:
+        update = _MEDIAN_REMOVE.fullmatch(followup)
+        if update is None or len(values) < 2:
+            return None
+        removed = _decimal(update["value"])
+        if values.count(removed) != 1:
+            return None
+        values.remove(removed)
+    values.sort()
+    mid = len(values) // 2
+    if len(values) % 2:
+        return StudioCalculation(
+            _number(values[mid]), None, lambda result: f"Mediana: {result}."
+        )
+    left, right = values[mid - 1 : mid + 1]
+    return StudioCalculation(
+        f"({_number(left)}+{_number(right)})/2",
+        None,
+        lambda result: f"Środkowe wartości: {_polish(left)} i {_polish(right)}. Mediana: {result}.",
+    )
+
+
+def _adjust_mean_value(values: list[Decimal], unit: str, update: re.Match[str]) -> bool:
+    dimension, scale = _MEASURE_UNITS[unit]
+    delta_dimension, delta_scale = _MEASURE_UNITS[update["unit"].casefold()]
+    index = _ordinal_index(update["ordinal"])
+    if index >= len(values) or dimension != delta_dimension:
+        return False
+    delta = _decimal(update["amount"]).scaleb(delta_scale - scale)
+    if update["verb"].casefold() == "zmniejsz":
+        delta = -delta
+    values[index] += delta
+    return values[index] >= 0
+
+
+def _measured_mean_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    match = _measurement_source(turns, _MEASURED_MEAN)
+    if match is None:
+        return None
+    source, followups = match
+    values = _series_values(source)
+    if len(values) != _count(source["count"]) or min(values) < 0:
+        return None
+    unit = source["unit"].casefold()
+    precision = None
+    for followup in followups:
+        update = _MEASURED_MEAN_DELTA.fullmatch(followup)
+        if update is None or not _adjust_mean_value(values, unit, update):
+            return None
+        precision = update["places"]
+    places = _PRECISION[precision.casefold()] if precision else None
+    terms = " + ".join(_polish(value) for value in values)
+    expression = "+".join(_number(value) for value in values)
+
+    def render(result: str) -> str:
+        if places is not None:
+            quantum = Decimal(1).scaleb(-places)
+            rounded = _decimal(result.split()[0]).quantize(
+                quantum, rounding=ROUND_HALF_UP
+            )
+            result = f"{format(rounded, 'f').replace('.', ',')} {unit}"
+        return (
+            f"Średnia z {len(values)} pomiarów: {result} (({terms}) ÷ {len(values)})."
+        )
+
+    return StudioCalculation(f"({expression})/{len(values)}", unit, render)
+
+
 def _day_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     active = turns[-3:]
     for index in range(len(active) - 1, -1, -1):
@@ -693,8 +1067,19 @@ def _pack_calculation(turns: Sequence[str]) -> StudioCalculation | None:
             unit,
             lambda result: f"{pick.capitalize()}: {result}",
         )
+    scopes = {
+        label[:-3] + ("e" if label.endswith("ych") else "ie"): label for label in labels
+    }
+    if len(scopes) != len(labels):
+        return None
     exception = _PACK_EXCEPTION.fullmatch(updates[0])
-    if exception is None or (label := exception["item"].casefold()) not in terms:
+    if exception:
+        label = exception["item"].casefold()
+    elif exception := _PACK_NAMED_EXCEPTION.fullmatch(updates[0]):
+        label = scopes.get(exception["item"].casefold(), "")
+    else:
+        return None
+    if label not in terms:
         return None
     changed = terms[label]
     count = _count(exception["count"])
@@ -712,10 +1097,11 @@ def _pack_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     if removal is None or (kind := removal["kind"].casefold()) not in adjusted:
         return None
     remaining = _count(removal["count"])
-    scopes = {
-        label[:-3] + ("e" if label.endswith("ych") else "ie"): label for label in labels
-    }
-    requested = [removal[key].casefold() for key in ("a", "b")]
+    requested = (
+        [removal[key].casefold() for key in ("a", "b")]
+        if removal["a"]
+        else list(scopes)
+    )
     if set(requested) != set(scopes) or remaining > adjusted[kind]:
         return None
     adjusted[kind] -= remaining
@@ -752,10 +1138,15 @@ def plan_studio_calculation(
     return (
         _length_calculation(active)
         or _rate_calculation(active)
+        or _relative_rate_calculation(active)
         or _width_calculation(active)
+        or _interval_calculation(active)
         or _mass_calculation(active)
+        or _mass_list_calculation(active)
         or _distribution_calculation(active)
         or _mean_calculation(active)
+        or _measured_mean_calculation(active)
+        or _median_calculation(active)
         or _day_calculation(active)
         or _pack_calculation(active)
     )

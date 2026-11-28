@@ -532,3 +532,52 @@ def test_definitions_are_selected_from_meaning_for_each_user_goal():
         studio_comparison(prompt.replace("obszar pieczęci", "pole pieczęci"), [])
         is None
     )
+
+
+def test_two_scoped_lists_apply_removal_and_addition_before_selecting():
+    initial = (
+        "Na stanowisko K trzeba przygotować kabel, kamerę i statyw, "
+        "a na stanowisko M statyw, taśmę i kabel. Które elementy są wspólne?"
+    )
+    correction = (
+        "Z listy M wykreślamy statyw, a do listy K dodajemy taśmę. "
+        "Które elementy są teraz wspólne?"
+    )
+    history = _history(initial, "Została tylko kamera.")
+    assert studio_comparison(initial, []) == "Dla obu list przygotuj: kabel, statyw."
+    assert (
+        studio_comparison(correction, history)
+        == "Dla obu list przygotuj: kabel, taśmę."
+    )
+    after = history + _history(correction, "Nadal wspólny jest statyw.")
+    assert (
+        studio_comparison("Co zostaje wyłącznie dla K?", after)
+        == "Tylko dla K przygotuj: kamerę, statyw."
+    )
+    assert (
+        studio_comparison("Które pozostają tylko dla M?", after)
+        == "Tylko dla M: brak pozycji."
+    )
+    assert studio_comparison("Które pozostają tylko dla Z?", after) is None
+    assert (
+        studio_comparison(
+            correction.replace("wykreślamy statyw", "wykreślamy kamerę"), history
+        )
+        is None
+    )
+    assert studio_comparison(correction.replace("listy M", "listy Z"), history) is None
+    assert (
+        studio_comparison(correction.replace("do listy K", "do listy Z"), history)
+        is None
+    )
+    assert (
+        studio_comparison(correction.replace("dodajemy", "może dodamy"), history)
+        is None
+    )
+    assert studio_comparison(correction, []) is None
+    assert (
+        studio_comparison(
+            "Które pozostają tylko dla K?", history + _history("Może zmienimy listę?")
+        )
+        is None
+    )

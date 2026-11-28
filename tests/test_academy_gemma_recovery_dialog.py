@@ -11,6 +11,7 @@ from venom_core.services import llm_simple_service
 from venom_core.services.chat_policy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.chat_policy.studio_dialog import studio_dialog
 from venom_core.services.chat_policy.studio_dialog_compare import studio_comparison
+from venom_core.services.chat_policy.studio_revision import studio_revision
 from venom_core.services.ollama_text_adapter import QUALIFIED_BOLT_MODEL
 
 studio_chat = qualified_studio_chat
@@ -678,3 +679,68 @@ def test_studio_two_ended_project_needs_a_plan_of_the_actual_row(
     history = _history(_PROJECT_ROW, "Wariant Tor.")
     assert studio_dialog(_PROJECT_DOORS.replace("Toru", "Kręgu"), history) is None
     assert studio_dialog(_NEUTRAL_MAP, history) is None
+
+
+_PICKUP_NOTICE = (
+    "Napisz informację bez dopisków: „Osoby z rezerwacją odbierają plakiety "
+    "przy kantorku, pozostali przy okienku. Odbiór od 12:00 do 16:00”."
+)
+_PICKUP_RESERVED_UPDATE = (
+    "Tylko dla osób z rezerwacją nowe miejsce to czytelnia. "
+    "Podaj całą informację nadal bez dopisków."
+)
+_PICKUP_OTHER_UPDATE = "Osoby bez rezerwacji odbierają teraz przy recepcji."
+
+
+def test_studio_pickup_replaces_the_location_for_one_group(studio_chat, monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, calls, _ = studio_chat
+    session = str(uuid4())
+    assert chat(_PICKUP_NOTICE, session=session, verify_history=True) == (
+        "Osoby z rezerwacją odbierają plakiety przy kantorku, pozostali przy okienku. "
+        "Odbiór od 12:00 do 16:00."
+    )
+    assert chat(_PICKUP_RESERVED_UPDATE, session=session, verify_history=True) == (
+        "Osoby z rezerwacją odbierają plakiety — miejsce odbioru to czytelnia. "
+        "Pozostali odbierają plakiety przy okienku. Odbiór od 12:00 do 16:00."
+    )
+    assert chat(_PICKUP_OTHER_UPDATE, session=session, verify_history=True) == (
+        "Osoby z rezerwacją odbierają plakiety — miejsce odbioru to czytelnia. "
+        "Pozostali odbierają plakiety przy recepcji. Odbiór od 12:00 do 16:00."
+    )
+    assert not calls
+
+
+def test_studio_pickup_uses_latest_user_update_for_each_group():
+    history = _history(_PICKUP_NOTICE, "Wszyscy przy okienku od 13:00.")
+    history += _history(_PICKUP_RESERVED_UPDATE, "Ciągle przy kantorku.")
+    history += _history(_PICKUP_OTHER_UPDATE, "Czytelnię zamknięto.")
+    result = studio_revision("Osoby z rezerwacją odbierają teraz w sali Mchu.", history)
+    assert result == (
+        "Osoby z rezerwacją odbierają plakiety w sali Mchu. "
+        "Pozostali odbierają plakiety przy recepcji. Odbiór od 12:00 do 16:00."
+    )
+
+
+@pytest.mark.parametrize(
+    ("correction", "prompts"),
+    [
+        (_PICKUP_RESERVED_UPDATE, []),
+        (
+            _PICKUP_RESERVED_UPDATE,
+            [_PICKUP_NOTICE, "Zmieniam godziny na 16:00–18:00."],
+        ),
+        (
+            "Tylko dla osób z rezerwacją nowe miejsce to czytelnia lub hol.",
+            [_PICKUP_NOTICE],
+        ),
+        ("Dla wszystkich nowe miejsce to czytelnia.", [_PICKUP_NOTICE]),
+    ],
+)
+def test_studio_pickup_defers_when_scope_or_source_is_unclear(correction, prompts):
+    history = [
+        message for prompt in prompts for message in _history(prompt, "Roboczo.")
+    ]
+    assert studio_revision(correction, history) is None

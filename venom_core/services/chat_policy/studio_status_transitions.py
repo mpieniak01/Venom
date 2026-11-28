@@ -51,6 +51,24 @@ _ASSIGN = re.compile(
     rf"[.!] (?:{_DUTY_STATUS})",
     re.I,
 )
+_SHORT_SIGNUP = re.compile(
+    rf"na liście chętnych do (?P<day>{'|'.join(_DAY)}) dyżuru "
+    rf"(?:jest|widnieje) (?P<name>{_PERSON})[.!] "
+    r"(?:pole|rubryka) przydziału jest pust(?:e|a)[.!] "
+    r"jak (?:opisać|zapisać) stan\?",
+    re.I,
+)
+_NAMED_ASSIGNMENT = re.compile(
+    r"(?:lider(?:ka)?|koordynator(?:ka)?|opiekun(?:ka)?|kierownik|kierowniczka|"
+    r"organizator(?:ka)?) wpisał[ao]? "
+    rf"(?P<name>{_PERSON}) do grafiku "
+    rf"(?:(?:na|w|we) (?P<day>{'|'.join(_DAY_NAMES)}) )?"
+    rf"(?:na|o) (?P<time>{_TIME})[.!] (?P<confirmation_person>{_PERSON}) "
+    r"(?:jeszcze nie potwierdził[ao]?|(?P<confirmed>potwierdził[ao]?)(?: przydział)?)[.!] "
+    r"(?:podaj|zapisz) stan z dniem[.!]?",
+    re.I,
+)
+
 _PARTIAL_APPROVAL = re.compile(
     r"(?:zatwierdził[ae]m|zaakceptował[ae]m) do wysłania "
     r"(?:[^\W\d_]+ )?tylko (?:informację|wiadomość|wzmiankę) o "
@@ -118,6 +136,24 @@ _VERSION_APPROVAL = re.compile(
     r"plik (?:jeszcze )?nie poszedł do druku[.!] podaj status[.!]?",
     re.I,
 )
+_DECISION_ROLE = (
+    r"kierownik|kierowniczka|koordynator(?:ka)?|organizator(?:ka)?|redaktor(?:ka)?"
+)
+_ROLE_PREFERENCE = re.compile(
+    rf"dwie wersje (?P<document>[^.!?,]{{2,55}}?) ocenia (?P<authority>{_DECISION_ROLE})[.!] "
+    rf"(?P<choice>pierwszą|drugą) woli (?P<advisor>{_PERSON}), "
+    r"(?:ale|a) (?P=authority) jeszcze się nie wypowiedział[ao]?[.!] "
+    r"która jest (?:zaakceptowana|zatwierdzona)\?",
+    re.I,
+)
+_ROLE_APPROVAL = re.compile(
+    rf"(?P<authority>{_DECISION_ROLE}) (?P<approval>potwierdził[ao]?|zatwierdził[ao]?|"
+    r"zaakceptował[ao]?) (?P<choice>pierwszą|drugą) wersję[.!] "
+    r"(?:opublikujemy|udostępnimy) ją (?:dopiero )?(?P<day>jutro|dziś wieczorem|w piątek|w sobotę)[.!] "
+    r"co jest zrobione, a co czeka\?",
+    re.I,
+)
+
 _HOUR = r"(?:[01]?[0-9]|2[0-3])(?::[0-5][0-9])?"
 _HOURS_CONDITION = re.compile(
     rf"(?:notatka z poranka|notatka) (?:ma|podaje) stare otwarcie o (?P<old>{_HOUR}) "
@@ -241,6 +277,8 @@ def _same_person(name: str, assigned: str) -> bool:
 
 
 def _signup(text: str) -> re.Match[str] | None:
+    if short := _SHORT_SIGNUP.fullmatch(text):
+        return short
     if (match := _SIGNUP.fullmatch(text)) and match["name"].casefold() == match[
         "asked"
     ].casefold():
@@ -257,7 +295,14 @@ def _duty_status(text: str, earlier: Sequence[str]) -> str | None:
     if (
         not earlier
         or not (signup := _signup(earlier[-1]))
-        or not (assignment := _ASSIGN.fullmatch(text))
+        or not (
+            assignment := _ASSIGN.fullmatch(text) or _NAMED_ASSIGNMENT.fullmatch(text)
+        )
+    ):
+        return None
+    confirmation_person = assignment.groupdict().get("confirmation_person")
+    if confirmation_person and not _same_person(
+        confirmation_person, assignment["name"]
     ):
         return None
 
@@ -358,6 +403,23 @@ def _dispatch_fields(text: str, earlier: Sequence[str]) -> str | None:
 
 
 def _version_status(text: str, earlier: Sequence[str]) -> str | None:
+    if preference := _ROLE_PREFERENCE.fullmatch(text):
+        preferred = _VERSION[preference["choice"].casefold()].lower()
+        return (
+            f"Preferencja robocza ({preference['advisor']}): {preferred} wersja. "
+            f"Wobec braku stanowiska osoby decyzyjnej ({preference['authority']}) "
+            "żadna wersja nie ma potwierdzonej akceptacji."
+        )
+    if (
+        earlier
+        and (preference := _ROLE_PREFERENCE.fullmatch(earlier[-1]))
+        and (approval := _ROLE_APPROVAL.fullmatch(text))
+        and approval["authority"].casefold() == preference["authority"].casefold()
+    ):
+        return (
+            f"{approval['authority'].capitalize()} {approval['approval']} {approval['choice']} wersję. "
+            f"Publikacja ma się odbyć {approval['day']}."
+        )
     if preference := _VERSION_PREFERENCE.fullmatch(text):
         version = _VERSION[preference["choice"].casefold()]
         if preference["asked"].casefold() == version.casefold():

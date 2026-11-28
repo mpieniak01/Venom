@@ -421,6 +421,244 @@ def _shared_reference_reply(current: str, previous: str) -> str | None:
     )
 
 
+_SHELF_LIMIT = rf"(?:(?P<strict>poniżej|mniej niż) (?P<open_size>{_NUMBER})|do (?P<closed_size>{_NUMBER})) cm(?: (?P<inclusive>włącznie))?"
+_SHELF_START = re.compile(
+    rf"na półce mieści się (?P<item>{_WORD}) {_SHELF_LIMIT}[.]",
+    _FLAGS,
+)
+_SHELF_CHANGE = re.compile(
+    rf"(?:półkę wymieniono|wymieniliśmy półkę) na taką, która mieści "
+    rf"(?P<item>{_WORD}) {_SHELF_LIMIT}[.]",
+    _FLAGS,
+)
+_HANDLE = r"od góry|z boku"
+_SHELF_OPTIONS = re.compile(
+    rf"(?P<first>{_WORD}) ma (?P<first_size>{_NUMBER}) cm i uchwyt (?P<first_handle>{_HANDLE}), "
+    rf"(?:a )?(?P<second>{_WORD}) ma (?P<second_size>{_NUMBER}) cm i uchwyt (?P<second_handle>{_HANDLE})[.]",
+    _FLAGS,
+)
+_SHELF_PRIORITY = re.compile(
+    rf"co wybrać, jeśli najpierw ma się zmieścić, a potem liczy się uchwyt (?P<handle>{_HANDLE})\?",
+    _FLAGS,
+)
+_SHELF_REPICK = re.compile(
+    r"(?:powtórz decyzję|ponów wybór) z tymi samymi priorytetami[.!?]", _FLAGS
+)
+
+
+def _shelf_source(text: str) -> tuple[re.Match[str], re.Match[str], str] | None:
+    parts = _parts(text)
+    if len(parts) != 3:
+        return None
+    shelf = _SHELF_START.fullmatch(parts[0])
+    options = _SHELF_OPTIONS.fullmatch(parts[1])
+    priority = _SHELF_PRIORITY.fullmatch(parts[2])
+    if not shelf or not options or not priority:
+        return None
+    if options["first"].casefold() == options["second"].casefold():
+        return None
+    return shelf, options, priority["handle"].casefold()
+
+
+def _valid_shelf_limit(shelf: re.Match[str]) -> tuple[Decimal, bool] | None:
+    if bool(shelf["strict"]) == bool(shelf["inclusive"]):
+        return None
+    limit = _decimal(shelf["open_size"] or shelf["closed_size"])
+    return (limit, not bool(shelf["strict"])) if limit > 0 else None
+
+
+def _shelf_reply(current: str, previous: str) -> str | None:
+    parts = _parts(current)
+    update = (
+        _SHELF_CHANGE.fullmatch(parts[0])
+        if len(parts) == 2 and _SHELF_REPICK.fullmatch(parts[1])
+        else None
+    )
+    source = _shelf_source(previous if update else current)
+    if source is None:
+        return None
+    shelf, options, preferred_handle = source
+    item = shelf["item"].casefold()
+    if update and update["item"].casefold() not in {
+        item,
+        f"{item[:-1]}ę" if item.endswith("a") else item,
+    }:
+        return None
+    if (limit_rule := _valid_shelf_limit(update or shelf)) is None:
+        return None
+    limit, inclusive = limit_rule
+    fits = []
+    for side in ("first", "second"):
+        size = _decimal(options[f"{side}_size"])
+        if size <= 0:
+            return None
+        if size < limit or (inclusive and size == limit):
+            fits.append(side)
+    limit_text = (
+        f"do {_display(limit)} cm włącznie"
+        if inclusive
+        else f"poniżej {_display(limit)} cm"
+    )
+    if not fits:
+        return f"Żaden wariant się nie zmieści. Półka mieści tylko przedmioty {limit_text}."
+    if len(fits) == 1:
+        chosen = fits[0]
+        other = "second" if chosen == "first" else "first"
+        size = _display(_decimal(options[f"{chosen}_size"]))
+        other_size = _display(_decimal(options[f"{other}_size"]))
+        return (
+            f"Wybierz wariant „{options[chosen]}”. Ma {size} cm i spełnia warunek {limit_text}. "
+            f"Wariant „{options[other]}” ma {other_size} cm i przy tej granicy się nie zmieści."
+        )
+    preferred = [
+        side
+        for side in fits
+        if options[f"{side}_handle"].casefold() == preferred_handle
+    ]
+    fit_summary = (
+        f"Oba warianty mieszczą się na półce, która przyjmuje przedmioty {limit_text}."
+    )
+    if len(preferred) != 1:
+        return f"{fit_summary} Położenie uchwytu nie rozstrzyga wyboru."
+    return f"{fit_summary} Wybierz wariant „{options[preferred[0]]}”, bo ma uchwyt {preferred_handle}."
+
+
+_CARD_TITLE = rf"karta {_WORD}(?: {_WORD})?"
+_CARDS_START = re.compile(
+    r"(?:są|mamy) dwie karty(?: [^,.:!?]{2,45})?:\s*(?P<roles>.+)[.]", _FLAGS
+)
+_CARD_ROLE = re.compile(
+    rf"(?P<name>{_CARD_TITLE}) "
+    r"(?P<role>odszyfrowuje|wyjaśnia|objaśnia|opisuje|pokazuje|wskazuje|zawiera) "
+    r"(?P<detail>[^,.:!?]{2,85})",
+    _FLAGS,
+)
+_CARD_PLACE = rf"(?:na|przy|w|we|obok) {_WORD}(?: {_WORD}){{0,2}}"
+_CARD_AVAILABILITY = re.compile(
+    rf"obie (?:mają być dostępne|będą dostępne) (?P<shared>{_CARD_PLACE}), "
+    rf"(?:a )?tylko (?P<extra_card>{_TERM}) (?:będą|będzie|ma być) (?:także|również) "
+    rf"(?P<extra_place>{_CARD_PLACE})[.]",
+    _FLAGS,
+)
+_CARD_BRIEF = re.compile(
+    r"(?:co powiedzieć|jak przekazać te informacje) "
+    r"(?:wolontariuszom|obsłudze|zespołowi|pomocnikom) w dwóch zdaniach\?",
+    _FLAGS,
+)
+_CARD_AT_PLACE = re.compile(
+    rf"(?:co|która karta) ma (?:znaleźć się|być) (?P<place>{_CARD_PLACE})\?"
+    r"(?: (?P<scope>krótko i bez dopowiadania drugiego dokumentu|podaj tylko nazwę)[.!])?",
+    _FLAGS,
+)
+
+
+def _card_names(card: _Definition) -> set[str]:
+    full = card.name.casefold()
+    short = full.removeprefix("karta ")
+    names = {full, short}
+    if short.endswith("ów"):
+        stem = short[:-2]
+        names.add(stem + ("i" if stem.endswith(("k", "g")) else "y"))
+    return names
+
+
+def _card_source(
+    text: str,
+) -> tuple[_Definition, _Definition, str, _Definition, str] | None:
+    parts = _parts(text)
+    if len(parts) != 3 or not _CARD_BRIEF.fullmatch(parts[2]):
+        return None
+    cards = _CARDS_START.fullmatch(parts[0])
+    placement = _CARD_AVAILABILITY.fullmatch(parts[1])
+    if (
+        not cards
+        or not placement
+        or placement["shared"].casefold() == placement["extra_place"].casefold()
+    ):
+        return None
+    clauses = re.split(r",\s*(?:a )?(?=karta )|;\s*", cards["roles"], flags=_FLAGS)
+    if len(clauses) != 2:
+        return None
+    left, right = (_CARD_ROLE.fullmatch(clause) for clause in clauses)
+    if left is None or right is None:
+        return None
+    first, second = (
+        _Definition(m["name"], m["role"], m["detail"]) for m in (left, right)
+    )
+    if _card_names(first) & _card_names(second):
+        return None
+    name = placement["extra_card"].casefold()
+    extra = [card for card in (first, second) if name in _card_names(card)]
+    if len(extra) != 1:
+        return None
+    return first, second, placement["shared"], extra[0], placement["extra_place"]
+
+
+def _card_reply(current: str, previous: str) -> str | None:
+    question = _CARD_AT_PLACE.fullmatch(current)
+    data = _card_source(previous if question else current)
+    if data is None:
+        return None
+    first, second, shared, extra, place = data
+    at_place = place[0].upper() + place[1:]
+    if question:
+        if question["place"].casefold() != place.casefold():
+            return None
+        if (question["scope"] or "").casefold() == "podaj tylko nazwę":
+            return extra.name
+        return f"{at_place} ma być tylko {extra.name}."
+    return (
+        f"Obie karty mają być dostępne {shared}, przy czym {first.name} {first.relation} "
+        f"{first.meaning}, a {second.name} {second.relation} {second.meaning}. "
+        f"{at_place} ma być dodatkowo tylko {extra.name}."
+    )
+
+
+_PRODUCT_TIMES = re.compile(
+    rf"(?:na karcie|w opisie) produktu czas (?:pracy|działania) (?:to|wynosi) "
+    rf"(?P<work>{_NUMBER}) (?:minut[ayę]?|min), a czas przed pierwszym użyciem (?:to|wynosi) "
+    rf"(?P<prepare>{_NUMBER}) (?:minut[ayę]?|min)[.] "
+    r"(?:(?:klient|użytkownik) pomylił (?:te wielkości|te czasy|te liczby)[.] )?"
+    r"(?:wyjaśnij różnicę|co oznaczają te czasy)[!? .]?",
+    _FLAGS,
+)
+_PRODUCT_DEADLINE = re.compile(
+    rf"(?:mogę zacząć przygotowania|zacznę przygotowania) (?P<available>{_NUMBER}) "
+    r"(?:minut[ayę]?|min) przed (?:pokazem|prezentacją|demonstracją)[.] "
+    r"(?:co z tych dwóch liczb decyduje, czy zdążę, i z jakim wnioskiem"
+    r"|który z tych czasów rozstrzyga, czy zdążę|czy zdążę się przygotować)\?",
+    _FLAGS,
+)
+
+
+def _product_time_reply(current: str, previous: str) -> str | None:
+    deadline = _PRODUCT_DEADLINE.fullmatch(current)
+    info = _PRODUCT_TIMES.fullmatch(previous if deadline else current)
+    if info is None:
+        return None
+    work, preparation = (_decimal(info[name]) for name in ("work", "prepare"))
+    if min(work, preparation) <= 0:
+        return None
+    required = _display(preparation)
+    if deadline is None:
+        return (
+            f"Czas pracy wynosi {_display(work)} min. "
+            f"Przed pierwszym użyciem trzeba uwzględnić {required} min przygotowania."
+        )
+    available = _decimal(deadline["available"])
+    difference = preparation - available
+    if difference > 0:
+        conclusion = f"Nie zdążysz. Zabraknie {_display(difference)} min."
+    elif difference < 0:
+        conclusion = f"Zdążysz. Pozostanie {_display(-difference)} min zapasu."
+    else:
+        conclusion = "Zdążysz dokładnie na czas, bez zapasu."
+    return (
+        f"Decyduje wymagany czas przed pierwszym użyciem, czyli {required} min. "
+        f"Masz {_display(available)} min. {conclusion}"
+    )
+
+
 _CARRY_FEATURES = r"(?:długi|krótki) uchwyt i (?P<{side}>niewielki|mały|duży) worek"
 _CARRY_PAIR = re.compile(
     rf"w ofercie (?P<first>{_WORD}) jest {_CARRY_FEATURES.format(side='first_size')}, "
@@ -644,6 +882,9 @@ def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | Non
         or _material_reply(current, previous)
         or _definition_reply(current, previous)
         or _shared_reference_reply(current, previous)
+        or _shelf_reply(current, previous)
+        or _card_reply(current, previous)
+        or _product_time_reply(current, previous)
         or _carry_reply(current, previous)
         or _list_comparison(current, users)
         or _table_comparison(current, users)

@@ -925,3 +925,110 @@ def test_documented_correction_still_requires_the_named_review():
         studio_followup(correction.replace("odcienia", "formatu"), _history(rejected))
         is None
     )
+
+
+def test_source_first_visit_and_access_evidence_does_not_transfer_between_devices():
+    visit = (
+        "Według Joli o 7:40 była przy furtce zachodniej. "
+        "Nie sprawdziła czytnika. Podaj stan."
+    )
+    assert studio_followup(visit, []) == (
+        "Według Joli o 7:40 była przy furtce zachodniej. Nie sprawdziła czytnika."
+    )
+    plan = (
+        "Brak zapisu testu terminala, mimo że terminal zainstalowano. "
+        "Dopiero po teście wolno włączyć dostęp do hali po 19:00. Jak zapisać stan?"
+    )
+    report = (
+        "O 16:30 test terminala powiódł się według techniczki. "
+        "Włączenia dostępu nie potwierdzono. Zapisz oba stany."
+    )
+    assert "Brak potwierdzenia testu terminala" in studio_followup(plan, [])
+    assert studio_followup(report, _history(plan)) == (
+        "Według techniczki o 16:30 test terminala powiódł się. "
+        "Dostęp do hali po 19:00: włączenie nadal niepotwierdzone."
+    )
+    assert studio_followup(report.replace("terminala", "zamka"), _history(plan)) is None
+    assert (
+        studio_followup(
+            report,
+            _history(plan.replace("terminal zainstalowano", "zamek zainstalowano")),
+        )
+        is None
+    )
+    assert studio_followup(report, []) is None
+
+
+def test_reordered_dispatch_matches_both_request_ids_and_requires_expected_approval():
+    status = (
+        "Folderów F i G jeszcze nie wysłano. Wniosek o G tylko złożono, a F zatwierdzono. "
+        "Co zapisać dla każdego?"
+    )
+    update = (
+        "Wysłano tylko G, jak podaje rejestr. Wniosek o G również ma już akceptację. "
+        "Zapisz stan obu."
+    )
+    reply = studio_followup(update, _history(status))
+    assert reply == (
+        "Folder G nadano, co potwierdza rejestr. Jego wniosek jest zaakceptowany. "
+        "Folder F: wniosek zaakceptowany, przesyłki nie nadano."
+    )
+    assert studio_followup(status.replace("F i G", "F i H"), []) is None
+    assert studio_followup(status.replace("F i G", "F i F"), []) is None
+    assert studio_followup(update.replace("o G", "o F"), _history(status)) is None
+    assert (
+        studio_followup(update.replace("tylko G", "tylko H"), _history(status)) is None
+    )
+
+
+def test_reordered_label_separates_declared_count_verified_items_and_named_signer():
+    source = (
+        "Do przyjęcia trzeba potwierdzić siedem zgodnych próbek i uzyskać podpis kontrolerki. "
+        "Na etykiecie kartonu widnieje 8. Próbek jeszcze nie sprawdzono. Co stanowi dowód?"
+    )
+    checked = (
+        "Podpis kontrolerki nadal czeka. Weryfikacja wykazała sześć zgodnych próbek. "
+        "Co powstrzymuje przyjęcie?"
+    )
+    assert studio_followup(source, []) == (
+        "Etykieta na kartonie podaje 8. Do przyjęcia trzeba jeszcze sprawdzić "
+        "7 zgodnych próbek i uzyskać podpis kontrolerki."
+    )
+    assert studio_followup(checked, _history(source)) == (
+        "Policzono 6 zgodnych próbek. Wymagano 7. Podpis kontrolerki nadal jest oczekiwany. "
+        "Przyjęcie pozostaje otwarte."
+    )
+    assert (
+        studio_followup(source.replace("Próbek jeszcze", "Kartonu jeszcze"), []) is None
+    )
+    assert (
+        studio_followup(checked.replace("kontrolerki", "inspektorki"), _history(source))
+        is None
+    )
+    assert (
+        studio_followup(checked.replace("próbek", "etykiet"), _history(source)) is None
+    )
+
+
+def test_reordered_review_requires_evidence_for_the_same_field_and_reviewer():
+    rejected = (
+        "Bez uwag można podpisać dopiero po ponownym sprawdzeniu. "
+        "Z powodu błędnego opisu faktury inspektor odrzucił próbkę płótna. Podaj stan."
+    )
+    corrected = (
+        "W karcie widnieje korekta opisu faktury. Inspektor nadal nie przeprowadził powtórnej kontroli. "
+        "Czy można już wpisać „bez uwag”?"
+    )
+    assert "Czekają korekta i ponowna kontrola." in studio_followup(rejected, [])
+    assert studio_followup(corrected, _history(rejected)) == (
+        "Zmieniono opis faktury i odnotowano zmianę w karcie. "
+        "Inspektor nadal nie przeprowadził ponownej kontroli. Status „bez uwag” nadal czeka na jej wynik."
+    )
+    assert (
+        studio_followup(corrected.replace("faktury", "koloru"), _history(rejected))
+        is None
+    )
+    assert (
+        studio_followup(corrected.replace("Inspektor", "Kontroler"), _history(rejected))
+        is None
+    )

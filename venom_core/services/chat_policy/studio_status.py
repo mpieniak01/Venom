@@ -641,6 +641,7 @@ _PREFERENCE_ONLY = re.compile(
 
 _REQUIRED_COUNT = rf"(?:{'|'.join(_EXPECTED_FORMS)}|[1-9][0-9]{{0,3}})"
 _VERIFIED_COUNT = rf"(?:{'|'.join(_NUMBER_FORMS)}|[1-9][0-9]{{0,3}})"
+_COUNT_FORMS = _EXPECTED_FORMS | _NUMBER_FORMS
 _DECLARED_ITEMS = r"pojemników|paczek|pudełek|kopert|palet"
 _DECLARED_UNIT_FORMS = {
     "pojemniki": "pojemników",
@@ -697,6 +698,27 @@ _LABEL_CHECK_PENDING = re.compile(
     r"czy warunek przyjęcia jest zamknięty\?",
     re.I,
 )
+_LABEL_REQUIREMENTS_FIRST = re.compile(
+    rf"do przyjęcia trzeba potwierdzić (?P<count>{_VERIFIED_COUNT}) "
+    r"(?P<items>(?:czystych|całych|zgodnych) (?P<unit>[^\W\d_]+)) i uzyskać podpis "
+    r"(?P<authority>kontrolera|kontrolerki|inspektora|inspektorki)[.!] "
+    r"na etykiecie (?P<container>kartonu|pudełka|opakowania|paczki) widnieje "
+    r"(?P<declared>[1-9][0-9]{0,3})[.!] "
+    r"(?P=unit) jeszcze nie sprawdzono[.!] co stanowi dowód\?",
+    re.I,
+)
+_LABEL_SIGNER_FIRST = re.compile(
+    r"podpis (?P<authority>kontrolera|kontrolerki|inspektora|inspektorki) nadal czeka[.!] "
+    rf"weryfikacja wykazała (?P<count>{_VERIFIED_COUNT}) "
+    r"(?P<items>(?:czystych|całych|zgodnych) [^\W\d_]+)[.!] co powstrzymuje przyjęcie\?",
+    re.I,
+)
+_LABEL_CONTAINER_FORMS = {
+    "kartonu": "kartonie",
+    "pudełka": "pudełku",
+    "opakowania": "opakowaniu",
+    "paczki": "paczce",
+}
 _LABEL_CHECK_AUTHORITY = {
     "kontrolera": "kontroler",
     "kontrolerki": "kontrolerka",
@@ -706,19 +728,33 @@ _LABEL_CHECK_AUTHORITY = {
 
 
 def _label_check_status(text: str, previous: str) -> str | None:
-    if source := _LABEL_CHECK.fullmatch(text):
+    if source := _LABEL_CHECK.fullmatch(text) or _LABEL_REQUIREMENTS_FIRST.fullmatch(
+        text
+    ):
         required = _required_count(source["count"])
+        container = _LABEL_CONTAINER_FORMS.get(
+            source["container"].casefold(), source["container"]
+        )
         return (
-            f"Etykieta na {source['container']} podaje {source['declared']}. "
+            f"Etykieta na {container} podaje {source['declared']}. "
             f"Do przyjęcia trzeba jeszcze sprawdzić {required} {source['items']} "
             f"i uzyskać podpis {source['authority']}."
         )
     if (
-        (source := _LABEL_CHECK.fullmatch(previous))
-        and (checked := _LABEL_CHECK_PENDING.fullmatch(text))
+        (
+            source := _LABEL_CHECK.fullmatch(previous)
+            or _LABEL_REQUIREMENTS_FIRST.fullmatch(previous)
+        )
+        and (
+            checked := _LABEL_CHECK_PENDING.fullmatch(text)
+            or _LABEL_SIGNER_FIRST.fullmatch(text)
+        )
         and checked["items"].casefold() == source["items"].casefold()
         and checked["authority"].casefold()
-        == _LABEL_CHECK_AUTHORITY[source["authority"].casefold()]
+        in {
+            source["authority"].casefold(),
+            _LABEL_CHECK_AUTHORITY[source["authority"].casefold()],
+        }
     ):
         expected = _required_count(source["count"])
         count = _recorded_count(checked["count"])
@@ -733,7 +769,7 @@ def _label_check_status(text: str, previous: str) -> str | None:
 
 
 def _required_count(text: str) -> int:
-    return int(text) if text.isdecimal() else _EXPECTED_FORMS[text.casefold()]
+    return int(text) if text.isdecimal() else _COUNT_FORMS[text.casefold()]
 
 
 def _expected_colors(text: str) -> int | None:

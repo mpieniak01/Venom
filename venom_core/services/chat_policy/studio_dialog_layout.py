@@ -314,6 +314,98 @@ def _display_field_reply(current: str, previous: str, earlier: str) -> str | Non
     return result
 
 
+_STATION_COUNT = r"(?:[1-9][0-9]?|jedn[oaą]|dw(?:ie|a)|trzy|cztery|pięć|sześć|siedem|osiem|dziewięć|dziesięć)"
+_STATION_NOUN = r"(?:stacj[aei]|stanowisk[oa]?)"
+_STATION_PAIR = re.compile(
+    rf"(?:są|mamy) dwa układy stanowisk(?: do ćwiczeń)?[.] "
+    rf"w (?P<row>{_NAME}) są (?P<length>{_STATION_COUNT} {_STATION_NOUN}) "
+    rf"w jednym (?P<shape>szeregu|rzędzie), (?:a )?w (?P<split>{_NAME}) "
+    rf"(?P<left>{_STATION_COUNT}(?: {_STATION_NOUN})?) po lewej i "
+    rf"(?P<right>{_STATION_COUNT}(?: {_STATION_NOUN})?) po prawej od wejścia[.] "
+    r"(?:porównaj układ|porównaj układy|opisz oba układy) w dwóch zdaniach[.!]",
+    re.I,
+)
+_STATION_SIGN = re.compile(
+    rf"(?:wybieramy|wybieram) (?P<choice>{_NAME})[.] "
+    r"(?:jak jednym środkiem pokazać rozmieszczenie przed wejściem, "
+    r"nie narzucając kolejności odwiedzania\?"
+    r"|podaj jeden sposób pokazania układu przed wejściem bez narzucania kolejności[.!])",
+    re.I,
+)
+
+
+def _station_pair(text: str) -> re.Match[str] | None:
+    layout = _STATION_PAIR.fullmatch(text)
+    if layout and layout["row"].casefold() != layout["split"].casefold():
+        return layout
+    return None
+
+
+def _station_reply(current: str, previous: str) -> str | None:
+    if layout := _station_pair(current):
+        return (
+            f"W układzie {layout['row']} w jednym {layout['shape']} znajdują się {layout['length']}. "
+            f"W układzie {layout['split']} po lewej stronie wejścia rozmieszczono "
+            f"{layout['left']}, a po prawej {layout['right']}."
+        )
+    choice = _STATION_SIGN.fullmatch(current)
+    if choice is None or (layout := _station_pair(previous)) is None:
+        return None
+    selected = choice["choice"].casefold()
+    if selected == layout["split"].casefold():
+        shape = "stanowiska po lewej i po prawej stronie wejścia"
+    elif selected == layout["row"].casefold():
+        shape = f"stanowiska w jednym {layout['shape']}"
+    else:
+        return None
+    return f"Ustaw przed wejściem jeden schemat pokazujący {shape}, bez strzałek i numeracji."
+
+
+_GROUP_COUNTS = {"dwie": 2, "dwa": 2, "trzy": 3, "cztery": 4, "pięć": 5, "sześć": 6}
+_GROUP_COUNT = rf"(?P<count>[2-6]|{'|'.join(_GROUP_COUNTS)})"
+_GROUP_CATEGORY = r"techniki|technik|tematy|tematów|gatunki|gatunków"
+_GROUP_DEFINITION = re.compile(
+    rf"(?:plakaty|wydruki|zdjęcia|prace|ilustracje) na (?:\w+ )?stołach "
+    rf"(?:dzielimy|grupujemy) na (?:{_GROUP_COUNT} )?(?:{_GROUP_CATEGORY}): "
+    rf"(?P<items>{_NAME}(?:, {_NAME}){{0,4}} (?:i|oraz) {_NAME})[.] "
+    r"(?:jak jednym prostym sposobem pokazać odwiedzającym, "
+    r"gdzie w układzie stołów zaczyna się każda grupa"
+    r"|jak jednym sposobem oznaczyć początek każdej grupy)\?",
+    re.I,
+)
+_GROUP_MOVE = re.compile(
+    r"stoły (?:trzeba odsunąć|odsuwamy|przesuwamy) od ściany, "
+    r"a (?:etykiety|oznaczenia) mają zostać na blatach[.] "
+    r"(?:podaj jedno konkretne rozwiązanie|podaj jeden sposób)[.!]",
+    re.I,
+)
+
+
+def _has_named_groups(text: str) -> bool:
+    source = _GROUP_DEFINITION.fullmatch(text)
+    if source is None:
+        return False
+    names = re.split(r", | i | oraz ", source["items"].casefold())
+    if len(set(names)) != len(names):
+        return False
+    if not (count := source["count"]):
+        return True
+    expected = (
+        int(count)
+        if count.isascii() and count.isdecimal()
+        else _GROUP_COUNTS[count.casefold()]
+    )
+    return len(names) == expected
+
+
+def _group_labels_reply(current: str, previous: str) -> str | None:
+    if _has_named_groups(current) or (
+        _GROUP_MOVE.fullmatch(current) and _has_named_groups(previous)
+    ):
+        return "Na początku każdej grupy ustaw na blacie samostojącą etykietę z nazwą tej grupy."
+    return None
+
+
 def layout_reply(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve layout questions from the current and two most recent user turns."""
     users = [
@@ -329,4 +421,6 @@ def layout_reply(text: str, history: Sequence[HistoryMessage]) -> str | None:
         or _courtyard_reply(text, previous, earlier)
         or _music_reply(text, previous, earlier)
         or _theme_reply(text, previous, earlier)
+        or _station_reply(text, previous)
+        or _group_labels_reply(text, previous)
     )

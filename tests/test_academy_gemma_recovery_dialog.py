@@ -744,3 +744,169 @@ def test_studio_pickup_defers_when_scope_or_source_is_unclear(correction, prompt
         message for prompt in prompts for message in _history(prompt, "Roboczo.")
     ]
     assert studio_revision(correction, history) is None
+
+
+_DISPLAY_CARD_SOURCE = (
+    "Mamy dwie karty sali: karta legendy wyjaśnia symbole przy gablotach, "
+    "karta trasy pokazuje skróty na piętrze. Obie będą dostępne w recepcji, "
+    "a tylko karta legendy ma być również obok windy. "
+    "Jak przekazać te informacje obsłudze w dwóch zdaniach?"
+)
+_PRODUCT_CARD_SOURCE = (
+    "Na karcie produktu czas pracy to 20 minut, a czas przed pierwszym użyciem "
+    "to 40 minut. Klient pomylił te wielkości. Wyjaśnij różnicę."
+)
+_PRODUCT_CARD_DEADLINE = (
+    "Mogę zacząć przygotowania 25 minut przed pokazem. "
+    "Co z tych dwóch liczb decyduje, czy zdążę, i z jakim wnioskiem?"
+)
+_SHELF_SOURCE = (
+    "Na półce mieści się pojemnik mniej niż 38 cm. Niebieski ma 37,5 cm "
+    "i uchwyt od góry, a zielony ma 38 cm i uchwyt z boku. "
+    "Co wybrać, jeśli najpierw ma się zmieścić, a potem liczy się uchwyt z boku?"
+)
+_SHELF_EXPAND = (
+    "Wymieniliśmy półkę na taką, która mieści pojemnik do 38 cm włącznie. "
+    "Ponów wybór z tymi samymi priorytetami."
+)
+_STATION_SOURCE = (
+    "Mamy dwa układy stanowisk. W E są cztery stanowiska w jednym rzędzie, "
+    "a w H jedno po lewej i trzy po prawej od wejścia. "
+    "Opisz oba układy w dwóch zdaniach."
+)
+_STATION_ONE_MAP = (
+    "Wybieram E. Podaj jeden sposób pokazania układu przed wejściem bez "
+    "narzucania kolejności."
+)
+_LABELS_SOURCE = (
+    "Zdjęcia na trzech stołach grupujemy na cztery tematy: pejzaż, architektura, "
+    "ludzie i przyroda. Jak jednym sposobem oznaczyć początek każdej grupy?"
+)
+_LABELS_MOVE = "Stoły przesuwamy od ściany, a oznaczenia mają zostać na blatach. Podaj jeden sposób."
+
+
+def test_studio_publishes_card_roles_and_placements_as_separate_facts(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, calls, replies = studio_chat
+    session = str(uuid4())
+    assert chat(
+        _DISPLAY_CARD_SOURCE, session=session, verify_history=True, stream=False
+    ) == (
+        "Obie karty mają być dostępne w recepcji, przy czym karta legendy wyjaśnia symbole "
+        "przy gablotach, a karta trasy pokazuje skróty na piętrze. "
+        "Obok windy ma być dodatkowo tylko karta legendy."
+    )
+    assert (
+        chat(
+            "Która karta ma być obok windy? Podaj tylko nazwę.",
+            session=session,
+            verify_history=True,
+            stream=False,
+        )
+        == "karta legendy"
+    )
+    assert not calls and not replies
+    assert (
+        studio_comparison(
+            "Co ma znaleźć się przy gablotach?",
+            _history(_DISPLAY_CARD_SOURCE, "Karta legendy jest przy gablotach."),
+        )
+        is None
+    )
+    assert (
+        studio_comparison(
+            _DISPLAY_CARD_SOURCE.replace("tylko karta legendy", "tylko rozkład"), []
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("available", "conclusion"),
+    [
+        (25, "Nie zdążysz. Zabraknie 15 min."),
+        (40, "Zdążysz dokładnie na czas, bez zapasu."),
+        (45, "Zdążysz. Pozostanie 5 min zapasu."),
+    ],
+)
+def test_product_deadline_uses_time_before_first_use(available, conclusion):
+    assert studio_comparison(_PRODUCT_CARD_SOURCE, []) == (
+        "Czas pracy wynosi 20 min. Przed pierwszym użyciem trzeba uwzględnić 40 min przygotowania."
+    )
+    history = _history(_PRODUCT_CARD_SOURCE, "Urządzenie musi ładować akumulator.")
+    assert studio_comparison(
+        _PRODUCT_CARD_DEADLINE.replace("25", str(available)), history
+    ) == (
+        f"Decyduje wymagany czas przed pierwszym użyciem, czyli 40 min. "
+        f"Masz {available} min. {conclusion}"
+    )
+    assert studio_comparison(_PRODUCT_CARD_DEADLINE, []) is None
+
+
+def test_shelf_checks_explicit_boundary_before_preferred_handle():
+    reply = studio_comparison(_SHELF_SOURCE, [])
+    assert (
+        reply
+        and "„Niebieski”" in reply
+        and "37,5 cm" in reply
+        and "poniżej 38 cm" in reply
+    )
+    history = _history(_SHELF_SOURCE, "Zielony mieścił się już na starej półce.")
+    assert studio_comparison(_SHELF_EXPAND, history) == (
+        "Oba warianty mieszczą się na półce, która przyjmuje przedmioty do 38 cm włącznie. "
+        "Wybierz wariant „zielony”, bo ma uchwyt z boku."
+    )
+    assert (
+        studio_comparison(_SHELF_EXPAND.replace("pojemnik", "stojak"), history) is None
+    )
+    assert (
+        studio_comparison(_SHELF_EXPAND.replace("do 38 cm", "poniżej 38 cm"), history)
+        is None
+    )
+    assert "Żaden wariant się nie zmieści" in studio_comparison(
+        _SHELF_SOURCE.replace("mniej niż 38 cm", "poniżej 37 cm"), []
+    )
+    assert "Położenie uchwytu nie rozstrzyga wyboru" in studio_comparison(
+        _SHELF_EXPAND, _history(_SHELF_SOURCE.replace("od góry", "z boku"), "Roboczo.")
+    )
+
+
+def test_station_sign_follows_selected_arrangement_without_prescribing_order():
+    assert studio_dialog(_STATION_SOURCE, []) == (
+        "W układzie E w jednym rzędzie znajdują się cztery stanowiska. "
+        "W układzie H po lewej stronie wejścia rozmieszczono jedno, a po prawej trzy."
+    )
+    history = _history(_STATION_SOURCE, "Proponuję numerować stanowiska.")
+    assert studio_dialog(_STATION_ONE_MAP, history) == (
+        "Ustaw przed wejściem jeden schemat pokazujący stanowiska w jednym rzędzie, "
+        "bez strzałek i numeracji."
+    )
+    assert studio_dialog(
+        _STATION_ONE_MAP.replace("Wybieram E", "Wybieram H"), history
+    ) == (
+        "Ustaw przed wejściem jeden schemat pokazujący stanowiska po lewej i po prawej "
+        "stronie wejścia, bez strzałek i numeracji."
+    )
+    assert (
+        studio_dialog(_STATION_ONE_MAP.replace("Wybieram E", "Wybieram A"), history)
+        is None
+    )
+
+
+def test_grounded_labels_are_per_group_when_tables_move():
+    label = "Na początku każdej grupy ustaw na blacie samostojącą etykietę z nazwą tej grupy."
+    assert studio_dialog(_LABELS_SOURCE, []) == label
+    assert (
+        studio_dialog(_LABELS_MOVE, _history(_LABELS_SOURCE, "Jedna etykieta na stół."))
+        == label
+    )
+    assert studio_dialog(_LABELS_MOVE, []) is None
+    assert (
+        studio_dialog(_LABELS_SOURCE.replace("cztery tematy", "trzy tematy"), [])
+        is None
+    )
+    assert studio_dialog(_LABELS_SOURCE.replace("i przyroda", "i pejzaż"), []) is None

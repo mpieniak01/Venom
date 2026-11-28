@@ -907,6 +907,124 @@ def test_studio_rejects_mismatched_source_edits():
                 "szt.",
             ),
         ],
+        [
+            (
+                "Na osłonę idzie pięć długich taśm po 28 cm oraz cztery krótsze po 17 cm. Podaj sumę długości w centymetrach.",
+                "5 × 28 cm + 4 × 17 cm = 208 cm.",
+                "208",
+                "cm",
+            ),
+            (
+                "Po korekcie krótsze odcinki mierzą po 19 cm. Odłożono już 1,65 m. Jaki jest niedobór w cm?",
+                "Brakuje 51 cm (5 × 28 cm + 4 × 19 cm − 165 cm).",
+                "51",
+                "cm",
+            ),
+        ],
+        [
+            (
+                "Stawki: 5 szafek po 14 zł i 3 szafki po 9 zł. Jaki jest koszt samych tańszych?",
+                "3 × 9 zł = 27 zł.",
+                "27",
+                "zł",
+            ),
+            (
+                "Za droższą szafkę stawka wynosi teraz 12 zł zamiast 14 zł. Ile wyniesie łączna kwota?",
+                "Razem 87 zł: (3 × 9 zł) + (5 × 12 zł).",
+                "87",
+                "zł",
+            ),
+        ],
+        [
+            (
+                "Szerokości: Klon 485 mm, Buk 0,49 m oraz Grab 51 cm. Która deska ma najmniejszą szerokość?",
+                "Najmniejsza szerokość: Klon, 48,5 cm. Porównanie: Klon 48,5 cm, Buk 49 cm, Grab 51 cm.",
+                "48.5",
+                "cm",
+            ),
+            (
+                "Korekta pomiaru: szerokość Klon to 52 cm. Która deska ma teraz najmniejszą szerokość?",
+                "Najmniejsza szerokość: Buk, 49 cm. Porównanie: Klon 52 cm, Buk 49 cm, Grab 51 cm.",
+                "49",
+                "cm",
+            ),
+        ],
+        [
+            (
+                "Pusty kosz waży 110 g. Masy trzech worków w kolejności to 0,44 kg, 325 g oraz 0,68 kg. Ile w gramach ważą bez kosza?",
+                "440 g + 325 g + 680 g = 1445 g.",
+                "1445",
+                "g",
+            ),
+            (
+                "W drugim worku jest teraz 0,295 kg. Ile w gramach waży komplet razem z koszem?",
+                "440 g + 295 g + 680 g + 110 g = 1525 g.",
+                "1525",
+                "g",
+            ),
+        ],
+        [
+            (
+                "Zapisane odczyty to 8, 13, -2, 6 i 20. Jaka jest mediana tego szeregu?",
+                "Mediana: 8.",
+                "8",
+                None,
+            ),
+            (
+                "Skreśl wynik 6 jako duplikat i podaj medianę jeszcze raz.",
+                "Środkowe wartości: 8 i 13. Mediana: 10,5.",
+                "10.5",
+                None,
+            ),
+        ],
+        [
+            (
+                "Dopuszczam powyżej 0,38 m oraz do 54 cm włącznie. Próbki: A 380 mm, B 0,42 m, C 54 cm, D 550 mm. Wskaż pasujące próbki.",
+                "Zakres spełniają: B, C (2 szt.).",
+                "2",
+                "szt.",
+            ),
+            (
+                "Zamień zasady dotyczące krańców: dolny włącznie, górny wyłącznie. Podaj listę jeszcze raz.",
+                "Zakres spełniają: A, B (2 szt.).",
+                "2",
+                "szt.",
+            ),
+        ],
+        [
+            (
+                "Wykonano trzy pomiary zużycia: 12, 20 i 37 ml. Oblicz średnią bez brakującej czwartej próby.",
+                "Średnia z 3 pomiarów: 23 ml ((12 + 20 + 37) ÷ 3).",
+                "23",
+                "ml",
+            ),
+            (
+                "Drugi pomiar zawyżono o 0,004 l. Podaj nową średnią z dokładnością do dwóch miejsc po przecinku.",
+                "Średnia z 3 pomiarów: 21,67 ml ((12 + 16 + 37) ÷ 3).",
+                "21.66666666666666666666666667",
+                "ml",
+            ),
+        ],
+        [
+            (
+                "Mam 4 brązowe opakowania, po 9 sztuk każde, oraz 3 czerwone, po 8 sztuk każde. Policz tylko czerwone sztuki.",
+                "Czerwonych: 24 szt.",
+                "24",
+                "szt.",
+            ),
+            (
+                "Tylko ostatnie czerwone opakowanie zawiera 5 sztuk. Ile jest sztuk wszystkich kolorów łącznie?",
+                "Razem 57 szt. (brązowych: 36, czerwonych: 21).",
+                "57",
+                "szt.",
+            ),
+            (
+                "Zużyliśmy 4 brązowe sztuki. Podaj pozostałe sztuki osobno dla każdego koloru.",
+                "Pozostałe: brązowe 32 szt., czerwone 21 szt.",
+                "32",
+                "szt.",
+            ),
+        ],
     ],
     ids=(
         "length",
@@ -917,6 +1035,14 @@ def test_studio_rejects_mismatched_source_edits():
         "interval",
         "mean",
         "packs",
+        "paraphrase-length",
+        "paraphrase-relative-rate",
+        "paraphrase-width",
+        "paraphrase-mass",
+        "paraphrase-median",
+        "paraphrase-interval",
+        "paraphrase-mean",
+        "paraphrase-packs",
     ),
 )
 def test_studio_binds_operands_and_publishes_calculator_result(
@@ -1124,6 +1250,85 @@ def test_studio_binds_operands_and_publishes_calculator_result(
                 "Ostatnie białe opakowanie ma tylko 7. Ile sztuk razem?",
             ),
             "Oddaliśmy 37 niebieskich. Podaj osobno, ile zostało obu kolorów.",
+        ),
+        (
+            (
+                "Na osłonę idzie pięć długich taśm po 28 cm oraz cztery krótsze po 17 cm. Podaj sumę długości w centymetrach.",
+            ),
+            "Nie wszystkie krótsze odcinki mierzą po 19 cm. Odłożono już 1,65 m. Jaki jest niedobór w cm?",
+        ),
+        (
+            (
+                "Stawki: 5 szafek po 14 zł i 3 szafki po 9 zł. Jaki jest koszt samych tańszych?",
+            ),
+            "Za droższą szafkę stawka wynosi teraz 12 zł zamiast 13 zł. Ile wyniesie łączna kwota?",
+        ),
+        (
+            (
+                "Szerokości: Klon 485 mm, Buk 0,49 m oraz Grab 51 cm. Która deska ma najmniejszą szerokość?",
+            ),
+            "Korekta pomiaru: szerokość Dąb to 52 cm. Która deska ma teraz najmniejszą szerokość?",
+        ),
+        (
+            (
+                "Szerokości: Klon 485 mm, Buk 0,49 m oraz Grab 51 cm. Która deska ma najmniejszą szerokość?",
+            ),
+            "Korekta pomiaru: szerokość Klon to 49 cm. Która deska ma teraz najmniejszą szerokość?",
+        ),
+        (
+            (),
+            "Pusty kosz waży 110 g. Masy trzech worków w kolejności to 0,44 kg, 325 g oraz 0,68 kg. Ile w gramach ważą bez pojemnika?",
+        ),
+        (
+            (
+                "Pusty kosz waży 110 g. Masy trzech worków w kolejności to 0,44 kg, 325 g oraz 0,68 kg. Ile w gramach ważą bez kosza?",
+            ),
+            "W czwartym worku jest teraz 0,295 kg. Ile w gramach waży komplet razem z koszem?",
+        ),
+        (
+            (
+                "Pusty kosz waży 110 g. Masy trzech worków w kolejności to 0,44 kg, 325 g oraz 0,68 kg. Ile w gramach ważą bez kosza?",
+            ),
+            "W drugim worku jest teraz 0,295 kg. Ile w gramach waży komplet razem z kufrem?",
+        ),
+        (
+            ("Zapisane odczyty to 8, 13, -2, 6 i 20. Jaka jest mediana tego szeregu?",),
+            "Skreśl wynik 4 jako duplikat i podaj medianę jeszcze raz.",
+        ),
+        (
+            (),
+            "Dopuszczam powyżej 0,38 m oraz do 54 cm. Próbki: A 380 mm, B 0,42 m, C 54 cm, D 550 mm. Wskaż pasujące próbki.",
+        ),
+        (
+            (
+                "Dopuszczam powyżej 0,38 m oraz do 54 cm włącznie. Próbki: A 380 mm, B 0,42 m, C 54 cm, D 550 mm. Wskaż pasujące próbki.",
+            ),
+            "Zamień zasady dotyczące krańców: dolny włącznie, górny podobnie jak wcześniej. Podaj listę jeszcze raz.",
+        ),
+        (
+            (
+                "Wykonano trzy pomiary zużycia: 12, 20 i 37 ml. Oblicz średnią bez brakującej czwartej próby.",
+            ),
+            "Drugi pomiar zawyżono o 4 g. Podaj nową średnią z dokładnością do dwóch miejsc po przecinku.",
+        ),
+        (
+            (
+                "Wykonano trzy pomiary zużycia: 12, 20 i 37 ml. Oblicz średnią bez brakującej czwartej próby.",
+            ),
+            "Drugi pomiar zawyżono o 0,03 l. Podaj nową średnią z dokładnością do dwóch miejsc po przecinku.",
+        ),
+        (
+            (
+                "Mam 4 brązowe opakowania, po 9 sztuk każde, oraz 3 czerwone, po 8 sztuk każde. Policz tylko czerwone sztuki.",
+            ),
+            "Tylko ostatnie zielone opakowanie zawiera 5 sztuk. Ile jest sztuk wszystkich kolorów łącznie?",
+        ),
+        (
+            (
+                "Mam 4 brązowe opakowania, po 9 sztuk każde, oraz 3 czerwone, po 8 sztuk każde. Policz tylko czerwone sztuki.",
+                "Tylko ostatnie czerwone opakowanie zawiera 5 sztuk. Ile jest sztuk wszystkich kolorów łącznie?",
+            ),
+            "Zużyliśmy 40 brązowych sztuki. Podaj pozostałe sztuki osobno dla każdego koloru.",
         ),
     ],
 )

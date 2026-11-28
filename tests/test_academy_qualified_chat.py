@@ -175,6 +175,20 @@ def test_studio_item_bill_in_normal_http(studio_chat, monkeypatch):
     session = str(uuid4())
     assert "ilość" in chat("Rachunek: Cena tuby to 4 zł.", session=session)
     assert chat("3 sztuki", session=session).endswith("Razem: 12 zł")
+    session = str(uuid4())
+    assert "ilość" in chat("Rachunek: Cena tuby to 4 zł.", session=session)
+    assert "pełny rachunek" in chat("٣ sztuki", session=session)
+    assert chat("3 sztuki", session=session).endswith("Razem: 12 zł")
+    session = str(uuid4())
+    assert chat("Rachunek: 2 mapy po 3 zł.", session=session).endswith("Razem: 6 zł")
+    assert "Dla której" in chat("8 zł", session=session)
+    assert "Dla której" in chat("Ile razem?", session=session)
+    assert chat("Cena mapy jednak 4 zł.", session=session).endswith("Razem: 8 zł")
+    for _ in range(2):
+        assert "nowy rachunek" in chat("3 książki po 22 zł.", session=session)
+    assert chat("Nowy rachunek: 3 książki po 22 zł.", session=session).endswith(
+        "Razem: 66 zł"
+    )
     assert not sent
     source_read.assert_not_awaited()
 

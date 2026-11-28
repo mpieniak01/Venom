@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 
 from venom_core.services.grounded_calculator import CalculationError, calculate
@@ -15,6 +16,9 @@ PRICE = r"(?P<price>(?:0|[1-9]\d{0,6})(?:[.,]\d{1,2})?) (?:zł|pln)"
 UNIT = r"(?: za sztukę)?"
 BARE_PRICE = re.compile(PRICE + UNIT, re.I)
 BARE_COUNT = re.compile(COUNT + r" sztuk(?:i)?", re.I)
+SHORT_VALUE = re.compile(
+    r"[-+−]?\d+(?:[.,]\d+)?\s+(?P<unit>zł|pln|sztuk(?:a|i)?)(?: za sztukę)?", re.I
+)
 PREFIX = re.compile(r"^(?:nowy )?rachunek\s*:\s*", re.I)
 CALCULATOR = re.compile(r"^kalkulator\s*:\s*", re.I)
 COST_QUESTION = re.compile(
@@ -315,7 +319,7 @@ def _description(text: str) -> str:
 
 def _bare_value(text: str) -> bool:
     text = text.rstrip(".!").strip()
-    return bool(BARE_PRICE.fullmatch(text) or BARE_COUNT.fullmatch(text))
+    return bool(SHORT_VALUE.fullmatch(text))
 
 
 def _follow(text: str) -> bool:
@@ -370,7 +374,7 @@ def _previous_prompts(records: list[dict[str, object]]) -> list[str] | None:
 
 def _bill_turns(message: str, history: list[dict[str, object]]) -> list[str] | None:
     if _starts(message):
-        if not PREFIX.match(message) and _previous_prompts(history):
+        if not PREFIX.match(message) and _previous_prompts(history) != []:
             raise BillQuestion(NEW_OR_CHANGE)
         return [message]
     if not _follow(message):
@@ -401,10 +405,48 @@ def _interrupted_bill(history: list[dict[str, object]]) -> bool:
     )
 
 
+def _short_field(text: str) -> str | None:
+    match = SHORT_VALUE.fullmatch(text.strip().rstrip(".!").strip())
+    if match is None:
+        return None
+    return "count" if match["unit"].casefold().startswith("sztuk") else "price"
+
+
+def _clarifies(text: str, field: str | None) -> bool:
+    if field is None:
+        return False
+    if _short_field(text) == field:
+        return True
+    clause = next(iter(_clauses(text.strip().lower())), "")
+    if match := CHANGE_FROM.fullmatch(clause):
+        return field == ("price" if match["field"] == "cenę" else "count")
+    if field == "count":
+        return CHANGE_COUNT.fullmatch(clause) is not None
+    return bool(CHANGE_PRICE.fullmatch(clause) or ITEM_PRICE.fullmatch(clause))
+
+
+def _replay(turns: list[str]) -> str:
+    bill = Bill()
+    question = ""
+    disputed_field = None
+    for text in turns:
+        if question and not _clarifies(text, disputed_field):
+            continue
+        # A rejected edit may contain several clauses. Commit them together
+        # only after every clause has been accounted for.
+        proposed = deepcopy(bill)
+        try:
+            proposed.apply(text)
+        except BillQuestion as exc:
+            question, disputed_field = str(exc), _short_field(text)
+        else:
+            bill, question = proposed, ""
+    return question or bill.result()
+
+
 def studio_bill_reply(message: str, history: list[dict[str, object]]) -> str | None:
     """Build amounts exclusively from complete user clauses in this bill."""
     message = message.strip()
-    bill = Bill()
     try:
         turns = _bill_turns(message, history)
         if turns is None:
@@ -415,9 +457,7 @@ def studio_bill_reply(message: str, history: list[dict[str, object]]) -> str | N
             raise BillQuestion(
                 "Który wariant i cenę jednostkową mam przyjąć do rachunku?"
             )
-        for text in turns:
-            bill.apply(text)
-        return bill.result()
+        return _replay(turns)
     except BillQuestion as exc:
         return str(exc)
     except CalculationError:

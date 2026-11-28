@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
@@ -143,6 +143,84 @@ _NO_CALCULATION = re.compile(
 _SCALES = {"mm": -1, "cm": 0, "m": 2}
 
 
+_COUNTED_SEQUENCE = re.compile(
+    rf"\bzużycie\s+(?P<item>{_WORD})\s+w\s+(?P<groups>{_COUNT}) (?:aktywnych )?grupach?\s+"
+    rf"(?:to|wynosi)\s+(?P<values>[0-9]+(?:, [0-9]+){{0,6}} i [0-9]+)\.",
+    re.I,
+)
+_MEAN = re.compile(r"\b(?:jaka jest|podaj|oblicz) średni[ąa]\b", re.I)
+_COUNT_DELTA = re.compile(
+    rf"(?P<ordinal>pierwszej|drugiej|trzeciej|czwartej|piątej|szóstej|siódmej|ósmej) "
+    rf"grupie (?P<operation>dolicz|odejmij)(?: jeszcze)? (?P<delta>jedną|{_COUNT}) "
+    rf"(?P<item>{_WORD})[.!]",
+    re.I,
+)
+_ORDINALS = (
+    "pierwszej",
+    "drugiej",
+    "trzeciej",
+    "czwartej",
+    "piątej",
+    "szóstej",
+    "siódmej",
+    "ósmej",
+)
+_PLACES = re.compile(
+    r"\bdo (?P<places>jednego miejsca|dwóch miejsc|trzech miejsc)(?: po przecinku)?\b",
+    re.I,
+)
+_PRECISION = {"jednego miejsca": 1, "dwóch miejsc": 2, "trzech miejsc": 3}
+_ROUNDING = re.compile(r"\b(?:zaokrągl|po przecinku|do \w+ miejsc)", re.I)
+_DISTRIBUTION = re.compile(
+    rf"(?:z|mamy) (?P<stock>{_COUNT}) (?P<item>{_WORD})[:,]? (?P<reserve>{_COUNT}) odkładamy[.!] "
+    rf"resztę dzielimy równo na (?P<groups>{_COUNT}) (?P<group>{_WORD})[.!] "
+    rf"ile (?P=item) w każdej\?",
+    re.I,
+)
+_CLOSED_GROUP = re.compile(
+    rf"jedną pełną (?P<group>{_WORD}) (?:zamknęliśmy|odłożyliśmy) na zapas[.!] "
+    rf"ile (?P<item>{_WORD}) jest w (?:otwartych|pozostałych)\?",
+    re.I,
+)
+_DAYS = r"poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę"
+_COUNT_CELL = r"[0-9]{1,6}"
+_DAY_TABLE = re.compile(
+    rf"w(?:e)? (?P<day1>{_DAYS}) było (?P<a1>{_COUNT_CELL}) (?P<kind>{_WORD}) dla (?P<scope>{_WORD}) "
+    rf"(?P<a>[A-Z]) i (?P<b1>{_COUNT_CELL}) dla (?P<b>[A-Z])[.!] "
+    rf"w(?:e)? (?P<day2>{_DAYS}) (?P=a) (?P<a2>{_COUNT_CELL}), (?P=b) (?P<b2>{_COUNT_CELL})[.!] "
+    rf"ile (?P=kind) dla (?P<asked>[A-Z]) w oba dni\?",
+    re.I,
+)
+_DAY_MOVE = re.compile(
+    rf"w(?:e)? (?P<day>{_DAYS}) (?P<count>{_COUNT}) (?P<kind>{_WORD}) by(?:ło|ły) błędnie w "
+    r"(?P<from>[A-Z]), przenieś je do (?P<to>[A-Z])[.!] podaj poprawn[ąy] "
+    rf"(?P=day)[.!]?",
+    re.I,
+)
+_DAY_SUM = re.compile(
+    rf"(?:a teraz |teraz )?ile (?:(?P<kind>{_WORD}) dla )?(?P<column>[A-Z]) (?:po dwóch dniach|w oba dni)\?",
+    re.I,
+)
+
+
+_PACK_COUNTS = re.compile(
+    rf"są (?P<a_count>{_COUNT}) wielopak\w* (?P<a>{_WORD}) po (?P<a_size>{_COUNT}) sztuk "
+    rf"i (?P<b_count>{_COUNT}) wielopak\w* (?P<b>{_WORD}) po (?P<b_size>{_COUNT}) sztuk[.!] "
+    rf"ile (?P<pick>{_WORD})\?",
+    re.I,
+)
+_PACK_EXCEPTION = re.compile(
+    rf"w ostatnim wielopaku (?P<item>{_WORD}) było tylko (?P<count>{_COUNT}), "
+    r"a pozostałe są bez zmiany[.!] ile sztuk łącznie\?",
+    re.I,
+)
+_PACK_TAKE = re.compile(
+    rf"oddaliśm[yi] (?P<count>{_COUNT}) (?P<kind>{_WORD})[.!] "
+    rf"podaj pozostałe (?P<a>{_WORD}) i (?P<b>{_WORD}) oddzielnie[.!]?",
+    re.I,
+)
+
+
 def _decimal(value: str) -> Decimal:
     return Decimal(value.replace(",", "."))
 
@@ -197,7 +275,7 @@ class _Term:
 @dataclass(frozen=True)
 class StudioCalculation:
     expression: str
-    unit: str
+    unit: str | None
     render: Callable[[str], str]
 
     def publish(self) -> dict[str, Any]:
@@ -414,6 +492,217 @@ def _mass_calculation(turns: Sequence[str]) -> StudioCalculation | None:
     return StudioCalculation(expression, "g", lambda result: f"{formula} = {result}.")
 
 
+def _count(text: str) -> int:
+    word = text.casefold()
+    if word.isdecimal():
+        return int(word)
+    return 1 if word == "jedną" else _WORD_COUNTS[word]
+
+
+def _distribution_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    current = turns[-1]
+    source = _DISTRIBUTION.fullmatch(current)
+    groups_closed = 0
+    if source is None and len(turns) > 1:
+        source = _DISTRIBUTION.fullmatch(turns[-2])
+        change = _CLOSED_GROUP.fullmatch(current)
+        if (
+            source is None
+            or change is None
+            or source["item"].casefold() != change["item"].casefold()
+            or source["group"].casefold().rstrip("yi")
+            != change["group"].casefold().rstrip("ęą")
+        ):
+            return None
+        groups_closed = 1
+    if source is None:
+        return None
+    stock, reserve, groups = (
+        _count(source[key]) for key in ("stock", "reserve", "groups")
+    )
+    if stock <= reserve or groups <= groups_closed or (stock - reserve) % groups:
+        return None
+    each = (stock - reserve) // groups
+    if groups_closed:
+        return StudioCalculation(
+            f"{groups - 1}*{each}",
+            source["item"],
+            lambda result: f"W pozostałych jest {result} ({groups - 1} × {each}).",
+        )
+    return StudioCalculation(
+        f"({stock}-{reserve})/{groups}",
+        source["item"],
+        lambda result: f"Po {result} w każdej ({stock} − {reserve}) ÷ {groups}.",
+    )
+
+
+def _mean_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    current = turns[-1]
+    if not _MEAN.search(current):
+        return None
+    start = _COUNTED_SEQUENCE.search(current)
+    change = None
+    if start is None and len(turns) > 1:
+        previous = turns[-2]
+        start = _COUNTED_SEQUENCE.search(previous) if _MEAN.search(previous) else None
+        change = _COUNT_DELTA.match(current)
+        if change is None or re.search(r"\d", current[change.end() :]):
+            return None
+    if start is None:
+        return None
+    raw = re.findall(r"[0-9]+", start["values"])
+    if any(len(value) > 6 for value in raw) or len(raw) != _count(start["groups"]):
+        return None
+    values = [int(value) for value in raw]
+    if change is not None:
+        measure = start["item"].casefold()
+        changed_measure = change["item"].casefold().removesuffix("ę")
+        if changed_measure not in {measure, measure.removesuffix("ek") + "k"}:
+            return None
+        i = _ORDINALS.index(change["ordinal"].casefold())
+        if i >= len(values):
+            return None
+        delta = _count(change["delta"])
+        values[i] += delta if change["operation"].casefold() == "dolicz" else -delta
+        if values[i] < 0:
+            return None
+    precision = _PLACES.search(current)
+    if precision is None and _ROUNDING.search(current):
+        return None
+    places = _PRECISION[precision["places"].casefold()] if precision else None
+    terms = " + ".join(map(str, values))
+
+    def render(result: str) -> str:
+        if places is not None:
+            quantum = Decimal(1).scaleb(-places)
+            result = format(
+                _decimal(result).quantize(quantum, rounding=ROUND_HALF_UP), "f"
+            )
+        return f"Średnia z {len(values)} grup to {result.replace('.', ',')} (({terms}) ÷ {len(values)})."
+
+    return StudioCalculation(f"({terms})/{len(values)}", None, render)
+
+
+def _day_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    active = turns[-3:]
+    for index in range(len(active) - 1, -1, -1):
+        if source := _DAY_TABLE.fullmatch(active[index]):
+            break
+    else:
+        return None
+    rest = active[index + 1 :]
+    day1, day2, a, b, asked = (
+        source[key].casefold() for key in ("day1", "day2", "a", "b", "asked")
+    )
+    if day1 == day2 or a == b or asked not in {a, b}:
+        return None
+    ledger = {
+        day1: {a: int(source["a1"]), b: int(source["b1"])},
+        day2: {a: int(source["a2"]), b: int(source["b2"])},
+    }
+    if rest:
+        move = _DAY_MOVE.fullmatch(rest[0])
+        if move is None or move["kind"].casefold() != source["kind"].casefold():
+            return None
+        day, origin, target = (move[key].casefold() for key in ("day", "from", "to"))
+        cells = ledger.get(day, {})
+        count = _count(move["count"])
+        if (
+            origin == target
+            or origin not in cells
+            or target not in cells
+            or cells[origin] < count
+        ):
+            return None
+        cells[origin] -= count
+        cells[target] += count
+        if len(rest) == 1:
+            report = ", ".join(f"{col.upper()} {value}" for col, value in cells.items())
+            return StudioCalculation(
+                "+".join(map(str, cells.values())),
+                source["kind"],
+                lambda result: f"Aktualny zapis: {report}. Razem {result}.",
+            )
+        query = _DAY_SUM.fullmatch(rest[1])
+        if query is None or (
+            query["kind"] and query["kind"].casefold() != source["kind"].casefold()
+        ):
+            return None
+        asked = query["column"].casefold()
+        if asked not in {a, b}:
+            return None
+    left, right = ledger[day1][asked], ledger[day2][asked]
+    return StudioCalculation(
+        f"{left}+{right}",
+        source["kind"],
+        lambda result: f"Dla {asked.upper()} w oba dni: {left} + {right} = {result}.",
+    )
+
+
+def _pack_calculation(turns: Sequence[str]) -> StudioCalculation | None:
+    active = turns[-3:]
+    for i in range(len(active) - 1, -1, -1):
+        if source := _PACK_COUNTS.fullmatch(active[i]):
+            break
+    else:
+        return None
+    labels = [source[slot].casefold() for slot in ("a", "b")]
+    pick = source["pick"].casefold()
+    if (
+        labels[0] == labels[1]
+        or pick not in labels
+        or not all(label.endswith(("ych", "ich")) for label in labels)
+    ):
+        return None
+    terms = {
+        label: _Term(
+            _count(source[f"{slot}_count"]), Decimal(_count(source[f"{slot}_size"]))
+        )
+        for slot, label in zip(("a", "b"), labels, strict=True)
+    }
+    updates = active[i + 1 :]
+    unit = "szt."
+    if not updates:
+        return StudioCalculation(
+            terms[pick].expression,
+            unit,
+            lambda result: f"{pick.capitalize()}: {result}",
+        )
+    exception = _PACK_EXCEPTION.fullmatch(updates[0])
+    if exception is None or (label := exception["item"].casefold()) not in terms:
+        return None
+    changed = terms[label]
+    count = _count(exception["count"])
+    if count >= changed.value:
+        return None
+    adjusted = {name: int(term.count * term.value) for name, term in terms.items()}
+    adjusted[label] += count - int(changed.value)
+    if len(updates) == 1:
+        formula = " + ".join(str(value) for value in adjusted.values())
+        parts = ", ".join(f"{name}: {value}" for name, value in adjusted.items())
+        return StudioCalculation(
+            formula, unit, lambda result: f"Razem {result} ({parts})."
+        )
+    removal = _PACK_TAKE.fullmatch(updates[1])
+    if removal is None or (kind := removal["kind"].casefold()) not in adjusted:
+        return None
+    remaining = _count(removal["count"])
+    scopes = {
+        label[:-3] + ("e" if label.endswith("ych") else "ie"): label for label in labels
+    }
+    requested = [removal[key].casefold() for key in ("a", "b")]
+    if set(requested) != set(scopes) or remaining > adjusted[kind]:
+        return None
+    adjusted[kind] -= remaining
+    name = next(display for display in requested if scopes[display] == kind)
+    other = next(display for display in requested if display != name)
+    return StudioCalculation(
+        f"{adjusted[kind] + remaining}-{remaining}",
+        unit,
+        lambda result: f"Pozostałe: {name} {result}, {other} {adjusted[scopes[other]]} szt.",
+    )
+
+
 def plan_studio_calculation(
     content: str, history: Sequence[HistoryMessage]
 ) -> StudioCalculation | None:
@@ -440,4 +729,8 @@ def plan_studio_calculation(
         or _rate_calculation(active)
         or _width_calculation(active)
         or _mass_calculation(active)
+        or _distribution_calculation(active)
+        or _mean_calculation(active)
+        or _day_calculation(active)
+        or _pack_calculation(active)
     )

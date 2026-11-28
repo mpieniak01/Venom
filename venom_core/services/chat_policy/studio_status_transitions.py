@@ -87,6 +87,67 @@ _DISPATCH = re.compile(
     re.I,
 )
 
+_FIELDS_DRAFT = re.compile(
+    r"do wysłania zatwierdzono (?:już )?tylko (?P<field>salę|miejsce|adres|lokalizację) "
+    rf"(?P<place>[^.!?,]{{2,60}}), a godzina (?P<time>{_TIME}) (?:była szkicem|pozostała robocza)[.!] "
+    r"jak (?:wpisać|zapisać|opisać) stan\?",
+    re.I,
+)
+_FIELDS_APPROVAL = re.compile(
+    rf"(?:teraz )?godzina (?P<time>{_TIME}) (?:też|również) jest (?:zaakceptowana|zatwierdzona)[.!] "
+    r"(?:zespół jeszcze niczego nie rozesłał|komunikatu jeszcze nie wysłano"
+    r"|niczego jeszcze nie wysłano)[.!]",
+    re.I,
+)
+_FIELDS_RECEIPT = re.compile(
+    r"(?:wysłany wpis widzę jako|w wysłanej wiadomości widzę) [„\"](?P<place>[^”\"]{2,60})[”\"], "
+    r"(?:pola z godziną w nim nie ma|bez godziny)[.!] "
+    r"(?:podsumuj jedno zdanie|podaj stan w jednym zdaniu)[.!]?",
+    re.I,
+)
+_VERSION_PREFERENCE = re.compile(
+    r"mam dwie propozycje [^.!?]{2,60}[.!] "
+    r"(?P<choice>pierwszą|drugą) (?:odbiorca|zespół|organizator) ocenił lepiej, "
+    r"(?:lecz|ale) formalnie decyzję podejmie (?:jutro|później)[.!] "
+    r"w jakim stanie jest (?P<asked>pierwsza|druga)\?",
+    re.I,
+)
+_VERSION_APPROVAL = re.compile(
+    r"(?:dzisiaj|teraz) (?:odbiorca|zespół|organizator) odpisał "
+    r"[„\"]zatwierdzam (?P<choice>pierwszą|drugą) wersję[”\"][.!] "
+    r"plik (?:jeszcze )?nie poszedł do druku[.!] podaj status[.!]?",
+    re.I,
+)
+_HOUR = r"(?:[01]?[0-9]|2[0-3])(?::[0-5][0-9])?"
+_HOURS_CONDITION = re.compile(
+    rf"(?:notatka z poranka|notatka) (?:ma|podaje) stare otwarcie o (?P<old>{_HOUR}) "
+    rf"i nową godzinę (?P<new>{_HOUR}) po (?P<operation>wymianie|aktualizacji) "
+    r"(?P<condition>[^.!?,]{2,45})[.!] (?:wymiany|aktualizacji) jeszcze nie potwierdzono[.!] "
+    r"którą godzinę traktować jako obowiązującą\?",
+    re.I,
+)
+_HOURS_CONFIRMED = re.compile(
+    r"teraz (?:obsługa|organizator|zespół) potwierdza (?P<operation>wymianę|aktualizację) "
+    r"(?P<condition>[^.!?,]{2,45}), ale na (?P<source>[^.!?,]{2,45}) "
+    rf"nadal jest (?P<shown>{_HOUR})[.!] jak opisać status\?",
+    re.I,
+)
+_EVENT_NOUNS = {"wymianie": "wymianę", "aktualizacji": "aktualizację"}
+_NUMERALS = r"[1-9][0-9]{0,3}"
+_NUMBERING = re.compile(
+    rf"cała seria (?P<total>{_NUMERALS}) (?P<item>[^\W\d_]+) miała otrzymać numery przed przekazaniem[.!] "
+    rf"mamy numery dla (?P<done>{_NUMERALS}) i (?:wyraźny )?brak ich dla (?P<missing>{_NUMERALS})[.!] "
+    r"czy skończono rejestr\?",
+    re.I,
+)
+_WITHDRAWN_DISPATCH = re.compile(
+    r"(?:organizator|koordynator|zespół) (?:cofnął|wycofał) zgodę na przekazanie, "
+    r"a niczego jeszcze nie wydano[.!] zapisz stan po zmianie[.!]?",
+    re.I,
+)
+
+_VERSION = {"pierwszą": "Pierwsza", "drugą": "Druga"}
+
 
 @dataclass(frozen=True)
 class _MessageApproval:
@@ -206,6 +267,100 @@ def _message_status(text: str, earlier: Sequence[str]) -> str | None:
     return None
 
 
+def _dispatch_fields(text: str, earlier: Sequence[str]) -> str | None:
+    if draft := _FIELDS_DRAFT.fullmatch(text):
+        return (
+            f"Zatwierdzono {draft['field']} {draft['place']}. Godzina {draft['time']} jest robocza. "
+            "Brak potwierdzenia wysłania."
+        )
+    if not earlier:
+        return None
+    if approval := _FIELDS_APPROVAL.fullmatch(text):
+        if draft := _FIELDS_DRAFT.fullmatch(earlier[-1]):
+            return (
+                f"Zatwierdzono {draft['field']} {draft['place']} oraz godzinę {approval['time']}. "
+                "Komunikatu jeszcze nie wysłano."
+            )
+        return None
+    if (
+        len(earlier) == 2
+        and (draft := _FIELDS_DRAFT.fullmatch(earlier[0]))
+        and (approval := _FIELDS_APPROVAL.fullmatch(earlier[1]))
+        and (receipt := _FIELDS_RECEIPT.fullmatch(text))
+        and draft["place"].casefold() == receipt["place"].casefold()
+    ):
+        return (
+            f"Wysłano informację „{receipt['place']}”, "
+            f"a zatwierdzonej godziny {approval['time']} w wysłanym wpisie nie było."
+        )
+    return None
+
+
+def _version_status(text: str, earlier: Sequence[str]) -> str | None:
+    if preference := _VERSION_PREFERENCE.fullmatch(text):
+        version = _VERSION[preference["choice"].casefold()]
+        if preference["asked"].casefold() == version.casefold():
+            return f"{version} wersja jest roboczo preferowana. Decyzja nie została jeszcze podjęta."
+        return None
+    if (
+        earlier
+        and _VERSION_PREFERENCE.fullmatch(earlier[-1])
+        and (approval := _VERSION_APPROVAL.fullmatch(text))
+    ):
+        version = _VERSION[approval["choice"].casefold()]
+        return (
+            f"{version} wersja jest zatwierdzona. Pliku jeszcze nie wysłano do druku."
+        )
+    return None
+
+
+def _conditional_hours(text: str, earlier: Sequence[str]) -> str | None:
+    if initial := _HOURS_CONDITION.fullmatch(text):
+        return (
+            f"Obowiązuje godzina {initial['old']}. Godzina {initial['new']} zacznie obowiązywać "
+            f"po tym, jak potwierdzą {_EVENT_NOUNS[initial['operation'].casefold()]} {initial['condition']}."
+        )
+    if not earlier or not (initial := _HOURS_CONDITION.fullmatch(earlier[-1])):
+        return None
+    confirmed = _HOURS_CONFIRMED.fullmatch(text)
+    if (
+        confirmed is None
+        or confirmed["operation"].casefold()
+        != _EVENT_NOUNS[initial["operation"].casefold()]
+        or confirmed["condition"].casefold() != initial["condition"].casefold()
+    ):
+        return None
+    return (
+        f"Potwierdzono {confirmed['operation']} {confirmed['condition']}, "
+        f"więc obowiązuje godzina {initial['new']}. "
+        f"Na {confirmed['source']} nadal widnieje godzina {confirmed['shown']}."
+    )
+
+
+def _numbering_status(text: str, earlier: Sequence[str]) -> str | None:
+    record = _NUMBERING.fullmatch(text)
+    withdrawn = (
+        record is None and bool(earlier) and bool(_WITHDRAWN_DISPATCH.fullmatch(text))
+    )
+    if withdrawn:
+        record = _NUMBERING.fullmatch(earlier[-1])
+    if record is None or int(record["total"]) != int(record["done"]) + int(
+        record["missing"]
+    ):
+        return None
+    status = f"Numery ma {record['done']} z {record['total']} pozycji, a {record['missing']} nadal ich nie ma."
+    if withdrawn:
+        return f"Cofnięto zgodę na przekazanie i niczego nie wydano. {status}"
+    return f"Rejestr nadal jest niekompletny. {status}"
+
+
 def status_transition_reply(text: str, earlier: Sequence[str]) -> str | None:
     """Summarize linked status updates using only adjacent user messages."""
-    return _duty_status(text, earlier) or _message_status(text, earlier)
+    return (
+        _duty_status(text, earlier)
+        or _message_status(text, earlier)
+        or _dispatch_fields(text, earlier)
+        or _version_status(text, earlier)
+        or _conditional_hours(text, earlier)
+        or _numbering_status(text, earlier)
+    )

@@ -296,6 +296,37 @@ def test_studio_retries_a_truncated_draft_with_default_transport(
         ),
         (
             (
+                "Z 62 kartek 6 odkładamy. Resztę dzielimy równo na 7 szuflad. Ile kartek w każdej?",
+            ),
+            "Jedną pełną szufladę odłożyliśmy na zapas. Ile kartek jest w pozostałych?",
+            "W pozostałych jest 48 kartek (6 × 8).",
+        ),
+        (
+            (
+                "Zużycie rękawiczek w czterech aktywnych grupach to 5, 8, 6 i 9. Jaka jest średnia?",
+            ),
+            "Drugiej grupie odejmij jedną rękawiczkę. Podaj średnią do jednego miejsca.",
+            "Średnia z 4 grup to 6,8 ((5 + 7 + 6 + 9) ÷ 4).",
+        ),
+        (
+            (
+                "W piątek było 15 zgłoszeń dla sali A i 17 dla B. W sobotę A 21, B 12. "
+                "Ile zgłoszeń dla B w oba dni?",
+                "W sobotę sześć zgłoszeń było błędnie w A, przenieś je do B. Podaj poprawną sobotę.",
+            ),
+            "A teraz ile A po dwóch dniach?",
+            "Dla A w oba dni: 15 + 15 = 30 zgłoszeń.",
+        ),
+        (
+            (
+                "Są 5 wielopaków czarnych po 8 sztuk i 4 wielopaki szarych po 7 sztuk. Ile szarych?",
+                "W ostatnim wielopaku szarych było tylko 2, a pozostałe są bez zmiany. Ile sztuk łącznie?",
+            ),
+            "Oddaliśmy trzy czarnych. Podaj pozostałe czarne i szare oddzielnie.",
+            "Pozostałe: czarne 37 szt., szare 23 szt.",
+        ),
+        (
+            (
                 "Pakuję odważniki. Czerwony waży 1,2 kg, niebieski 670 g, "
                 "sztywne etui 115 g. Ile ważą same odważniki w gramach?",
             ),

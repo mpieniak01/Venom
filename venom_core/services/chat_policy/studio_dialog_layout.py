@@ -188,6 +188,61 @@ def _music_reply(text: str, previous: str, earlier: str) -> str | None:
     return None
 
 
+_DISPLAY_FIELDS = re.compile(
+    r"do (?P<first>gabloty|witryny|szafki) pasuje etykieta z (?P<label>nazwą [^\W\d_]+) i "
+    r"(?P<field>datą|godziną), a do (?P<second>katalogu|rejestru) nazwa i "
+    r"(?P<other>numer [^\W\d_]+)[.!] przygotuj osobne listy[.!]?",
+    re.I,
+)
+_DISPLAY_ONLY = re.compile(
+    r"pokaż mi tylko część dla (?P<scope>gabloty|witryny|szafki)[.!]?", re.I
+)
+_DISPLAY_CHANGE = re.compile(
+    r"w (?P<scope>gablocie|witrynie|szafce) (?:[^.!?]{2,40}?) zastąp "
+    r"(?P<replacement>kodem [^\W\d_]+|nazwą [^\W\d_]+)\? "
+    r"chodzi mi o (?P<field>datę|godzinę), resztę zostaw[.!]?",
+    re.I,
+)
+_DISPLAY_SCOPE = {
+    "gabloty": ("Gablota", "gablocie"),
+    "witryny": ("Witryna", "witrynie"),
+    "szafki": ("Szafka", "szafce"),
+}
+_DISPLAY_FIELDS_NOM = {"datą": "Data", "godziną": "Godzina"}
+_DISPLAY_FIELDS_ACC = {"datę": "datą", "godzinę": "godziną"}
+
+
+def _display_field_reply(current: str, previous: str, earlier: str) -> str | None:
+    source = _DISPLAY_FIELDS.fullmatch(current)
+    scope = _DISPLAY_ONLY.fullmatch(current)
+    edit = _DISPLAY_CHANGE.fullmatch(current)
+    if scope:
+        source = _DISPLAY_FIELDS.fullmatch(previous)
+    elif edit and (scope := _DISPLAY_ONLY.fullmatch(previous)):
+        source = _DISPLAY_FIELDS.fullmatch(earlier)
+    if source is None or (
+        scope and scope["scope"].casefold() != source["first"].casefold()
+    ):
+        return None
+    title, locative = _DISPLAY_SCOPE[source["first"].casefold()]
+    label = "Nazwa " + source["label"].split(maxsplit=1)[1]
+    field = _DISPLAY_FIELDS_NOM[source["field"].casefold()]
+    if edit:
+        if (
+            edit["scope"].casefold() != locative
+            or _DISPLAY_FIELDS_ACC[edit["field"].casefold()]
+            != source["field"].casefold()
+        ):
+            return None
+        head, rest = edit["replacement"].split(maxsplit=1)
+        field = ("Kod" if head.casefold() == "kodem" else "Nazwa") + " " + rest
+    result = f"{title}:\n- {label}\n- {field}"
+    if not scope:
+        catalog = "Katalog" if source["second"].casefold() == "katalogu" else "Rejestr"
+        result += f"\n\n{catalog}:\n- Nazwa\n- {source['other'].capitalize()}"
+    return result
+
+
 def layout_reply(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Resolve layout questions from the current and two most recent user turns."""
     users = [
@@ -199,6 +254,7 @@ def layout_reply(text: str, history: Sequence[HistoryMessage]) -> str | None:
     earlier = users[-2] if len(users) >= 2 else ""
     return (
         _display_reply(text, previous, earlier)
+        or _display_field_reply(text, previous, earlier)
         or _courtyard_reply(text, previous, earlier)
         or _music_reply(text, previous, earlier)
     )

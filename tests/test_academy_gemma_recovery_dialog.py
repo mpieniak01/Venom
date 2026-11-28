@@ -460,3 +460,97 @@ def test_studio_catalog_switch_retains_genre_for_one_table_sign():
 )
 def test_studio_layout_defers_unbound_or_changed_scope(prompt, history):
     assert studio_dialog(prompt, history) is None
+
+
+def test_studio_replaces_the_clarified_field_only(studio_chat, monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, _ = studio_chat
+    source = (
+        "Do witryny pasuje etykieta z nazwą rośliny i godziną, "
+        "a do rejestru nazwa i numer partii. Przygotuj osobne listy."
+    )
+    select = "Pokaż mi tylko część dla witryny."
+    edit = "W witrynie numer partii zastąp kodem kolekcji? Chodzi mi o godzinę, resztę zostaw."
+    assert (
+        chat(source)
+        == "Witryna:\n- Nazwa rośliny\n- Godzina\n\nRejestr:\n- Nazwa\n- Numer partii"
+    )
+    history = [
+        {"role": "user", "content": source},
+        {"role": "assistant", "content": "Zła lista z dopisanym numerem partii."},
+        {"role": "user", "content": select},
+        {"role": "assistant", "content": "Witryna: godzina i numer partii."},
+    ]
+    assert chat(select, history[:2]) == "Witryna:\n- Nazwa rośliny\n- Godzina"
+    assert (
+        chat(edit, history, verify_history=True)
+        == "Witryna:\n- Nazwa rośliny\n- Kod kolekcji"
+    )
+    assert not sent
+
+
+def test_studio_tracks_shared_and_exclusive_items_after_addition(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, _ = studio_chat
+    source = (
+        "We wtorek potrzebne są aparat, statyw i gimbal, "
+        "a w środę statyw, rejestrator i gimbal. Co jest wspólne?"
+    )
+    add = "We wtorek dodajemy rejestrator, reszta bez zmian. Co jest teraz wspólne?"
+    only = "Co zostało tylko we wtorek po zmianie?"
+    history = [
+        {"role": "user", "content": source},
+        {"role": "assistant", "content": "Wspólny jest aparat."},
+    ]
+    assert chat(source) == "Wspólne: statyw, gimbal."
+    assert (
+        chat(add, history, verify_history=True)
+        == "Wspólne: statyw, gimbal, rejestrator."
+    )
+    history += [
+        {"role": "user", "content": add},
+        {"role": "assistant", "content": "Wspólny jest wyłącznie aparat."},
+    ]
+    assert chat(only, history, verify_history=True) == "Tylko we wtorek: aparat."
+    assert not sent
+
+
+def test_studio_replays_removal_before_moving_only_the_loan_location(
+    studio_chat, monkeypatch
+):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    chat, sent, _ = studio_chat
+    source = (
+        "Dwa punkty na kartę dostępu. Wiek od 16 lat i do kabiny tylko z karnetem. "
+        "Osoby bez własnego kasku wypożyczają go przy ladzie."
+    )
+    dropped = "W pierwszym punkcie usuń tylko wymóg karnetu."
+    # The version without the access requirement remains the source for later edits.
+    original = "1. Wiek od 16 lat i do kabiny tylko z karnetem.\n2. Osoby bez własnego kasku wypożyczają go przy ladzie."
+    assert chat(source) == original
+    history = [
+        {"role": "user", "content": source},
+        {"role": "assistant", "content": original},
+    ]
+    assert (
+        chat(dropped, history)
+        == "1. Wiek od 16 lat.\n2. Osoby bez własnego kasku wypożyczają go przy ladzie."
+    )
+    final = "Teraz kask przy biurku. Zachowaj ograniczenie użytkowników kasku."
+    history += [
+        {"role": "user", "content": dropped},
+        {"role": "assistant", "content": original},
+    ]
+    assert (
+        chat(final, history, verify_history=True)
+        == "1. Wiek od 16 lat.\n2. Osoby bez własnego kasku wypożyczają go przy biurku."
+    )
+    assert not sent

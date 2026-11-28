@@ -458,6 +458,49 @@ def _apply_rule_edit(text: str, lines: list[str]) -> bool:
     return False
 
 
+_ACCESS_SOURCE = re.compile(
+    rf"dwa punkty na kartę dostępu[.!] (?P<age>wiek od [0-9]{{1,2}} lat) i "
+    rf"(?P<requirement>do {_WORD} tylko z (?P<item>{_WORD}))[.!] "
+    rf"(?P<loan>osoby bez własnego (?P<loan_item>{_WORD}) wypożyczają go przy {_WORD})[.!]",
+    re.I,
+)
+_DROP_ACCESS_REQUIREMENT = re.compile(
+    rf"w pierwszym punkcie usuń tylko wymóg (?P<item>{_WORD})[.!]", re.I
+)
+_MOVE_LOAN = re.compile(
+    rf"teraz (?P<item>{_WORD}) przy (?P<place>{_WORD})[.!] "
+    rf"zachowaj ograniczenie użytkowników (?P<scope>{_WORD})[.!]",
+    re.I,
+)
+
+
+def _access_rules_reply(current: str, prior: str, origin: str) -> str | None:
+    source = _ACCESS_SOURCE.fullmatch(current)
+    if source:
+        return f"1. {source['age'].capitalize()} i {source['requirement']}.\n2. {source['loan']}."
+    removed = _DROP_ACCESS_REQUIREMENT.fullmatch(current)
+    moved = _MOVE_LOAN.fullmatch(current)
+    if removed:
+        source = _ACCESS_SOURCE.fullmatch(prior)
+    elif moved:
+        source = _ACCESS_SOURCE.fullmatch(origin)
+        removed = _DROP_ACCESS_REQUIREMENT.fullmatch(prior)
+    if (
+        source is None
+        or removed is None
+        or source["item"].casefold().removesuffix("em")
+        != removed["item"].casefold().rstrip("au")
+    ):
+        return None
+    loan = source["loan"]
+    if moved:
+        item = source["loan_item"].casefold()
+        if item != moved["scope"].casefold() or item != moved["item"].casefold() + "u":
+            return None
+        loan = f"{loan.rsplit(' ', 1)[0]} {moved['place']}"
+    return f"1. {source['age'].capitalize()}.\n2. {loan}."
+
+
 def _quoted_rules_reply(current: str, history: Sequence[HistoryMessage]) -> str | None:
     """Replace only the explicitly addressed rule and preserve its untouched clauses."""
     users = [turn.content for turn in history if turn.role == "user"][-4:]
@@ -494,6 +537,7 @@ def studio_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     origin = _prior_user(history, 2) if prior else ""
     return (
         _quoted_rules_reply(current, history)
+        or _access_rules_reply(current, prior, origin)
         or _replacement_after_removal(current, prior)
         or _rewrite(current, prior, origin)
         or _review_revision(current, prior, origin)

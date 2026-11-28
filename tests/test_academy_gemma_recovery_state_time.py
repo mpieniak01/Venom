@@ -571,3 +571,79 @@ def test_status_distinguishes_approved_and_actually_sent_fields(dispatch, expect
         studio_followup(prompt, _history(_APPROVED_PLACE, _APPROVED_BOTH)) == expected
     )
     assert studio_followup(prompt, _history(_APPROVED_BOTH)) is None
+
+
+def test_status_uses_field_evidence_across_approval_and_receipt():
+    draft = (
+        "Do wysłania zatwierdzono tylko adres Dom Brzóz, a godzina 17:50 pozostała robocza. "
+        "Jak zapisać stan?"
+    )
+    approval = (
+        "Teraz godzina 18:20 też jest zatwierdzona. Komunikatu jeszcze nie wysłano."
+    )
+    receipt = "W wysłanej wiadomości widzę „Dom Brzóz”, bez godziny. Podaj stan w jednym zdaniu."
+    assert studio_followup(draft, []) == (
+        "Zatwierdzono adres Dom Brzóz. Godzina 17:50 jest robocza. Brak potwierdzenia wysłania."
+    )
+    assert studio_followup(approval, _history(draft)) == (
+        "Zatwierdzono adres Dom Brzóz oraz godzinę 18:20. Komunikatu jeszcze nie wysłano."
+    )
+    assert studio_followup(receipt, _history(draft, approval)) == (
+        "Wysłano informację „Dom Brzóz”, a zatwierdzonej godziny 18:20 w wysłanym wpisie nie było."
+    )
+    assert (
+        studio_followup(
+            receipt.replace("Dom Brzóz", "Dom Topoli"), _history(draft, approval)
+        )
+        is None
+    )
+
+
+def test_version_preference_can_be_overridden_without_reporting_execution():
+    draft = (
+        "Mam dwie propozycje okładki. Drugą zespół ocenił lepiej, ale formalnie decyzję "
+        "podejmie później. W jakim stanie jest druga?"
+    )
+    assert studio_followup(draft, []) == (
+        "Druga wersja jest roboczo preferowana. Decyzja nie została jeszcze podjęta."
+    )
+    assert (
+        studio_followup(
+            "Teraz zespół odpisał „zatwierdzam pierwszą wersję”. "
+            "Plik jeszcze nie poszedł do druku. Podaj status.",
+            _history(draft),
+        )
+        == "Pierwsza wersja jest zatwierdzona. Pliku jeszcze nie wysłano do druku."
+    )
+
+
+def test_numbered_items_remain_after_dispatch_approval_is_withdrawn():
+    draft = (
+        "Cała seria 16 folderów miała otrzymać numery przed przekazaniem. "
+        "Mamy numery dla 13 i brak ich dla 3. Czy skończono rejestr?"
+    )
+    withdrawal = "Koordynator wycofał zgodę na przekazanie, a niczego jeszcze nie wydano. Zapisz stan po zmianie."
+    assert studio_followup(draft, []) == (
+        "Rejestr nadal jest niekompletny. Numery ma 13 z 16 pozycji, a 3 nadal ich nie ma."
+    )
+    assert studio_followup(withdrawal, _history(draft)) == (
+        "Cofnięto zgodę na przekazanie i niczego nie wydano. Numery ma 13 z 16 pozycji, a 3 nadal ich nie ma."
+    )
+    assert studio_followup(draft.replace("dla 3", "dla 7"), []) is None
+
+
+def test_old_published_hour_is_not_the_current_hour_after_condition_was_met():
+    draft = (
+        "Notatka podaje stare otwarcie o 9:30 i nową godzinę 10:45 po aktualizacji listy. "
+        "Aktualizacji jeszcze nie potwierdzono. Którą godzinę traktować jako obowiązującą?"
+    )
+    update = (
+        "Teraz zespół potwierdza aktualizację listy, ale na gablocie nadal jest 9:30. "
+        "Jak opisać status?"
+    )
+    assert "Obowiązuje godzina 9:30." in studio_followup(draft, [])
+    assert studio_followup(update, _history(draft)) == (
+        "Potwierdzono aktualizację listy, więc obowiązuje godzina 10:45. "
+        "Na gablocie nadal widnieje godzina 9:30."
+    )
+    assert studio_followup(update.replace("listy", "grafiku"), _history(draft)) is None

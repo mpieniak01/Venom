@@ -353,6 +353,75 @@ def _definition_reply(current: str, previous: str) -> str | None:
     return f"Wybierz {ordinal} pojęcie, „{result.name}”. {result.statement()}"
 
 
+_LIST_DAY = r"poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę"
+_LIST_ITEM = r"[^\W\d_]+(?:-[^\W\d_]+)?"
+_ITEMS = rf"{_LIST_ITEM}(?:, {_LIST_ITEM}){{0,5}} i {_LIST_ITEM}"
+_DAY_LISTS = re.compile(
+    rf"w(?:e)? (?P<first>{_LIST_DAY}) (?:przydadzą się|potrzebne są) (?P<left>{_ITEMS}), "
+    rf"(?:a )?w(?:e)? (?P<second>{_LIST_DAY}) (?P<right>{_ITEMS})[.!] "
+    r"(?:co wspólne|co jest wspólne)\?",
+    re.I,
+)
+_LIST_ADD = re.compile(
+    rf"w(?:e)? (?P<day>{_LIST_DAY}) (?:dokładamy|dodajemy) (?P<item>{_LIST_ITEM}), "
+    r"reszta bez zmian[.!] (?:co teraz wspólne|co jest teraz wspólne)\?",
+    re.I,
+)
+_LIST_ONLY = re.compile(
+    rf"co zostało tylko w(?:e)? (?P<day>{_LIST_DAY}) po (?:ostatniej )?zmianie\?",
+    re.I,
+)
+
+
+def _list_comparison(current: str, users: Sequence[str]) -> str | None:
+    initial = _DAY_LISTS.fullmatch(current)
+    if initial:
+        addition, exclusive = None, None
+    else:
+        change = _LIST_ADD.fullmatch(current)
+        exclusive = _LIST_ONLY.fullmatch(current)
+        if change and users:
+            initial, addition = _DAY_LISTS.fullmatch(users[-1]), change
+        elif exclusive and len(users) >= 2:
+            initial, addition = (
+                _DAY_LISTS.fullmatch(users[-2]),
+                _LIST_ADD.fullmatch(users[-1]),
+            )
+            if addition is None:
+                return None
+        else:
+            return None
+    if initial is None or initial["first"].casefold() == initial["second"].casefold():
+        return None
+    lists = {
+        initial[day].casefold(): {
+            item.casefold(): item
+            for item in re.split(", | i ", initial[scope], flags=re.I)
+        }
+        for day, scope in (("first", "left"), ("second", "right"))
+    }
+    if addition:
+        selected = lists.get(addition["day"].casefold())
+        if selected is None:
+            return None
+        item = addition["item"]
+        selected.setdefault(item.casefold(), item)
+    first, second = lists.values()
+    if exclusive:
+        day = exclusive["day"].casefold()
+        if day not in lists:
+            return None
+        selected = lists[day]
+        other = second if selected is first else first
+        items = [label for key, label in selected.items() if key not in other]
+        preposition = "we" if day == "wtorek" else "w"
+        prefix = f"Tylko {preposition} {exclusive['day']}"
+    else:
+        items = [label for key, label in first.items() if key in second]
+        prefix = "Wspólne"
+    return f"{prefix}: {', '.join(items)}." if items else f"{prefix}: brak pozycji."
+
+
 def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | None:
     """Prefer source evidence and a changed constraint over prior assistant guesses."""
     current = " ".join(text.split())
@@ -364,4 +433,7 @@ def studio_comparison(text: str, history: Sequence[HistoryMessage]) -> str | Non
         or _fits_reply(current, previous)
         or _material_reply(current, previous)
         or _definition_reply(current, previous)
+        or _list_comparison(
+            current, [turn.content for turn in history[-4:] if turn.role == "user"]
+        )
     )

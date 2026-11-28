@@ -115,6 +115,10 @@ Gdy tool jest pomijany:
 | Repo analiza | `git status`, `git diff`, zakres kontraktu API | Domyślny przypadek użycia |
 | Remodel dokumentacji i skryptów | Zmiana docs i skryptów pod kontrakt czatu | Preferowana forma pracy |
 
+### Kalkulator w Studio Normal
+
+W lokalnym Studio Normal, przy wyłączonych notatkach, wpisz np. `Kalkulator: (4 × 13 + 3 × 7) zł`. Venom podaje wynik `73 zł` i zapisuje go w historii sesji. Polecenie przyjmuje jedno wyrażenie arytmetyczne i opcjonalną jednostkę. Po korekcie wpisz pełne zaktualizowane działanie. Do obliczenia nie potrzeba odpowiedzi modelu ani danych z sieci.
+
 ### Źródła publiczne w Studio Normal
 
 W polskim czacie Studio Normal kieruje pytania o bieżącą pogodę do źródła

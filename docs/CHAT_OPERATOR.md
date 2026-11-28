@@ -115,6 +115,10 @@ If tools are skipped:
 | Repo analysis | `git status`, `git diff`, branch state, API contract scope | Default operator scenario |
 | Docs and script remodeling | Documentation and script changes aligned with the contract | Preferred analysis/remodel workflow |
 
+### Calculator in Studio Normal
+
+In local Studio Normal with notes off, type a command such as `Kalkulator: (4 × 13 + 3 × 7) zł`. Venom saves the result `73 zł` in the session history. The command accepts one arithmetic expression and an optional unit. To correct it, enter the full revised expression. The calculator runs locally without calling the model or public sources.
+
 ### Public sources in Studio Normal
 
 For Polish questions, Studio Normal routes current weather to the weather

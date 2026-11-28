@@ -9,6 +9,9 @@ from venom_core.services.chat_grounding import (
     is_rss_read_request,
     rss_editorial_query,
 )
+from venom_core.services.chat_policy.direct_calculator import (
+    plan_studio_calculator_command,
+)
 from venom_core.services.chat_policy.qualified_chat_revisions import (
     lookup_forbidden,
     lookup_text_outside_quoted_task,
@@ -59,6 +62,8 @@ def plan_studio_source(
     use_notes: bool = False,
 ) -> StudioSourcePlan:
     """Resolve source reuse and external lookup intent without executing a read."""
+    if not use_notes and plan_studio_calculator_command(message) is not None:
+        return StudioSourcePlan(None, False, None, "", None)
     previous_users = [turn.content for turn in history if turn.role == "user"]
     previous = previous_users[-1] if previous_users else ""
     query: str | None = grounding_follow_up(

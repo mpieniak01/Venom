@@ -28,6 +28,7 @@ from venom_core.services.chat_grounding import (
 from venom_core.services.chat_policy.direct_calculator import (
     execute_calculator,
     plan_calculator,
+    plan_studio_calculator_command,
 )
 from venom_core.services.chat_policy.direct_drafts import (
     role_consent_reply,
@@ -1701,10 +1702,15 @@ def _direct_calculator_response(
     request_id: UUID,
     system_context: str,
 ) -> StreamingResponse | None:
-    if not _allows_local_direct_reply(request, system_context):
+    if request.studio_normal and not request.use_notes and _plain_text_request(request):
+        plan = plan_studio_calculator_command(request.content)
+    elif _allows_local_direct_reply(request, system_context):
+        history = [
+            turn.model_dump(include={"role", "content"}) for turn in request.history
+        ]
+        plan = plan_calculator(request.content, history)
+    else:
         return None
-    history = [turn.model_dump(include={"role", "content"}) for turn in request.history]
-    plan = plan_calculator(request.content, history)
     if plan is None or not is_host_ollama(runtime):
         return None
     return _local_direct_stream(

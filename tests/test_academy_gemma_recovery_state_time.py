@@ -1165,3 +1165,22 @@ def test_clause_shift_requires_the_same_person_and_explicit_registration():
         studio_followup(second.replace("wpisał", "planuje wpisać"), _history(first))
         is None
     )
+
+
+@pytest.mark.parametrize(
+    ("sent", "unsent"),
+    [("pierwszą", "drugiej"), ("drugą", "pierwszej")],
+)
+def test_reported_dispatch_does_not_drop_either_approval(sent, unsent):
+    source = (
+        "Żadnej oferty nie wysłano. Drugą ofertę dopiero złożono, "
+        "pierwszą zatwierdziła koordynatorka. Podaj stan obu ofert."
+    )
+    update = (
+        f"Drugą też zaakceptowano. Zgodnie z raportem Oli wysłano wyłącznie {sent}. "
+        "Podaj stan obu."
+    )
+    assert studio_followup(update, _history(source)) == (
+        "Pierwszą ofertę zatwierdziła koordynatorka. Drugą ofertę też zaakceptowano. "
+        f"Zgodnie z raportem Oli wysłano wyłącznie {sent} ofertę. Nie wysłano {unsent} oferty."
+    )

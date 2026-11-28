@@ -177,10 +177,17 @@ def _dispatch(text: _Turn, previous: _Turn) -> str | None:
     if offer != updated["approved"][0].casefold().startswith("drugą"):
         return None
     sent_first = report["sent"].casefold().startswith("pierwsz")
-    unsent = pending if sent_first else approved
     noun = "ofertę" if offer else "kosztorys"
+    document_forms = (
+        ("pierwszej oferty", "drugiej oferty")
+        if offer
+        else ("pierwszego kosztorysu", "drugiego kosztorysu")
+    )
+    unsent = document_forms[1 if sent_first else 0]
     return (
-        f"{_sentence(report[0] + ' ' + noun)} {unsent} zaakceptowano, ale nie wysłano."
+        f"{approved} {approval['decision']} {approval['actor']}. "
+        f"{pending} też zaakceptowano. {_sentence(report[0] + ' ' + noun)} "
+        f"Nie wysłano {unsent}."
     )
 
 

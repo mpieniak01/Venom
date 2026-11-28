@@ -102,7 +102,9 @@ def studio_chat(monkeypatch, tmp_path, request):
     app.state.studio_runtime = SimpleNamespace(get_vector_store=lambda: None)
     client = TestClient(app)
 
-    def chat(content, history=(), *, session=None, **kwargs):
+    def chat(
+        content, history=(), *, session=None, error=None, verify_history=False, **kwargs
+    ):
         session = session or str(uuid4())
         for index, message in enumerate(history):
             store.append_message(
@@ -122,12 +124,26 @@ def studio_chat(monkeypatch, tmp_path, request):
         events = [chunk.splitlines() for chunk in response.text.strip().split("\n\n")]
         names = [chunk[0] for chunk in events]
         assert names[0] == "event: start"
+        if error:
+            assert names == ["event: start", "event: error"], response.text
+            assert json.loads(events[-1][1].removeprefix("data: "))["code"] == error
+            assert store.get_history(session)[-1]["status"] == "FAILED"
+            assert store.get_history(session)[-1]["content"] == ""
+            return ""
         assert names[-1] == "event: done", response.text
         assert all(event == "event: content" for event in names[1:-1]), response.text
-        return "".join(
+        text = "".join(
             json.loads(chunk[1].removeprefix("data: "))["text"]
             for chunk in events[1:-1]
         )
+        if verify_history:
+            saved = store.get_history(session)[-1]
+            assert saved["status"] == "COMPLETED"
+            assert saved["content"] == text
+            assert (saved.get("finish_reason") == "length") == (
+                text == GENERATION_TRUNCATED
+            )
+        return text
 
     return chat, sent, replies
 
@@ -2459,6 +2475,88 @@ def test_studio_one_sentence_for_value_missing_in_the_conversation(
     fetch.assert_not_awaited()
     instruction = sent[-1]["payload"]["messages"][0]["content"]
     assert "dokładnie jedno zdanie odpowiadające na ostatnie pytanie" in instruction
+    assert [row["content"] for row in sent[-1]["payload"]["messages"][1:]] == [
+        "Nie znam temperatury.",
+        prompt,
+    ]
+
+
+@pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_only_user_supplied_facts_exclude_assistant_claims(studio_chat, monkeypatch):
+    chat, sent, replies = studio_chat
+    fetch = AsyncMock()
+    from venom_core.services import studio_normal_chat
+
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", fetch)
+    prompt = "Podaj godzinę wyłącznie na podstawie informacji, które podałam."
+    history = [
+        turn("Panel umówiono na 11:20."),
+        turn("Zaczyna się o 12:00, w sali 8.", "assistant"),
+        turn("Korekta: aktualna godzina to 13:10."),
+        turn("Potwierdzona godzina 14:30.", "assistant"),
+    ]
+    replies.append(streamed("13:10."))
+    assert chat(prompt, history, verify_history=False) == "13:10."
+    assert [row["content"] for row in sent[-1]["payload"]["messages"][1:]] == [
+        "Panel umówiono na 11:20.",
+        "Korekta: aktualna godzina to 13:10.",
+        prompt,
+    ]
+    fetch.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_only_user_facts_answer_keeps_known_and_pending_status(studio_chat):
+    chat, sent, replies = studio_chat
+    prompt = "Czy odbiór przesyłki jest potwierdzony? Tylko na podstawie podanych informacji."
+    evidence = "Przesyłkę przekazano przewoźnikowi. Nie ma pokwitowania odbioru."
+    history = [turn(evidence), turn("Przesyłka została odebrana.", "assistant")]
+    assert chat(prompt, history) == evidence
+    assert not sent and not replies
+
+
+def test_only_user_facts_does_not_restate_unrelated_or_superseded_evidence(studio_chat):
+    chat, sent, replies = studio_chat
+    prompt = "Czy odbiór przesyłki jest potwierdzony? Tylko na podstawie podanych informacji."
+    for evidence in (
+        "Zwrot został zatwierdzony. Kwoty jeszcze nie ustalono.",
+        "Przesyłkę przekazano przewoźnikowi. Nie ma pokwitowania odbioru. Ta informacja jest już nieaktualna.",
+        "Jeśli przesyłkę przekazano przewoźnikowi. Nie ma pokwitowania odbioru.",
+    ):
+        replies.append(streamed("W rozmowie nie podano tej informacji."))
+        history = [turn(evidence), turn("Zrozumiałem.", "assistant")]
+        assert chat(prompt, history) == "W rozmowie nie podano tej informacji."
+    replies.append(streamed("W rozmowie nie podano tej informacji."))
+    assert (
+        chat(
+            "Czy odbiór przesyłki AB-202 jest potwierdzony? Tylko na podstawie podanych informacji.",
+            [
+                turn(
+                    "Przesyłkę AB-101 przekazano przewoźnikowi. Nie ma pokwitowania odbioru."
+                ),
+                turn("Zrozumiałem.", "assistant"),
+            ],
+        )
+        == "W rozmowie nie podano tej informacji."
+    )
+    replies.append(streamed("W rozmowie nie podano tej informacji."))
+    assert (
+        chat(
+            "Czy przesyłka AB-101 jest ubezpieczona? Tylko na podstawie podanych informacji.",
+            [
+                turn(
+                    "Przesyłkę AB-101 przekazano przewoźnikowi. Nie ma pokwitowania odbioru."
+                ),
+                turn("Zrozumiałem.", "assistant"),
+            ],
+        )
+        == "W rozmowie nie podano tej informacji."
+    )
+    assert len(sent) == 5 and not replies
 
 
 @pytest.mark.parametrize(
@@ -2982,3 +3080,599 @@ def test_studio_marks_truncated_rss_before_publishing(studio_chat, monkeypatch):
     chat, _, replies = studio_chat
     replies.append(native('{"items":[', reason="length"))
     assert chat("Z kanału BBC RSS wybierz jeden nagłówek.") == GENERATION_TRUNCATED
+
+
+_REVIEW_PROMPT = (
+    "Przygotuj krótką wiadomość dla zespołu. Chodzi o wspólny przegląd "
+    "szkicu okładki, ale jeszcze nie chcę ustalać kiedy."
+)
+_REVIEW_MINIMUM = "Proponuję wspólny przegląd szkicu okładki."
+_DRAFT_UNVERIFIED = "review_draft_unverified"
+
+
+@pytest.fixture
+def review_pilot(monkeypatch, studio_chat):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_GEMMA_REVIEW_RETRY_ENABLED", True
+    )
+    return studio_chat
+
+
+@pytest.mark.parametrize(
+    "replacement,text",
+    [
+        (
+            native("  Cześć wszystkim, przejrzyjmy wspólnie szkic okładki.  "),
+            "  Cześć wszystkim, przejrzyjmy wspólnie szkic okładki.  ",
+        ),
+        (
+            native(
+                "Przygotowałem szkic okładki do przeglądu. "
+                "Dajcie znać, a termin ustalimy wkrótce."
+            ),
+            _REVIEW_MINIMUM,
+        ),
+        (native("Przejrzyjmy wspólnie", reason="length"), GENERATION_TRUNCATED),
+    ],
+)
+def test_gemma_pilot_publishes_only_verified_retry(review_pilot, replacement, text):
+    chat, sent, replies = review_pilot
+    replies.extend([native("Ucięty, niewysłany szkic", reason="length"), replacement])
+    session = str(uuid4())
+    assert chat(_REVIEW_PROMPT, session=session, verify_history=True) == text
+    first, retry = sent
+    assert first["completions_url"] == retry["completions_url"]
+    before, after = first["payload"], retry["payload"]
+    assert {k: v for k, v in before.items() if k != "messages"} == {
+        k: v for k, v in after.items() if k != "messages"
+    }
+    assert before["messages"][1:] == after["messages"][1:]
+    assert after["messages"][0]["content"].startswith(before["messages"][0]["content"])
+    assert not replies
+    replies.append(streamed("Kontynuacja."))
+    assert chat("Co dalej?", session=session) == "Kontynuacja."
+    history = sent[-1]["payload"]["messages"]
+    assert any(
+        message["role"] == "assistant" and message["content"] == text
+        for message in history
+    )
+    assert all("niewysłany" not in message["content"] for message in history)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        native("Proponuję wspólny przegląd szkicu ulotki."),
+        native("Wypadałoby rzucić razem okiem na szkic okładki."),
+        native("Cześć wszystkim, przejrzyjmy wspólnie szkic ulotki."),
+        native(" "),
+        native("Niezweryfikowana odpowiedź", done=False),
+        native("Niezweryfikowana odpowiedź", reason="tool_calls"),
+        {"done": True, "done_reason": "stop", "error": "unavailable"},
+        {
+            "done": True,
+            "done_reason": "stop",
+            "message": {
+                "content": "Tekst",
+                "tool_calls": [{"function": {"name": "lookup"}}],
+            },
+        },
+    ],
+)
+def test_gemma_pilot_holds_bad_retry_without_saving_a_draft(review_pilot, replacement):
+    chat, sent, replies = review_pilot
+    replies.extend([native("Niewysłany szkic", reason="length"), replacement])
+    session = str(uuid4())
+    assert chat(_REVIEW_PROMPT, session=session, error=_DRAFT_UNVERIFIED) == ""
+    assert len(sent) == 2 and not replies
+    replies.append(streamed("Kontynuacja."))
+    assert chat("Co dalej?", session=session) == "Kontynuacja."
+    assert not any(
+        message["role"] == "assistant" for message in sent[-1]["payload"]["messages"]
+    )
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"done": True, "done_reason": "length", "error": "unavailable"},
+        {
+            "done": True,
+            "done_reason": "length",
+            "message": {"tool_calls": [{"function": {"name": "lookup"}}]},
+        },
+    ],
+)
+def test_gemma_pilot_does_not_retry_provider_errors_or_tools(review_pilot, response):
+    chat, sent, replies = review_pilot
+    replies.append(response)
+    assert chat(_REVIEW_PROMPT, error=_DRAFT_UNVERIFIED) == ""
+    assert len(sent) == 1 and not replies
+
+
+@pytest.mark.parametrize(
+    "prompt,draft,expected",
+    [
+        pytest.param(
+            "Napisz krótką wiadomość do zespołu o wspólnym przeglądzie "
+            "konspektu instrukcji. Bez ustalania terminu.",
+            "Cześć wszystkim, proszę o wspólne przejrzenie konspektu instrukcji "
+            "i zgłaszanie uwag.",
+            "Proponuję wspólny przegląd konspektu instrukcji.",
+            id="F05-feedback",
+        ),
+        pytest.param(
+            "Napisz krótką wiadomość do zespołu o wspólnym przeglądzie "
+            "szkicu folderu. Bez ustalania terminu.",
+            "Cześć wszystkim, przesyłam szkic folderu do wspólnego przeglądu – "
+            "proszę o zapoznanie się z materiałem i zgłaszanie uwag.",
+            "Proponuję wspólny przegląd szkicu folderu.",
+            id="F07-sending-and-feedback",
+        ),
+        pytest.param(
+            _REVIEW_PROMPT,
+            "Przesyłam szkic okładki do wspólnego przeglądu.",
+            _REVIEW_MINIMUM,
+            id="sending-without-feedback",
+        ),
+        pytest.param(
+            _REVIEW_PROMPT,
+            "Przejrzyjmy wspólnie szkic okładki. Nie proszę o zgłaszanie uwag, "
+            "ale dajcie znać, co poprawić.",
+            _REVIEW_MINIMUM,
+            id="negation-in-separate-clause",
+        ),
+        pytest.param(
+            _REVIEW_PROMPT,
+            "Przejrzyjmy wspólnie szkic okładki. Nie znam terminu, dajcie znać, co poprawić.",
+            _REVIEW_MINIMUM,
+            id="negation-in-independent-comma-clause",
+        ),
+        pytest.param(
+            _REVIEW_PROMPT,
+            "Oto wiadomość: „Przesyłam szkic okładki do wspólnego przeglądu.”",
+            _REVIEW_MINIMUM,
+            id="delivery-in-introduced-quote",
+        ),
+        pytest.param(
+            _REVIEW_PROMPT,
+            "Proponuję wspólny przegląd szkicu okładki. Termin ustalimy za tydzień.",
+            _REVIEW_MINIMUM,
+            id="timing-promise",
+        ),
+    ],
+)
+def test_gemma_review_keeps_grounded_content_from_first_completed_draft(
+    review_pilot, prompt, draft, expected
+):
+    chat, sent, replies = review_pilot
+    replies.append(native(draft))
+    assert chat(prompt, verify_history=True) == expected
+    assert len(sent) == 1 and not replies
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "Hej! Może wspólnie rzucimy okiem na szkic okładki?",
+        "Przejrzyjmy wspólnie szkic okładki. Nie ustalimy teraz terminu.",
+        "Przejrzyjmy wspólnie szkic okładki. Na razie nie proszę o zgłaszanie uwag.",
+    ],
+)
+def test_gemma_pilot_retains_a_first_completed_draft(review_pilot, draft):
+    chat, sent, replies = review_pilot
+    replies.append(native(draft))
+    assert chat(_REVIEW_PROMPT, verify_history=True) == draft
+    assert len(sent) == 1 and not replies
+
+
+@pytest.mark.parametrize(
+    "authorization,draft",
+    [
+        (
+            "Dopisz, że dołączam szkic do wiadomości.",
+            "Przesyłam szkic okładki do wspólnego przeglądu.",
+        ),
+        (
+            "Poproś też o uwagi.",
+            "Przejrzyjmy wspólnie szkic okładki. Dajcie znać, co o nim myślicie.",
+        ),
+    ],
+)
+def test_gemma_review_leaves_authorized_additions_outside_pilot(
+    review_pilot, authorization, draft
+):
+    chat, sent, replies = review_pilot
+    replies.append(native(draft))
+    assert (
+        chat(f"{_REVIEW_PROMPT} {authorization}", stream=False, verify_history=True)
+        == draft
+    )
+    assert len(sent) == 1 and not replies
+
+
+def test_gemma_review_preserves_authorization_from_prior_turn(review_pilot):
+    chat, sent, replies = review_pilot
+    draft = "Przesyłam szkic okładki do wspólnego przeglądu."
+    history = [
+        turn("Gdy będziemy pisać wiadomość, zaznacz, że załączam szkic okładki."),
+        turn("Jasne, uwzględnię to w wiadomości.", role="assistant"),
+    ]
+    replies.append(native(draft))
+    assert (
+        chat(_REVIEW_PROMPT, history=history, stream=False, verify_history=True)
+        == draft
+    )
+    assert len(sent) == 1 and not replies
+
+
+def test_gemma_pilot_is_separate_from_academy_and_defaults_off(studio_chat):
+    chat, sent, replies = studio_chat
+    replies.append(native("Ucięty szkic", reason="length"))
+    assert (
+        chat(_REVIEW_PROMPT, stream=False, verify_history=True) == GENERATION_TRUNCATED
+    )
+    draft = "Przesyłam szkic okładki do wspólnego przeglądu."
+    replies.append(native(draft))
+    assert chat(_REVIEW_PROMPT, stream=False, verify_history=True) == draft
+    assert len(sent) == 2 and not replies
+
+
+@pytest.mark.parametrize("studio_chat", [QUALIFIED_BOLT_MODEL], indirect=True)
+def test_gemma_retry_does_not_apply_to_bolt(review_pilot):
+    chat, sent, replies = review_pilot
+    replies.append(streamed("Krótki tekst Bolta.", finish="length"))
+    assert chat(_REVIEW_PROMPT).startswith("Krótki tekst Bolta.")
+    assert len(sent) == 1 and sent[0]["payload"]["stream"]
+
+
+@pytest.mark.parametrize(
+    "suffix", [" Podpisz jako Lena.", " Wyślij ją do zespołu.", " Dopisz powód."]
+)
+def test_gemma_retry_does_not_claim_other_requests(review_pilot, suffix):
+    chat, sent, replies = review_pilot
+    replies.append(native("Ucięty szkic", reason="length"))
+    assert chat(_REVIEW_PROMPT + suffix, stream=False) == GENERATION_TRUNCATED
+    assert len(sent) == 1 and not replies
+
+
+def test_gemma_pilot_preserves_existing_options_repair_budget(review_pilot):
+    chat, sent, replies = review_pilot
+    replies.extend([native('{"options":["Kartka."]}'), native('{"options":["Mail."]}')])
+    assert chat("Daj dokładnie dwie propozycje.") == "1. Kartka.\n2. Mail."
+    assert len(sent) == 2 and not replies
+    assert all("format" in call["payload"] for call in sent)
+
+
+def test_gemma_pilot_preserves_case_in_grounded_fallback(review_pilot):
+    chat, sent, replies = review_pilot
+    replies.extend(
+        [
+            native("Ucięty szkic", reason="length"),
+            native("Przejrzyjmy wspólnie projekt Atlas Północy jutro."),
+        ]
+    )
+    assert (
+        chat(
+            "Ułóż krótką wiadomość do współpracowników o wspólnym przeglądzie "
+            "projektu Atlas Północy. Bez ustalania terminu."
+        )
+        == "Proponuję wspólny przegląd projektu Atlas Północy."
+    )
+    assert len(sent) == 2
+
+
+@pytest.mark.parametrize(
+    "addition",
+    [
+        "Będę dawać znać, gdy będziemy gotowi.",
+        "Dam znać wkrótce, kiedy znajdziemy czas.",
+    ],
+)
+def test_gemma_first_draft_drops_an_unrequested_follow_up(review_pilot, addition):
+    chat, sent, replies = review_pilot
+    replies.append(native(f"{_REVIEW_MINIMUM} {addition}"))
+    assert chat(_REVIEW_PROMPT, verify_history=True) == _REVIEW_MINIMUM
+    assert len(sent) == 1
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "Przesyłam projekt plakatu. Proponuję jego wspólny przegląd. Proszę o krótkie uwagi.",
+        "Proponuję wspólny przegląd projektu plakatu. Proszę o uwagi.",
+        "Proponuję wspólny przegląd projektu plakatu. Proszę o krótkie uwagi do projektu.",
+    ],
+)
+def test_gemma_first_draft_checks_feedback_separately_from_transfer(
+    review_pilot, draft
+):
+    chat, sent, replies = review_pilot
+    replies.append(native(draft))
+    prompt = (
+        "Napisz krótką wiadomość do zespołu o wspólnym przeglądzie projektu plakatu. "
+        "Poproś wprost o krótkie uwagi do projektu. Bez ustalania terminu."
+    )
+    assert chat(prompt, verify_history=True) == (
+        "Proponuję wspólny przegląd projektu plakatu. Proszę o krótkie uwagi do projektu."
+    )
+    assert len(sent) == 1
+
+
+@pytest.mark.parametrize(
+    "draft,expected",
+    [
+        (
+            "Przygotowałem PDF z kartą warsztatu. Po Waszej zgodzie dołączę i prześlę plik.",
+            "Proponuję wspólny przegląd karty warsztatu. Plik PDF mogę dołączyć po Waszej zgodzie.",
+        ),
+        (
+            "Cześć! Proponuję wspólny przegląd karty warsztatu. Po Waszej zgodzie mogę dołączyć plik.",
+            "Cześć! Proponuję wspólny przegląd karty warsztatu. Po Waszej zgodzie mogę dołączyć plik.",
+        ),
+    ],
+)
+def test_gemma_first_draft_checks_pending_pdf_without_claiming_author(
+    review_pilot, draft, expected
+):
+    chat, sent, replies = review_pilot
+    replies.append(native(draft))
+    prompt = (
+        "PDF z kartą warsztatu mam gotowy, ale jeszcze nie jest dołączony ani wysłany. "
+        "Napisz do zespołu krótką wiadomość z zaproszeniem do wspólnego przeglądu karty. "
+        "Powiedz, że plik mogę dołączyć po ich zgodzie. Bez ustalania terminu."
+    )
+    assert chat(prompt, verify_history=True) == expected
+    assert len(sent) == 1
+
+
+@pytest.mark.parametrize(
+    "group,first,last",
+    [("łącznie ", "14 min", "16 min"), ("po ", "24 min", "26 min"), ("", None, None)],
+)
+def test_gemma_studio_scopes_time_from_user_history(review_pilot, group, first, last):
+    chat, sent, replies = review_pilot
+    prompt = (
+        f"Korekta pierwszych dwóch kart zajęła {group}10 minut. "
+        "Korekta trzeciej zajęła 4 minuty. Ile zajęły wszystkie?"
+    )
+    answer = chat(prompt, verify_history=True)
+    assert answer == (
+        first or "Czy 10 min dotyczy obu korekt łącznie, czy każdej z osobna?"
+    )
+    update = "Jeśli trzecia zajęła 6 minut, podaj tylko nową sumę i jednostkę."
+    assert chat(
+        update, [turn(prompt), turn("Błędny wynik: 30 minut.", "assistant")]
+    ) == (last or answer)
+    assert not sent and not replies
+
+
+def test_gemma_studio_keeps_request_and_lack_of_reply(review_pilot):
+    chat, sent, replies = review_pilot
+    prior = "Notatnik należy do Ewy, Adam tylko ma go pożyczyć. Zapisz oba fakty w jednym zdaniu."
+    latest = (
+        "Korekta: Adam dopiero poprosił o notatnik i nie dostał jeszcze odpowiedzi. "
+        "Napisz jedno zdanie dla osoby, która nie czytała historii."
+    )
+    assert chat(latest, [turn(prior), turn("Adam ma notatnik.", "assistant")]) == (
+        "Notatnik należy do Ewy, a Adam poprosił o notatnik i nie dostał jeszcze odpowiedzi."
+    )
+    assert not sent and not replies
+
+
+def test_gemma_studio_keeps_pdf_and_omits_reason(review_pilot):
+    chat, sent, replies = review_pilot
+    prior = "Schemat sali autorstwa Igi mam gotowy w PDF. Jeszcze go nie dołączyłem. Napisz krótko, jaki jest stan."
+    latest = (
+        "Odwołuję propozycję przesłania. Powiedz Idze tylko, jaki plik jest gotowy "
+        "i że na razie go nie wyślę. Nie dopisuj powodu."
+    )
+    assert chat(latest, [turn(prior), turn("Plik przesłany.", "assistant")]) == (
+        "Schemat sali jest gotowy w PDF. Na razie go nie wyślę."
+    )
+    assert not sent and not replies
+
+
+def test_gemma_studio_keeps_contact_separate_from_deferred_decision(review_pilot):
+    chat, sent, replies = review_pilot
+    prior = "Na dziś odłóżmy decyzję o kolorze menu. Nie umawiamy spotkania ani kontaktu. Napisz jedno zdanie."
+    latest = "Teraz dodaj tylko, że jutro o 09:20 wrócę z dwiema propozycjami koloru. To godzina powrotu do tematu."
+    assert chat(latest, [turn(prior), turn("Spotkanie jutro.", "assistant")]) == (
+        "Jutro o 09:20 wrócę z dwiema propozycjami koloru."
+    )
+    assert not sent and not replies
+
+
+def test_gemma_studio_gets_concise_hint_on_buffered_reply(review_pilot):
+    chat, sent, replies = review_pilot
+    replies.append(native("Po zgaszeniu lampki stół tonął w mroku."))
+    assert chat("Uprość zdanie „Po zgaszeniu lampki stół tonął w mroku”.", stream=False)
+    assert (
+        "Oddaj jeden gotowy tekst i zakończ."
+        in sent[0]["payload"]["messages"][0]["content"]
+    )
+
+
+def test_gemma_studio_asks_about_ambiguous_time_scope(review_pilot):
+    chat, sent, _ = review_pilot
+    prompt = (
+        "Dwa zaproszenia przeszły korektę w 10 minut. "
+        "Trzecie w 4 minuty. Ile czasu zajęła korekta wszystkich?"
+    )
+    assert chat(prompt) == "Czy 10 min dotyczy obu korekt łącznie, czy każdej z osobna?"
+    assert not sent
+
+
+def test_gemma_studio_invites_without_implying_feedback(review_pilot):
+    chat, sent, _ = review_pilot
+    assert (
+        chat(
+            "Ola opracowała tekst instrukcji. Na razie możesz zaprosić zespół do wspólnego "
+            "przeglądu, bez zbierania opinii. Napisz zaproszenie.",
+            verify_history=True,
+        )
+        == "Ola opracowała tekst instrukcji. Zapraszam zespół do wspólnego przeglądu."
+    )
+    assert not sent
+
+
+def test_gemma_studio_preserves_two_options_after_one_replacement(review_pilot):
+    chat, sent, _ = review_pilot
+    prompt = "Na podstawkę możemy wybrać drewno albo metal. Żadna opcja jeszcze nie wygrała. Podaj możliwości."
+    answer = chat(prompt, verify_history=True)
+    assert answer == "Możliwości to drewno albo metal. Żadna opcja nie została wybrana."
+    assert (
+        chat(
+            "Zamiast metalu chcę szkło. Zadaj tylko jedno pytanie o wybór jednej z dwóch aktualnych możliwości.",
+            [turn(prompt), turn("Stan w poprzednim szkicu był błędny.", "assistant")],
+            verify_history=True,
+        )
+        == "Czy wybierasz drewno, czy szkło?"
+    )
+    assert not sent
+
+
+@pytest.mark.parametrize(
+    "topic,first,updated",
+    [
+        ("ciasto", "1/6", "1/8"),
+        ("okrągłe ciasto", "60°", "45°"),
+        ("prostokątne ciasto", "każdy pas na 3", "każdy pas na 4"),
+    ],
+)
+def test_gemma_studio_keeps_portion_method_when_only_count_changes(
+    review_pilot, topic, first, updated
+):
+    chat, sent, _ = review_pilot
+    prompt = (
+        f"Przepis mówi, by podzielić {topic} na sześć kawałków. Podaj jeden sposób, "
+        "żeby kawałki były zbliżone wielkością."
+    )
+    draft = chat(prompt, verify_history=True)
+    assert first in draft
+    assert updated in chat(
+        "Zmiana: ma być osiem kawałków. Podaj krótko, jak zmienia się podział.",
+        [turn(prompt), turn(draft, "assistant")],
+        verify_history=True,
+    )
+    assert not sent
+
+
+def test_gemma_studio_justifies_only_the_published_memory_action(review_pilot):
+    chat, sent, _ = review_pilot
+    prompt = (
+        "Podaj dwie czynności pomagające zapamiętać numer pokoju, bez robienia zdjęć."
+    )
+    draft = "1. Zapisz numer pokoju w notatniku\n2. Powtórz numer pokoju na głos"
+    assert chat(
+        "Wybierz jedną z nich bez pisania i krótko wyjaśnij, czemu pomaga.",
+        [turn(prompt), turn(draft, "assistant")],
+        verify_history=True,
+    ) == (
+        "Powtórz numer pokoju na głos. Słyszysz wtedy brzmienie "
+        "i ćwiczysz przypominanie sobie informacji."
+    )
+    assert not sent
+
+
+@pytest.mark.parametrize(
+    "word,third", [("Dwa regulaminy", "Trzeci"), ("Dwie karty", "Trzecia")]
+)
+@pytest.mark.parametrize(
+    "scope,total", [("obu korekt łącznie", 19), ("każdej z dwóch korekt", 31)]
+)
+def test_studio_ambiguous_duration_uses_user_scope_and_latest_edit(
+    review_pilot, word, third, scope, total
+):
+    chat, sent, _ = review_pilot
+    original = f"{word} przeszły korektę w 12 minut. {third} w 5 minut. Ile czasu zajęła korekta wszystkich?"
+    answer = chat(original, verify_history=True)
+    assert answer == "Czy 12 min dotyczy obu korekt łącznie, czy każdej z osobna?"
+    second = (
+        "Dopowiem tylko, że korekta trzeciego zajęła 7 minut. Nadal nie mówię, "
+        "czy 12 minut było łącznie, czy na sztukę. Zadaj krótkie pytanie."
+    )
+    prior = [turn(original), turn("29 minut", "assistant")]
+    assert chat(second, prior, verify_history=True) == answer
+    assert (
+        chat(
+            f"12 minut dotyczy {scope}. Podaj wynik z jednostką.",
+            [*prior, turn(second), turn("Bezpodstawny wynik 90 min.", "assistant")],
+            verify_history=True,
+        )
+        == f"{total} min"
+    )
+    assert not sent
+
+
+@pytest.mark.parametrize(
+    "initial,action",
+    [
+        (
+            "Dostałem prośbę o sprawdzenie listy uczestników, ale nie mam potwierdzenia, "
+            "że to zrobiłem. Zapisz stan w jednym zdaniu.",
+            "sprawdzenie listy uczestników",
+        ),
+        (
+            "Zgłoszono prośbę o aktualizację numerów szafek. Wykonania nie potwierdzono. "
+            "Podaj stan w jednym zdaniu.",
+            "aktualizację numerów szafek",
+        ),
+    ],
+)
+def test_studio_separates_requested_withdrawn_and_confirmed_action(
+    review_pilot, initial, action
+):
+    chat, sent, replies = review_pilot
+    assert chat(initial, verify_history=True) == (
+        f"Zgłoszono prośbę o {action}, a wykonania nie potwierdzono."
+    )
+    context = [turn(initial), turn("Zadanie zostało wykonane.", "assistant")]
+    withdrawal = (
+        "Dodaj, że prośba została wycofana. Zachowaj rozróżnienie między brakiem "
+        "potwierdzenia a stwierdzeniem, że nic się nie wydarzyło."
+    )
+    assert chat(withdrawal, context, verify_history=True) == (
+        f"Prośbę o {action} wycofano, a wykonania nie potwierdzono."
+    )
+    assert not sent
+    confirmation = "Użytkownik potwierdził wykonanie."
+    replies.append(native(confirmation))
+    assert (
+        chat(
+            "Teraz potwierdzam wykonanie tej czynności. Podaj bieżący stan.",
+            [*context, turn(withdrawal), turn("Niesprawdzone.", "assistant")],
+            stream=False,
+            verify_history=True,
+        )
+        == confirmation
+    )
+    assert len(sent) == 1
+
+
+def test_studio_reopened_choice_asks_which_option(review_pilot):
+    chat, sent, _ = review_pilot
+    first = "Ułóż jedno zdanie dla osoby z zespołu: przekładamy wybór okładki i nie podano dlaczego. Nie sugeruj przyczyny."
+    latest = (
+        "Wycofuję polecenie odłożenia. Nadal nie padła żadna decyzja. "
+        "Podaj tylko jedno krótkie pytanie o wybór okładki."
+    )
+    assert chat(latest, [turn(first), turn("Odłożyliśmy wybór.", "assistant")]) == (
+        "Jaką opcję wybieramy w sprawie okładki?"
+    )
+    assert not sent
+
+
+@pytest.mark.parametrize(
+    "prompt,hint",
+    [
+        ("Podaj tylko tytuł zimowej sceny przy oknie.", "punkt scenerii"),
+        ("Zachowaj metodę, dopasuj ją do wspólnego biurka.", "kryterium wyboru"),
+        ("Zachowaj słowo półka. Napisz jeszcze krócej.", "Oddaj jeden gotowy tekst"),
+    ],
+)
+def test_studio_prepares_focused_hint_for_next_generation(review_pilot, prompt, hint):
+    chat, sent, replies = review_pilot
+    replies.append(native("Zapisana odpowiedź."))
+    assert chat(prompt, stream=False, verify_history=True) == "Zapisana odpowiedź."
+    assert hint in sent[0]["payload"]["messages"][0]["content"]

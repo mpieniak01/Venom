@@ -8,6 +8,12 @@ from hashlib import sha256
 from pathlib import Path
 
 _CARDS = {
+    "hand_pump": (
+        "qualified_card_hand_pump.json",
+        "69bdb76ef5eaa00b3fd41d6a2317c81e91303d8c502cea0d8411238e9607f3a6",
+        "PUMP-CHECK-1",
+        "https://patents.google.com/patent/EP0366859A2/en",
+    ),
     "ventilation": (
         "qualified_card_ventilation.json",
         "7f4aae0d8226571f2e83c7ac782e757ef242f3be35257395495a995f8acbf5cf",

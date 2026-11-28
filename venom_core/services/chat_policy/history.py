@@ -15,6 +15,7 @@ def recent_turns(
     *,
     omit_truncated: bool = False,
     omit_assistant_links: bool = False,
+    user_facts_only: bool = False,
     history: list[dict[str, object]] | None = None,
 ) -> list[HistoryMessage]:
     if history is None:
@@ -31,6 +32,13 @@ def recent_turns(
         if contents is None:
             continue
         prompt, reply = contents
+        if user_facts_only:
+            cost = len(prompt) + 32
+            if cost > budget:
+                break
+            budget -= cost
+            result.append(HistoryMessage(role="user", content=prompt))
+            continue
         reply = _prepare_history_reply(
             reply,
             assistant,

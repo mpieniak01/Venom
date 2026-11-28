@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services.chat_policy.qualified_chat_constraints import (
@@ -20,6 +20,7 @@ from venom_core.services.chat_policy.qualified_chat_evidence import evidence_rep
 from venom_core.services.chat_policy.qualified_chat_mechanisms import (
     checked_explanation,
     ice_melting_reply,
+    pump_valve_reply,
     thermal_followup_reply,
 )
 from venom_core.services.chat_policy.qualified_chat_options import (
@@ -46,6 +47,7 @@ from venom_core.services.chat_policy.qualified_chat_writing import (
     revises_opening_only,
     selects_one_proposal,
 )
+from venom_core.services.chat_policy.review_draft import ReviewDraft
 
 _CALENDAR_UNCONFIRMED = "Wpis do kalendarza wymaga potwierdzenia wykonania."
 _DAYS = {
@@ -152,6 +154,10 @@ def _calendar_reply(text: str) -> str | None:
     if _CALENDAR_REQUEST.match(text):
         return _CALENDAR_UNCONFIRMED
     return None
+
+
+if TYPE_CHECKING:
+    from venom_core.services.chat_policy.studio_claims import StudioClaimCheck
 
 
 _DEFAULT_INSTRUCTION = (
@@ -368,6 +374,9 @@ class QualifiedReply:
     rss: RSSSummary | None = None
     opening_only: bool = False
     requested_opening: str | None = None
+    review_draft: ReviewDraft | None = None
+    claim_check: StudioClaimCheck | None = None
+    retry_truncated: bool = False
 
     @property
     def requires_complete_draft(self) -> bool:
@@ -376,6 +385,8 @@ class QualifiedReply:
             or self.rewrite is not None
             or self.rss is not None
             or self.opening_only
+            or self.review_draft is not None
+            or self.claim_check is not None
             or bool(self.restrictions)
             or self.timed
             or self.count is not None
@@ -487,7 +498,9 @@ class QualifiedReply:
                 return _CLARIFICATION
         if _claim(draft):
             return _CALENDAR_UNCONFIRMED
-        return draft if draft.strip() and self._allowed(draft) else _CLARIFICATION
+        if not draft.strip() or not self._allowed(draft):
+            return _CLARIFICATION
+        return self.claim_check.publish(draft) if self.claim_check else draft
 
     def publish(
         self, draft: str, repair: str | None = None, *, truncated: bool = False
@@ -525,6 +538,7 @@ def prepare_studio_reply(
     if answer := (
         draft_reminder_reply(text)
         or draft_time_revision(text, history)
+        or pump_valve_reply(text, history, token_budget=token_budget)
         or ice_melting_reply(text, history, token_budget=token_budget)
         or thermal_followup_reply(text, history, token_budget=token_budget)
     ):
